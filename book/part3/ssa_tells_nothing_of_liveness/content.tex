@@ -1,6 +1,78 @@
-\chapter{ssa tells nothing of liveness}
+\chapter*{ssa tells nothing of liveness}
+\newcommand{\name}[1]{#1}
+\newcommand{\eg}{e.g.}
+\newcommand{\var}[1]{\mathtt{#1}}
+\newcommand{\lao}{\name{LAO}} 
+\newcommand{\firm}{\name{Firm}} 
+\newcommand{\stm}{\name{STMicroelectronics}}
+
+
 
 \chapterauthor{Rastello}
 
 \TODO{liveness analysis}
 
+This is the introduction of the CGO paper, not the content of this section.
+This is just to give an idea of lncs format!
+
+Liveness analysis provides information about the points in a program where a variable carries a value that might still be needed.
+Thus, liveness information is indispensable for storage assignment/optimization passes.
+For instance optimizations like software pipelining, trace scheduling, and register-sensitive redundancy elimination make use of liveness information.
+In the code generation part, particularly for register allocation, liveness information is mandatory.
+
+Traditionally, liveness information is computed by a data-flow analysis (\eg\ see~\cite{cooper:2004:engineering}).
+This has the disadvantage that the computation is fairly expensive and its results are easily invalidated by program transformations.
+Adding instructions or introducing new variables requires suitable changes in the liveness information:
+partial re-computation or degradation of its precision.
+Further, one cannot easily limit the data-flow algorithms to compute information only for parts of a procedure.
+Computing a variable's liveness at a program location generally implies computing its liveness at other locations, too.
+
+In this paper, we present a novel approach for liveness checking (``is variable $\var v$ live at location $q$?'').
+In contrast to classical data-flow analyses our approach does not provide the set of variables live at a block, only its characteristic function.
+% "What is 'novel'?"
+The results of our analysis remain valid during most program changes and, at the same time, allow for an \emph{efficient} algorithm.
+% "What distinguishes your solution form others?"
+Its main features are:
+\begin{enumerate}
+	\item
+	The algorithm itself consists of two parts, a \emph{precomputation} part, and an \emph{online} part executed at each liveness query.
+	It is not based on setting up and subsequently solving data-flow equations.
+
+	\item
+	The precomputation is \emph{independent of variables,} it only depends on the structure of the control-flow graph.
+	Hence, precomputed information \emph{remains valid} upon adding or removing variables or their uses.
+
+	\item
+	An actual query uses the def-use chain of the variable in question and determines the answer essentially by testing membership in precomputed sets.
+
+	\item
+	It relies on connections between liveness, dominance, and depth-first search trees, most of them only valid under static single-assignment form (SSA).
+\end{enumerate}
+
+SSA is a popular kind of program representation that is used in most modern compilers.
+Earlier, SSA was only used as an intermediate representation of the program during compilation.
+Since then, SSA has also been proposed to be used in the backend of a compiler, see~\cite{leung:ssamach} for example.
+Nowadays, there exist several industrial and academic compilers using SSA in their backend, such as~LLVM, Java~HotSpot, \lao \cite{bdd:2000:lao}, and \firm.
+Most recent research on register allocation~\cite{bouchez:lcpc,brisk:2005:poly,HGG:2006:RA_SSA,pereira:2005:chordal} even allows for retaining the SSA property until the end of the code generation process.
+Even just-in-time compilers (Java Hot-Spot, Mono, \lao), where compilation time is a non-negligible issue, make use of its advantages.
+As we will see, the special conditions encountered in SSA-form programs make our approach possible at all. 
+
+Finally, we rely on the following prerequisites to be met:
+\begin{itemize}
+	\item The program is in SSA form and the dominance property (see Section~\ref{sec:ssa}) must hold.
+	\item The control-flow graph $G=(V,E,r)$ of the program is available.
+	\item The dominance tree of the control-flow graph is available. Otherwise it is computable in $O(|V|)$.
+	\item A depth-first search tree of the control-flow graph is available. Also computable in~$O(|V|)$.
+	\item A list of uses for each variable, also known as def-use chain is available.
+		Having an easy-to-maintain def-use chain is one of the major advantages of the SSA form.
+		Hence, def-use chains are often available in SSA-based compilers.
+		Updating the def-use chain when adding or removing uses of a variable incurs virtually no costs, quite contrary to updating liveness information on each change.
+\end{itemize}
+As one can see, our assumptions are weak and easy to meet for clean-sheet designs.
+The SSA requirement is the main obstacle for compilers not already featuring it.
+
+In the next section we give a summary of control-flow graphs, dominance, SSA and liveness.
+The main contribution is presented in Section~\ref{sec:algo}: it introduces the concepts of our approach and presents the main algorithm and its correctness proof.
+Section~\ref{sec:details} provides additional details on optimization and extension of the algorithm.
+The main focus of Section~\ref{sec:pract} is implementation efficiency, and Section~\ref{sec:eval} gives and discusses evaluation results.
+Finally, Section~\ref{sec:related} contrasts this paper with other work, and Section~\ref{sec:concl} concludes.
