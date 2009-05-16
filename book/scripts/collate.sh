@@ -12,12 +12,12 @@ for i in `scripts/all_targets.sh`; do
 
 	# Move part.pdf, if it exists.
 	if [ -e $i/part.pdf ]; then
-		mv "$i/part.pdf" "pdfs/$BASENAME$@.pdf"
+		cp "$i/part.pdf" "pdfs/$BASENAME$@.pdf"
 	fi
 
 	# Move chapter.pdf, if it exists.
 	if [ -e $i/chapter.pdf ]; then
-		mv "$i/chapter.pdf" "pdfs/$BASENAME$@.pdf"
+		cp "$i/chapter.pdf" "pdfs/$BASENAME$@.pdf"
 	fi
 done
 
