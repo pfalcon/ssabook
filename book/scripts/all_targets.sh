@@ -6,7 +6,7 @@
 echo "."
 
 for i in `cat PARTS`; do
-	echo $i/
+	echo $i
 	for j in `cat $i/CHAPTERS`; do
 		echo $i/$j
 	done

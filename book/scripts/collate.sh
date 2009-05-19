@@ -6,8 +6,8 @@
 
 for i in `scripts/all_targets.sh`; do
 
-	make -C $i;
 	echo $i;
+	make -C $i;
 	BASENAME=`basename $i`
 
 	# Move part.pdf, if it exists.
@@ -19,5 +19,12 @@ for i in `scripts/all_targets.sh`; do
 	if [ -e $i/chapter.pdf ]; then
 		cp "$i/chapter.pdf" "pdfs/$BASENAME$@.pdf"
 	fi
+
 done
+
+# Move book.pdf, if it exists.
+if [ -e book.pdf ]; then
+	cp "book.pdf" "pdfs/book.pdf"
+fi
+
 
