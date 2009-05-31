@@ -14,4 +14,4 @@ scripts/collate.sh
 
 
 # Rsync it online
-rsync --delete -arLz $PWD/pdfs/* pbiggar@scm.gforge.inria.fr:/home/groups/ssabook/htdocs/latest/
+rsync --delete -arLz $PWD/pdfs/* scm.gforge.inria.fr:/home/groups/ssabook/htdocs/latest/
