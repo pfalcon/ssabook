@@ -1276,6 +1276,9 @@ to\z@{\kern0.55\wd0\vrule\@height0.45\ht0\hss}\box0}}}}
 \advance\tocparatotal by\tocparanum}
 \calctocindent
 
+\newcounter{tocnopages}
+\setcounter{tocnopages}{0}
+
 \def\@dottedtocline#1#2#3#4#5{%
   \ifnum #1>\c@tocdepth \else
     \vskip \z@ \@plus.2\p@
@@ -1288,11 +1291,13 @@ to\z@{\kern0.55\wd0\vrule\@height0.45\ht0\hss}\box0}}}}
 %    \@tempdima #3\relax
      \advance\leftskip \@tempdima \null\nobreak\hskip -\leftskip
      {#4}\nobreak
-     \leaders\hbox{$\m@th
+      \ifnum #1>\c@tocnopages \hfill \kern0pt \else
+      \leaders\hbox{$\m@th
         \mkern \@dotsep mu\hbox{.}\mkern \@dotsep
         mu$}\hfill
-     \nobreak
-     \hb@xt@\@pnumwidth{\hfil\normalfont \normalcolor #5}%
+      \nobreak
+      \hb@xt@\@pnumwidth{\hfil\normalfont \normalcolor #5}%
+      \fi
      \par}%
   \fi}
 %
