@@ -1,6 +1,8 @@
 \chapter{Classical construction/update/destruction algorithm \Author{J. Singer, F. Rastello}}
 \numberofpages{8}
 
+\def\phiops{$\phi$-functions}
+\def\phiop{$\phi$-function}
 \section{Simple programming language model}
 \textbf{1 page}
 
@@ -14,13 +16,72 @@ No constraints on control-flow structures in CFG
 
 \section{Construction}
 \textbf{2-3 pages}
-TOPLAS 91 (not simplest, but gets ready for repair/maintain section).
+{\em TOPLAS 91 (not simplest, but gets ready for repair/maintain section).
 Split algorithm into $\phi$-function placement, and variable
 renaming. For $\phi$-fn placement, use dominance frontiers.
 (Refer to appendix for dominance?) 
 For variable renaming, use simple stack-based algorithm.
 Use a running example CFG throughout the transformation process.
-Probably construct minimal SSA form.
+Probably construct minimal SSA form.}
+
+{\em We need the notion of CFG, $r$ the entry node. Need the notion of dominance, and (iterated)-dominance-frontier. Need the notion of reaching definition.}
+
+In this chapter, each procedure is represented as a control flow graph (CFG). All node of the CFG is supposed to be reachable from the entry node $r$.
+
+The classical construction algorithm for SSA form falls into two phases. 
+First \phiops\ are inserted so that any use of a given variable is reached by only one definition of this variable. 
+Then variables are renamed so that the code contains textually only one definition per variable, and such that each use refers to its corresponding unique reaching definition.
+
+Cytron et al.~\cite{cytron:1991:ssa} noticed that is it useless to insert \phiops\ elsewhere than join nodes, i.e. nodes that can be reached by two different definitions of the same variable using two disjoint paths. 
+% FAB: in fact Cytron et al. iterate on join sets. Weiss said that J+(S)=J(S). Fix this sentence.
+Under the asumption that each variable has a {\em pseudo definition} at the root~$r$ of the CFG, they also show that this set of join nodes is exactly the iterated dominance frontier.
+It ends up with a very simple algorithm that places \phiops\ variable per variable. 
+For a given variable it places \phiops\ at the iterated dominance frontier $DF^{+}(S)$ of the set of definition points $S$ for this variable. 
+Because only the dominance frontier of each CFG node is precomputed, the \phiops\ are inserted iteratively using a worklist of definition points, and flags (to avoid multiple insertions). 
+This gives the following pseudo-code for \phiops\ insertion:
+\begin{verbatim}
+foreach global variable v
+  let Worklist:=definitions(v)
+  let Inserted:=emptyset
+  foreach D in Worklist
+    foreach I in DF(D) \ Inserted
+      insert "v=phi(v,...,v)" @ beginning of node I
+      Inserted += {I}
+\end{verbatim}
+
+If the uses of a \phiop\ are considered to be on the corresponding predecessor blocks, then use-def chains are along the dominance tree. 
+This is why it is good to perform renaming in a DFS order of the dominance tree: 
+one just have to keep track during the traversal for each variable, its nearest dominating definition.
+This gives the following pseudo-code for variable renaming:
+\begin{verbatim}
+proc renaming:
+  foreach B: basicBlock in DFS preorder of the dominance tree
+    foreach inst: instruction from top to bottom of B
+      foreach o: a use operand of inst
+        let v the variable used in o
+        v.update_reachingDef(o)
+        replace v by v.reachingDef in o
+      foreach o: a def operand of inst
+        let v the variable used in o
+        v.update_reachingDef(o)
+        create new variable v'
+        replace v by v' in o
+        v'.reachingDef:=v.reachingDef
+    foreach phi: phi instruction in a successor of B
+      foreach o: a use operand of phi
+        let v the variable used in o
+        v.update_reachingDef(o)
+        replace v by v.reachingDef in o
+\end{verbatim}
+
+\begin{verbatim}
+proc v.update_reachingDef(o):
+// simply go up along the reachingDef chain until dominance is fulfilled 
+  let rd:=v.reachingDef
+  while not (rd==undef || def(rd) dominates o)
+    rd:=rd.reachingDef
+  v.reachingDef:=rd
+\end{verbatim}
 
 \section{Destruction \Author{F. Rastello}}
 \label{sec:classical_destruction}
