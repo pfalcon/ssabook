@@ -1,6 +1,6 @@
 \chapter{Graphs and gating functions \Author{J. Stanier}}
 \numberofpages{15}
-\graphicspath{{img/}{part2/vsdg/img/}}
+\graphicspath{{img/}{/vsdg/img}{part2/vsdg/img/}}
 %\TODO{note overlap with other predicated sections}
 
 \section{Introduction}
@@ -45,15 +45,11 @@ Graphs are a natural way of expressing many problems in mathematics and computer
 \label{fig: example-cfg}
 \end{figure}
 
-The CFG models control flow, but many graphs model \textit{data flow}. Graphs based on SSA are all data flow graphs, representing the data dependences in a program. In this section of the book we will have a look at a number of different SSA-based graph representations. These range from those which are a very literal translation of SSA into a graph to those which are more abstract in nature. An introduction to each graph will be given, along with diagrams to show how sample programs look when translated into that particular graph. Additionally, we will touch on the literature describing the usage of a  graph and why it was useful for that particular application.
-
-% TODO: some kind of introduction to data-flow graph principles? SSA Graph uses mu and eta which are introduced elsewhere. Or just ignore it and bring it up later?
+The CFG models control flow, but many graphs model \textit{data flow}. The graphs we consider in this section are all data flow graphs, representing the data dependences in a program. We will look at a number of different SSA-based graph representations. These range from those which are a very literal translation of SSA into a graph format to those which are more abstract in nature. An introduction to each graph will be given, along with diagrams to show how sample programs look when translated into that particular graph. Additionally, we will touch on the literature describing the usage of a graph and see why it was useful for that particular application.
 
 \section{The SSA Graph}
 
-We begin our exploration with a graph that is very similar to SSA. Many different definitions exist in the literature, so we take ours from Cooper et al \cite{504710}. An SSA Graph consists of vertices which represent operations (such as \texttt{add} and \texttt{load}) or $\mathtt{\phi}$-functions, and edges connect uses to definitions. For example, the incoming edges to a vertex represent the arguments required for that operation, and the outgoing edge from a vertex represents the propagation of that operation's result after it has been computed. This graph is therefore a \textit{demand-based} representation. In order to compute a vertex, we must \textit{demand} the results of the operands and then perform the operation indicated on that vertex. The SSA Graph can be constructed from a program in SSA form by adding use-definition chains. We present some sample code in Figure~\ref{fig: ssa-graph-example-code}. This is translated into an SSA Graph in Figure~\ref{fig: ssa-graph-example-graph}. 
-
-% TODO: explanation of the graph.
+We begin our exploration with a graph that is very similar to SSA. Many different definitions exist in the literature, so we take ours from Cooper et al \cite{504710}. An SSA Graph consists of vertices which represent operations (such as \texttt{add} and \texttt{load}) or $\mathtt{\phi}$-functions, and edges connect uses to definitions. For example, the incoming edges to a vertex represent the arguments required for that operation, and the outgoing edge from a vertex represents the propagation of that operation's result after it has been computed. This graph is therefore a \textit{demand-based} representation. In order to compute a vertex, we must \textit{demand} the results of the operands and then perform the operation indicated on that vertex. The SSA Graph can be constructed from a program in SSA form by adding use-definition chains. We present some sample code in Figure~\ref{fig: ssa-graph-example-code}. This is translated into an SSA Graph in Figure~\ref{fig: ssa-graph-example-graph}. Note that there are no explicit nodes for variables in the graph. Instead, an operator node can be seen as the ``location'' of the value stored in a variable. We have annotated operators with variable names to show the correspondence between the operations in the graph and in the SSA form program.
 
 \begin{figure}[ht]
 \centering
@@ -85,7 +81,7 @@ We begin our exploration with a graph that is very similar to SSA. Many differen
 \label{fig: ssa-graph-example-code}
 \end{figure}
 
-In the literature, the graph has been used to detect a variety of induction variables in loops \cite{143131,201003}, also for performing instruction selection techniques \cite{1375663,1269857}, operator strength reduction \cite{504710}, rematerialization \cite{143143}, and has been combined with an extended SSA language to aid compilation in a parallelizing compiler \cite{Stoltz_extendedssa}.
+The key benefit of representing the input program in this form is that the compiler writer is able to apply a wide array of graph-based optimizations by using standard graph traversal and transformation techniques. This can make many optimizations much easier to perform than on the standard linear SSA form, especially when the focus is on loop optimization. In the literature, the graph has been used to detect a variety of induction variables in loops \cite{143131,201003}, also for performing instruction selection techniques \cite{1375663,1269857}, operator strength reduction \cite{504710}, rematerialization \cite{143143}, and has been combined with an extended SSA language to aid compilation in a parallelizing compiler \cite{Stoltz_extendedssa}. The reader should note that the exact specification of what constitutes an SSA Graph changes from paper to paper. The essence of the IR is presented here, as each author tends to make small modifications for a particular implementation.
 
 \begin{figure}
 \centering
@@ -93,6 +89,37 @@ In the literature, the graph has been used to detect a variety of induction vari
 \label{fig: ssa-graph-example-graph}
 \caption{Our sample program translated into an SSA Graph.}
 \end{figure}
+
+% TODO: Click's IR
+\section{Click's simple graph-based IR}
+
+...
+
+% Outline of IR
+% Key components
+% Proper example with diagram
+% Usage/implementation/optimizations using it
+
+\section{Gating functions}
+
+In SSA form, $\phi$-functions are used to identify points where variable definitions converge. However, they cannot be directly interpreted, as they do not specify the condition which states which of the variable definitions to choose. By this logic, we cannot directly interpret the SSA Graph. Being able to interpret our IR is a useful property as it gives the compiler writer more information when implementing optimizations, and also reduces the complexity of performing code generation. Gated Single Assignment form  is an extension of SSA with \textit{gating functions}. These gating functions are directly interpretable versions of $\phi$-nodes, and replace $\phi$-nodes in the representation. There are three forms of gating function:
+
+\begin{itemize}
+\item The $\gamma$ function explicitly represents the condition which determines which $\phi$ value to select. A $\gamma$-node is of the form $\gamma(P,V_{1},V_{2})$ where $P$ is a predicate, and $V_{1}$ and $V_{2}$ are the values to be selected if the predicate evaluates to true or false respectively. This can be read simply as \textit{if-then-else}. 
+\item The $\mu$ function is inserted at loop headers to select the initial and loop carried values. In our SSA code in Figure~\ref{fig: ssa-graph-example-code}, we would replace the statement \texttt{$i_{1}$ = $\phi$($i_{0}$,$i_{2}$)} with \texttt{$i_{1}$ = $\mu$($i_{0}$,$i_{2}$)}.
+\item The $\eta$ function determines the value of a variable when a loop terminates.
+\end{itemize}
+
+These gating functions are important as the concept will form components of other IRs in this chapter. GSA has seen a number of uses in the literature. The first was by Ballance et al. \cite{93578} as a component of the Program Dependence Web IR. Havlak \cite{Havlak93constructionof} presents an algorithm for construction of a simpler version of GSA -- Thinned GSA -- which is constructed from a CFG in SSA form. Tu and Padua \cite{207115} present an algorithm that constructs SSA and GSA simultaneously in a single process. We leave further investigation of the construction algorithms as an exercise to the reader as they are beyond the scope of this chapter. By using gating functions it becomes possible to construct IRs based solely on data dependencies that are sparse in nature. We will look at one of these in the next section.
+
+% TODO: VSDG
+\section{Value State Dependence Graph}
+
+% Outline of IR
+% Key components
+% Proper example with diagram
+% Usage/implementation/optimizations using it
+% Further work
 
 % =================
 % Abstract is below here.
@@ -102,7 +129,7 @@ In the literature, the graph has been used to detect a variety of induction vari
 
 \subsection*{Introduction}
 
-This chapter will explore some approaches to using SSA concepts in graph-based intermediate representations. I'm leaving the abstract here for the time being.
+This chapter will explore some approaches to using SSA concepts in graph-based intermediate representations. I'm leaving the abstract here for the time being, although it seems to be changing as I write.
 
 \subsection*{SSA Graph}
 
