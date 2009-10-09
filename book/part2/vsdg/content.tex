@@ -127,7 +127,7 @@ It is easiest to understand these gating functions by means of an example. Figur
 
 The gating functions defined in the previous section were used in the development of a sparse data-flow graph intermediate representation called the Value Dependence Graph (VDG) \cite{177907}. The VDG represents programs as value (data) dependencies and does not contain any control flow information. In the VDG, there is an edge $(n,v)$, drawn as an arrow $n\rightarrow v$, if a node $n$ requires the value $v$ in order to compute its own value. The key benefit of this representation is that there is no enforced ordering of operations. 
 
-Selection in the VDG is represented by $\gamma$-nodes, which implement the same behavior as the $\gamma$ gating function. Function calls and loops are represented by $\lambda$-nodes, with loop bodies translated into tail recursive functions. However, there was a problem with the VDG: failure to preserve the terminating properties of a program. The original paper states that \textit{``Evaluation of the VDG may terminate even if the original program would not...''}. This problem was addressed in the creation of the Value State Dependence Graph (VSDG) \cite{UCAM-CL-TR-607}.
+Selection in the VDG is represented by $\gamma$-nodes, which implement the same behavior as the $\gamma$ gating function. Function calls and loops are represented by $\lambda$-nodes, with loop bodies translated into tail recursive functions. However, there was a problem with the VDG: failure to preserve the terminating properties of a program. The original paper states that \textit{``Evaluation of the VDG may terminate even if the original program would not...''}. This problem was addressed in the creation of the Value State Dependence Graph (VSDG) \cite{UCAM-CL-TR-607}. We take our definition from Johnson and Mycroft. \cite{Johnson_combinedcode}
 
 The VSDG is a directed graph consisting of operation nodes, loop and merge nodes together with value- and state-dependency edges. A VSDG represents a single procedure in a program. A formal definition of the VSDG is as follows:
 
@@ -135,15 +135,50 @@ The VSDG is a directed graph consisting of operation nodes, loop and merge nodes
 A VSDG is a labelled direct graph $G=(N,E_{V},E_{S},\ell,N_{0},N_{\infty})$ consisting of nodes $N$ (with unique entry node $N_{0}$ and exit node $N_{\infty}$), value-dependency edges $E_{V}\subseteq N\times N$, state-dependency edges $E_{S}\subseteq N \times N$. The labelling function $\ell$ associates each node with an operator.
 \end{definition}
 
-Value dependencies ($E_{V}$) indicate the flow of values between nodes, and this must be preserved during optimization and transformations. State dependencies ($E_{S}$) represent  the essential sequential dependency required by the input program, e.g. a particular load instruction must follow a store instruction without being reordered.
+Value dependencies ($E_{V}$) indicate the flow of values between nodes, and this must be preserved during optimization and transformations. State dependencies ($E_{S}$) represent  the essential sequential dependency required by the input program, e.g. a particular load instruction must follow a store instruction without being reordered. An edge $(n_{1},n_{2})$ represents the flow of data or control \textit{from} $n_{1}$ to $n_{2}$. To get a basic visual picture of the graph, we show a recursive factorial function written in pseudocode in Figure ~\ref{fig: vsdg-fac} which is then translated into a VSDG. This demonstrates the key components of the graph. Value dependency edges are drawn as solid lines, and state dependency edges as dashed ones. We see a \texttt{call} node for the function call, a \texttt{const} node for the function label and the integer 1, an equality node, two $\gamma$-nodes and function entry and exit nodes. We tend to refer to nodes having labelled \textit{ports} to describe interaction with them.
+
+\begin{figure}[ht]
+\centering
+\subfigure{
+	\begin{minipage}[b]{0.3\linewidth}
+	\texttt{\begin{tabbing}
+	code here
+	\end{tabbing}}
+	\end{minipage}
+}
+\subfigure{\includegraphics[scale=0.55]{vsdg-fac.pdf}}
+\caption{Some pseudocode for a recursive factorial function which is then translated into an equivalent VSDG.}
+\label{fig: vsdg-fac}
+\end{figure}
+
+There are two well-formedness conditions for the VSDG that must be satisfied. $\ell$ and the arity of $E_{V}$ must be consistent, e.g. an addition operator must have two inputs. The VSDG must also correspond to a structured program, e.g. there are no loops in the VSDG that are not mediated by loop nodes. A VSDG is implicitly in SSA form, which is a property inherited from the VDG. For any given operator node $n$, $n$ will have zero or more $E_{V}$-successors using its value. We will now describe the different components constituting the VSDG.
+
+\subsection{Nodes}
+
+We use four main classes of VSDG nodes. These are value nodes (pure arithmetic), $\gamma$-nodes (conditional statements), $\theta$-nodes (loop constructs) and state nodes (side-effecting operations).
+
+\begin{description}
+\item[Value nodes] Most VSDG nodes generate a value form a computation, e.g. an addition or subtraction, which is applied to the values that they depend upon.
+\item[$\gamma$-nodes] The $\gamma$-node functions similarly to the $\gamma$ gating function. We define it as follows:
+\begin{definition}
+A $\gamma$-node $\gamma(C,T,F)$ evaluates the condition dependency $C$, and returns the value of $T$ if $C$ is true, otherwise $F$.
+\end{definition}
+\item[$\theta$-nodes] The $\theta$-node models the iterative behaviour of loops. It uses the notion of an internal value which may be updated on each subsequent iteration. It has five different ports, defined as follows:
+\begin{definition}
+A $\theta$-node $\theta(C,I,R,L,X)$ sets its internal value to initial value $I$ then, while condition value $C$ holds true, sets $L$ to the current internal value and updates the internal value with the repeat value $R$. When $C$ evaluates to false computation ceases and the last internal value is returned through the $X$ port.
+\end{definition}
+As an example, a loop which updates $k$ variables with have the following: a single condition port $C$, initial-value ports $I_{1},...,I_{k}$, loop iteration ports $L_{1},...,L_{k}$, loop return ports $R_{1},...,R_{k}$, and loop exit ports $X_{1},...,X_{k}$. The $\theta$-node directly implements pre-test loops (\texttt{while}, \texttt{for}), with post-test loops (\texttt{do...while}, \texttt{repeat...until}) synthesised from a pre-test loop preceded by a duplicate of the loop body. %TODO: example figure
+\end{description}
+
+\subsection{State nodes}
 
 
-% Outline of IR
+
 % Key components
-% Proper example with diagram
 % Usage/implementation/optimizations using it
 % Further work
 
+\newpage
 % =================
 % Abstract is below here.
 % =================
