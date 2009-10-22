@@ -7,35 +7,741 @@
 
 \textbf{0.5 page}
 
-Explain why SSA renaming cannot be applied on predicated definitions. 
+% Explain why SSA renaming cannot be applied on predicated definitions. 
+
+% The $\psi$-SSA representation was developed to extend the SSA
+% representation with support for predicated operations.
+
+In the SSA representation, each definition of a variable is given a
+unique name, and new pseudo definitions are introduced on $\phi$
+instructions to merge values coming from different control-flow
+paths. In this representation, each definition is an unconditional
+definition, and the value of a variable is the value of the expression
+on the unique assignment to this variable. This essential property of
+the SSA representation does not any longer hold when definitions may
+be conditionally executed. When the definition for a variable is a
+predicated operation, the value of the variable will or will not be
+modified depending on the value of a guard register. As a result, the
+value of the variable after the predicated operation is either the
+value of the expression on the assignment if the predicate is true, or
+the value the variable had before this operation if the predicate is
+false. We need a way to express these conditional definitions whilst
+keeping the static single assignment property.
 
 \section{Definition}
 
 \textbf{1 page}
 
-Gives the semantics of the PSI function, doing the parallel with PHI function before if-conversion. Explain the relation between the predicates on the definition and the predicates in the PSI. Explain how a PSI function is executed.
+% Gives the semantics of the PSI function, doing the parallel with PHI
+% function before if-conversion. Explain the relation between the
+% predicates on the definition and the predicates in the PSI. Explain
+% how a PSI function is executed.
+
+The use of predicated operations allows to remove control-flow
+instructions and have instead straight line code. The compiler can
+perform such a transformation, which is called an if-conversion
+optimization~\cite{Fang96, Bru06}. A simple example of if-conversion
+is given in figure~\ref{fig:op_pred}. We use the notation {\tt
+  p?~<exp>} to say that {\tt <exp>} is executed only if the predicate
+{\tt p} is TRUE.
+
+\begin{figure}
+\begin{center}
+\footnotesize
+\begin{tabular}{llll}
+${\tt if (p)}$        & & &\\
+${\tt\ \ \ \ \ a = op1;}$ & \ \ \ \ \  & ${\tt p?}$ & ${\tt a = op1;}$ \\
+${\tt else}$          & & & \\
+${\tt\ \ \ \ \     b = op2;}$ & \ \ \ \ \  & ${\tt \overline{p}?}$ & ${\tt b = op2;}$ \\
+${\tt x = Phi(a, b)}$ & & & ${\tt x = Psi(p?a, \overline{p}?b)}$ \\
+\end{tabular}
+\caption{$\psi$-SSA representation}
+\label{fig:op_pred}
+\end{center}
+\end{figure}
+
+The SSA representation introduces $\phi$ operations at control-flow
+merge points. Each argument of a $\phi$ operation flows from a
+different incoming edge.
+
+The $\psi$-SSA representation adds $\psi$ operations. $\psi$
+operations are for predicated definitions what $\phi$ operations are
+for definitions on different control-flow edges. A $\psi$ operation
+merges values that are defined under different predicates, and defines
+a single variable to represent these different values. A $\psi$
+operation is equivalent to a $\phi$ operation on which all the
+incoming edges would have been merged into a single execution
+path. Each argument of a $\psi$ operation is now defined on a
+different predicate.
+
+In figure~\ref{fig:op_pred}, variables {\tt a} and {\tt b} were
+originally the same variable. On the left-hand side, the SSA
+construction renamed the two definitions of this unique variable into
+two different names, and introduced a new variable {\tt x} defined by
+a $\phi$ operation to merge the two values coming from the different
+control-flow paths. On the right-hand side, an if-conversion algorithm
+transformed this code to remove the control-flow edges. It introduced
+predicated operations for the definitions of the variables {\tt a} and
+{\tt b} and turned the $\phi$ operation into a $\psi$ operation. Each
+argument of the $\psi$ operation is defined by a predicated
+operation. The intersection of the domain of the two predicates is
+empty and the value of the $\psi$ operation is given by one or the
+other of its arguments, depending on the value of the predicate.
+
+The $\psi$ operations can also represent cases where variables are
+defined on predicates that are computed from independent
+conditions. This is illustrated in figure~\ref{fig:non_disjoint_pred},
+where the predicates {\tt p} and {\tt q} are independent. During the
+SSA construction a unique variable was renamed into the variables {\tt
+  a}, {\tt b} and {\tt c} and the variables {\tt x} and {\tt y} were
+introduced to merge values coming from different control-flow
+paths. In the non-predicated code, there is a control-dependency
+between {\tt x} and {\tt c}, which means the definition of {\tt c}
+must be executed after the value for {\tt x} has been computed. In the
+predicated form of this example, there are no longer any control
+dependencies between the definitions of {\tt a}, {\tt b} and {\tt
+  c}. A compiler transformation can now freely move these definitions
+independently of each other, which may allow more optimizations to be
+performed on this code. However, the semantics of the original code
+requires that the definition of {\tt c} occurs after the definitions
+of {\tt a} and {\tt b}. The order of the arguments in a $\psi$
+operation gives information on the original order of the definitions.
+We take the convention that the order of the arguments in a $\psi$
+operation is, from left to right, equal to the original order of their
+definitions, from top to bottom, in the control-flow dominance tree of
+the program in a non-SSA representation. This information is needed to
+maintain the correct semantics of the code during transformations of
+the $\psi$-SSA representation and to revert the code back to a non
+$\psi$-SSA representation.
+
+%An important property of the SSA, and $\psi$-SSA, representation is
+%that every use of a variable is dominated by the unique definition for
+%this variable.
+
+\begin{figure}
+\begin{center}
+\footnotesize
+\begin{tabular}{llll}
+${\tt if (p)}$        & & &\\
+${\tt\ \ \ \ \ a = 1;}$ & \ \ \ \ \  & ${\tt p?}$ & ${\tt a = 1;}$ \\
+${\tt else}$          & & & \\
+${\tt\ \ \ \ \     b = -1;}$ & \ \ \ \ \  & ${\tt \overline{p}?}$ & ${\tt b = -1;}$ \\
+${\tt x = Phi(a, b)}$ & & & ${\tt x = Psi(p?a, \overline{p}?b)}$ \\
+${\tt if (q)}$        & & &\\
+${\tt\ \ \ \ \ c = 0;}$ & \ \ \ \ \  & ${\tt q?}$ & ${\tt c = 0;}$ \\
+${\tt y = Phi(x, c)}$ & & & ${\tt y = Psi(p?a, \overline{p}?b, q?c)}$ \\
+\end{tabular}
+\caption{$\psi$-SSA with non-disjoint predicates}
+\label{fig:non_disjoint_pred}
+\end{center}
+\end{figure}
+
 
 \section{Construction}
 
 \textbf{0.5 page}
 
-Explain how PSI instructions are built, either during the SSA construction on predicated instructions, or during if-conversion under SSA by converting PHI functions into PSI functions.
+% Explain how PSI instructions are built, either during the SSA
+% construction on predicated instructions, or during if-conversion
+% under SSA by converting PHI functions into PSI functions.
+
+The construction of the $psi$-SSA representation is a small
+modification on the standard algorithm to built an SSA representation.
+
+Only the SSA renaming part of the algorithm needs to be modified.
+During the SSA renaming phase, basic blocks are processed in their
+dominance order, and operations in each basic block are scanned from
+top to bottom. On an operation, for each predicated definition of a
+variable, a new $\psi$ instruction must be inserted just after the
+operation. For the definition of a variable {\tt x} under predicate
+{\tt p}, the $\psi$ operation will take the form {\tt x = Psi(p?$x_1$,
+  p?$x$)}, where {\tt $x_1$} is the current renaming of {\tt x} before
+the definition, and {\tt p} is the predicate used on the definition of
+{\tt $x_1$}. Once this instruction is inserted, the normal renaming of
+the operation proceeds, renaming {\tt $x$} into a new name {\tt
+  $x_2$}. When the renaming of the operation is completed, the algorithm
+continues on the next instruction, which will be a $\psi$ operation if
+there was a predicated definition. The first argument of the $\psi$
+operation is already renamed and thus is not modified. The second
+argument is just renamed into the current renaming for {\tt x} which
+is {\tt $x_2$}. On the definition of the $\psi$ operation, the variable
+{\tt x} is given a new name {\tt $x_3$} which becomes the renaming for
+further references to the {\tt x} variable.
+
+$\psi$ operations can also be introduced in an SSA representation by
+applying an if-conversion transformation, such as the one that is
+described in~\ref{???}. Local transformations on control-flow patterns
+can also require to replace $\phi$ operations by $\psi$ operations.
 
 \section{SSA algorithms}
 
 \textbf{1 page}
 
-Explain how standard SSA algorithm can be adapted to the Psi-SSA form: Predicated definitions are now seen as non-predicated ones, and a semantics, similar to the similar of PHI functions, must be defined for PSI functions.
+% Explain how standard SSA algorithm can be adapted to the Psi-SSA
+% form: Predicated definitions are now seen as non-predicated ones,
+% and a semantics, similar to the similar of PHI functions, must be
+% defined for PSI functions.
+
+With this definition of the $\psi$-SSA representation, conditional
+definitions on predicated code are now replaced by unconditional
+definitions on $\psi$ operations. Usual algorithms that perform
+optimizations or transformations on the SSA representation can now be
+easily adapted to the $\psi$-SSA representation, without compromising
+the efficiency of the transformations performed. Actually, within the
+$\psi$-SSA representation, predicated definitions behave exactly the
+same as non predicated ones for optimizations on the SSA
+representation. Only the $\psi$ operations have to be treated in a
+specific way. As an example, the constant propagation algorithm
+described in~\cite{WZ91} can be easily adapted to the $\psi$-SSA
+representation. In this algorithm, the only modification is that
+$\psi$ operations have to be handled with the same rules as the $\phi$
+operations. Other algorithms such as dead code
+elimination~\cite{morgan98}, global value numbering~\cite{Cli95},
+partial redundancy elimination~\cite{CCK+97}, and induction variable
+analysis~\cite{Wolfe92} are examples of algorithm that can easily be
+adapted to this representation.
 
 \section{Psi-SSA algorithms}
 
 \textbf{3 page}
 
-Special transformations can be applied on Psi-SSA, which allows to optimize predicated code. Explain on an example what are the uses of inlining, reduction, projection and predicate promotion.
+% Special transformations can be applied on Psi-SSA, which allows to
+% optimize predicated code. Explain on an example what are the uses of
+% inlining, reduction, projection and predicate promotion.
+
+In addition to standard algorithms that can be applied to $\psi$
+operations and predicated code, a number of additional transformations
+can be performed on the $\psi$ operations : $\psi$-inlining,
+$\psi$-reduction and $\psi$-projection.
+
+$\psi$-inlining will recursively replace in a $\psi$ operation an
+argument that is defined on another $\psi$ operation by the arguments
+of this other $\psi$ operation.
+
+$\psi$-reduction will remove from a $\psi$ operation an argument whose
+value will always be overridden by arguments on its right in the
+argument list, because the domain of the predicate associated with
+this argument is included in the union of the domains of the
+predicates associated with the arguments on its right.
+
+$\psi$-projection will create from a $\psi$ operation new $\psi$
+operations for uses in operations guarded by different
+predicates. Each new $\psi$ operation is created as the projection on
+a given predicate of the original $\psi$ operation. In this new $\psi$
+operation, arguments whose associated predicate has a domain that is
+disjoint with the domain of the predicate on which the projection is
+performed actually contribute no value to the $\psi$ operation and
+thus are removed.
+
+The $\psi$-SSA representation can also be used on a partially
+predicated architecture, where only a subset of the instruction set
+supports a predicate operand. The only impact of partial predication
+on the $\psi$-SSA representation is that when a $\psi$ operation is
+created as a replacement for a $\phi$ operation, during if-conversion
+for example, some of its arguments may be defined by operations that
+cannot be predicated. In this case, the only constraint is that these
+non-predicated arguments can be safely speculated, which means
+executed under some conditions on which they would not have been
+executed otherwise. Although these definitions are speculated, their
+values are only meaningful under a given predicate that must be kept
+in the $\psi$ operation.
+
+\begin{figure*}
+\begin{center}
+\footnotesize
+\begin{tabular}{llll}
+${\tt if (p)}$                & & &\\
+${\tt\ \ \ \ \ a = ADD\ i,1;}$ & \ \ \ \ \ \ \ \  & \ \ \ \ \ \ \ \  & ${\tt a = ADD\ i,1;}$ \\
+${\tt else}$                  & \ \ \ \ \ \ \ \  & \ \ \ \ \ \ \ \  & \\
+${\tt\ \ \ \ \ b = ADD\ i,2;}$ & \ \ \ \ \ \ \ \  & \ \ \ \ \ \ \ \  & ${\tt b = ADD\ i,2;}$ \\
+${\tt x = Phi(a, b)}$         & \ \ \ \ \ \ \ \  & \ \ \ \ \ \ \ \  & ${\tt x = Psi(p?a, \overline{p}?b)}$\\
+\\
+\\
+\multicolumn{2}{l}{${\tt{\bf a)\ before\ if-conversion}}$} & \multicolumn{2}{l}{${\tt{\bf b)\ Psi\ operation}}$}\\
+\end{tabular}
+\caption{Psi-SSA for partial predication}
+\label{fig:psi_partial}
+\end{center}
+\end{figure*}
+
+Figure~\ref{fig:psi_partial} shows an example where some code with
+control-flow edges was transformed into a linear sequence of
+instructions. In this example, the {\tt ADD} operation cannot be
+predicated. The information represented in the $\phi$ operation by the
+control-flow edges is now present in the $\psi$ operation by means of
+predicates.
+
+% \SubSection{Psi-predicate promotion}
+
+However, even if the {\tt ADD} operation can be predicated, it can be
+profitable to perform a predicate promotion optimization to reduce the
+number of computed predicate registers. Using the representation in
+figure~\ref{fig:psi_partial} b), there can be one predicate associated
+with the definition of a variable, and there will be one predicate
+associated with the use of the variable in a $\psi$ operation. The
+predicate associated with an argument in a $\psi$ operation can be
+promoted, without changing the semantics of the $\psi$ operation. By
+predicate promotion, we mean that a predicate can be replaced by a
+predicate with a larger predicate domain. This promotion must obey the
+two following conditions so that the semantics of the $\psi$ operation
+after the transformation is valid and unchanged.
+
+% The two domains for these two predicates do not need to be equal,
+% only the domain of the predicate on the definition has to contain
+% the domain of the predicate on the $\psi$ argument.
+
+% True only if the predicate domain of the $\psi$ operation is 1.
+
+\begin{itemize}
+
+\item {\bf Condition 1} For an argument in a $\psi$ operation, the
+domain of the predicate used on the definition of this argument must
+contain the domain of the new predicate associated with this argument.
+
+\begin{tabular}{ll}
+\multicolumn{2}{l}{\it for the instructions}\\
+${\tt p?}$ & ${\tt x = ...}$\\
+& ${\tt y = Psi(..., q? x, ...)}$\\
+\multicolumn{2}{l}{\it then}\\
+& {${\tt q} \subseteq {\tt p}$}\\
+\end{tabular}
+
+\item {\bf Condition 2} For an argument in a $\psi$ operation, the
+domain of the new predicate associated with it can be extended up to
+include the domains of the predicates associated with arguments in the
+$\psi$ operation that were defined after the definition for this
+argument in the original program.
+
+\begin{tabular}{ll}
+\multicolumn{2}{l}{\it for an instruction} \\
+\ \ \ \ & {$ {\tt y = Psi(p_1?x_1, p_2?x_2, ..., p_i?x_i, ..., p_n?x_n)}$} \\
+\multicolumn{2}{l}{\it transformed to} \\
+\ \ \ \ & {$ {\tt y = Psi(p_1?x_1, p_2?x_2, ..., p_i'?x_i, ..., p_n?x_n)}$} \\
+\multicolumn{2}{l}{\it then} \\
+\ \ \ \ & {${\tt p_i' \subseteq \bigcup_{k=i}^n p_k}$} \\
+\end{tabular}
+
+\end{itemize}
+
+This $\psi$-predicate promotion transformation allows to reduce the
+number of predicates that need to be computed, and to reduce the
+dependencies between predicate computations and conditional
+operations. In fact, the first argument of a $\psi$ operation can
+usually be promoted under the {\tt TRUE} predicate, provided that
+speculation can be applied. Also, when disjoint conditions are
+computed, one of them can be promoted to include the other conditions,
+usually reducing the dependency height of the predicated
+expressions. The $\psi$-predicate promotion transformation can be
+applied during an if-conversion algorithm for example. A side effect
+of this transformation is that it may increase the number of copy
+instructions to be generated during the out of $\psi$-SSA phase,
+because of more live-range interference between arguments in a $\psi$
+operation, as will be explained next.
 
 \section{Out of Psi-SSA}
 
 \textbf{3 page}
 
-Explain what must be done to go out of Psi-SSA. First, Psi-normalization must be performed, then live-analysis can be run and an interference graph with exact interfences on Psi operations can be built. Explain how to repair the interferences and how to integrate this algorithm into a standard SSA algorithm.
+% Explain what must be done to go out of Psi-SSA. First,
+% Psi-normalization must be performed, then live-analysis can be run
+% and an interference graph with exact interfences on Psi operations
+% can be built. Explain how to repair the interferences and how to
+% integrate this algorithm into a standard SSA algorithm.
+
+The out-of-SSA phase reverts an SSA representation into a non-SSA
+representation. This phase must be adapted to the $\psi$-SSA
+representation. The algorithm we present here is derived from the out
+of SSA algorithm from Sreedhar et al.~\cite{VC+99}.
+
+This algorithm uses $\psi$ congruence classes to create a conventional
+$\psi$-SSA representation. We define the conventional $\psi$-SSA ({\em
+  $\psi$-CSSA}) form in a similar way to the Sreedhar definition of
+the conventional SSA ({\em CSSA}) form. The congruence relation is
+extended to the $\psi$ operations. Two variables {\tt x} and {\tt y}
+are in a $\psi$ congruence relation if they are referenced in the same
+$\phi$ or $\psi$ function, or if there exists a variable {\tt z} such
+that {\tt x} is in a $\psi$ congruence relation with {\tt z} and {\tt
+  y} is in a $\psi$ congruence relation with {\tt z}. Then we define a
+$\psi$ congruence class as the transitive closure of the $\psi$
+congruence relation. The property of the $\psi$-CSSA form is that the
+renaming into a single variable of all variables that belong to the
+same $\psi$ congruence class, and the removal of the $\psi$ and $\phi$
+operations, results in a program with the same semantics as the
+original program.
+
+Now, look at figure~\ref{fig:psi-interference} to examine the
+transformations that must be performed to convert a program from a
+$\psi$-SSA form into a program in $\psi$-CSSA form.
+
+\begin{figure*}
+\begin{center}
+\footnotesize
+\begin{tabular}{llllllll}
+${\tt p?}$ & ${\tt b = ...}$ & \ \ \ \ \ \ \ \  & ${\tt p?}$ & ${\tt b = ...}$ & \ \ \ \ \ \ \ \  & ${\tt p?}$ & ${\tt b = ...}$ \\
+            & ${\tt a = ...}$ & \ \ \ \ \ \ \ \  &            & ${\tt a = ...}$ & \ \ \ \ \ \ \ \  &            & ${\tt x = ...}$ \\
+            &                 & \ \ \ \ \ \ \ \  & ${\tt p?}$ & ${\tt c = b}$   & \ \ \ \ \ \ \ \  & ${\tt p?}$ & ${\tt x = b}$ \\
+            & ${\tt x = Psi(1?a,p?b)}$ & \ \ \ \ \ \ \ \  &   & ${\tt x = Psi(1?a,p?c)}$  & \ \ \ \ \ \ \ \ &   & \\
+\\
+\multicolumn{2}{l}{${\tt {\bf Psi-SSA\ form}}$} & \ \ \ \ \ \ \ \  &\multicolumn{2}{l}{${\tt {\bf Psi-CSSA\ form}}$} & \ \ \ \ \ \ \ \  &\multicolumn{2}{l}{${\tt {\bf non-SSA\ form}}$} \\
+\\
+            & ${\tt a = ...}$ & \ \ \ \ \ \ \ \  &            & ${\tt a = ...}$ & \ \ \ \ \ \ \ \  &            & ${\tt x = ...}$ \\
+            &                 & \ \ \ \ \ \ \ \  &            & ${\tt d = a}$ & \ \ \ \ \ \ \ \  &            & ${\tt y = x}$ \\
+${\tt p?}$ & ${\tt b = ...}$ & \ \ \ \ \ \ \ \  & ${\tt p?}$ & ${\tt b = ...}$ & \ \ \ \ \ \ \ \  & ${\tt p?}$ & ${\tt x = ...}$ \\
+${\tt q?}$ & ${\tt c = ...}$ & \ \ \ \ \ \ \ \  & ${\tt q?}$ & ${\tt c = ...}$ & \ \ \ \ \ \ \ \  & ${\tt q?}$ & ${\tt y = ...}$ \\
+           & ${\tt x = Psi(1?a,p?b)}$ & \ \ \ \ \ \ \ \  &   & ${\tt x = Psi(1?a,p?b)}$  & \ \ \ \ \ \ \ \ &   & \\
+           & ${\tt y = Psi(1?a,q?c)}$ & \ \ \ \ \ \ \ \  &   & ${\tt y = Psi(1?d,q?c)}$  & \ \ \ \ \ \ \ \ &   & \\
+\\
+\multicolumn{2}{l}{${\tt {\bf Psi-SSA\ form}}$} & \ \ \ \ \ \ \ \  &\multicolumn{2}{l}{${\tt {\bf Psi-CSSA\ form}}$} & \ \ \ \ \ \ \ \  &\multicolumn{2}{l}{${\tt {\bf non-SSA\ form}}$} \\
+\end{tabular}
+\caption{$\psi$-SSA and $\psi$-CSSA forms}
+\label{fig:psi-interference}
+\end{center}
+\end{figure*}
+
+% <<etendre aussi la projection pour la predication partielle ??
+% (Propagation des predicats a travers les instructions non gardes par
+% un algorithm semblable a la sparse constant propagation) >>
+
+Looking at the first example, the dominance order of the definitions
+for the variables {\tt a} and {\tt b} differs from their order from
+left to right in the $\psi$ operation. Such code may appear after a
+code motion algorithm has moved the definitions for {\tt a} and {\tt
+b} relatively to each other. We said that the semantics of a
+$\psi$ operation is dependent on the order of its arguments, and that
+the order of the arguments in a $\psi$ operation is the order of their
+definitions in the dominance tree in the original program. In this
+example the renaming of the variables {\tt a}, {\tt b} and {\tt x}
+into a single variable will not preserve the semantics of the original
+program. The order in which the definitions of the variables {\tt a},
+{\tt b} and {\tt x} occur must be corrected. This is done through the
+introduction of the variable {\tt c} that is defined as a copy of the
+variable {\tt b}, and is inserted after the definition of {\tt
+a}. Now, the renaming of the variables {\tt a}, {\tt c} and {\tt x}
+into a single variable will result in the correct semantics.
+
+In the second example, the renaming of the variables {\tt a}, {\tt b},
+{\tt c}, {\tt x} and {\tt y} into a single variable will not give the
+correct semantics. In fact, the value of {\tt a} used in the second
+$\psi$ operation would be overridden by the definition of {\tt b}
+before the definition of the variable {\tt c}. Such code will occur
+after copy folding has been applied on a $\psi$-SSA representation. We
+see that the value of {\tt a} has to be preserved before the
+definition of {\tt b}, resulting in the code given for the $\psi$-CSSA
+representation. Now, the variables {\tt a}, {\tt b} and {\tt x} can be
+renamed into a single variable, and the variables {\tt d}, {\tt c} and
+{\tt y} will be renamed in another variable, resulting in a program in
+a non-SSA form with the correct semantics.
+
+We will now present an algorithm that will transform a program from a
+$\psi$-SSA form into its $\psi$-CSSA form. This algorithm is made of
+three parts.
+
+\begin{itemize}
+\item {\bf $\psi$-normalize} This part will put all $\psi$ operations
+in what we call a {\em normalized} form.
+\item {\bf $\psi$-congruence} This part will grow $\psi$-congruence
+classes from $\psi$ operations, and will introduce repair code where
+needed.
+\item {\bf $\phi$-congruence} This part will extend the
+$\psi$-congruence classes with $\phi$ operations. This part is very
+similar to the Sreedhar algorithm.
+\end{itemize}
+
+We detail now the implementation of each of these three parts.
+
+\subsection{Psi-normalize}
+
+We define the notion of {\em normalized}-$\psi$. When $\psi$
+operations are created during the construction of the $\psi$-SSA
+representation, they are naturally built in their normalized form. The
+normalized form of a $\psi$ operation has two characteristics:
+
+\begin{itemize}
+\item The predicate associated with each argument in a
+normalized-$\psi$ operation is equal to the predicate used on the
+unique definition of this argument.
+\item The order of the arguments in a normalized-$\psi$ operation is,
+from left to right, equal to the order of their definitions, from top
+to bottom, in the control-flow dominance tree.
+\end{itemize}
+
+When transformations are applied to the $\psi$-SSA representation,
+predicated definitions may be moved relatively to each others.
+Operation speculation and copy folding may enlarge the domain of the
+predicate used on the definition of a variable. These transformations
+may cause some $\psi$ operations to be in a non-normalized form.
+
+%\SubSubSection{PSI-normalize implementation}
+\paragraph{PSI-normalize implementation.}
+A dominator tree must be available for the control-flow graph to
+lookup the dominance relation between basic blocks. The dominance
+relation between two operations in a same basic block will be given by
+their relative positions in the basic block.
+
+Each $\psi$ operation is processed independently. An analysis of the
+$\psi$ operations in a top down traversal of the dominator tree
+reduces the amount of repair code that is inserted during this pass. We
+only detail the algorithm for such a traversal.
+
+For a $\psi$ operation, the argument list is processed from left to
+right. For each argument $arg_i$, the predicate associated with this
+argument in the $\psi$ operation and the predicate used on the
+definition of this argument are compared. If they are not equal, a new
+variable is introduced and is initialized just below the definition
+for $arg_i$ with a copy of $arg_i$. This definition is predicated with
+the predicate associated with $arg_i$ in the $\psi$ operation. Then,
+$arg_i$ is replaced by this new variable in the $\psi$
+operation.
+
+Then, we consider the dominance order of the definition for
+$arg_i$, with the definition of the next argument in the $\psi$
+argument list, $arg_{i+1}$. When $arg_{i+1}$ is defined on a $\psi$
+operation, we recursively look for the definition of the first
+argument of this $\psi$ operation, until a non-$\psi$ operation is
+found. Now, if the definition we found for $arg_{i+1}$ dominates the
+definition for $arg_i$, repair code is needed. A new variable is
+created for this repair. This variable is initialized with a copy of
+$arg_{i+1}$, guarded by the predicate associated with this argument in
+the $\psi$ operation. This copy operation is inserted at the lowest
+point, either after the definition of $arg_i$ or $arg_{i+1}
+$\footnote{When $arg_{i+1}$ is defined by a $\psi$ operation, its
+definition may appear after the definition for $arg_i$, although the
+non-$\psi$ definition for $arg_{i+1}$ appears before the definition
+for $arg_i$.}. Then, $arg_{i+1}$ is replaced in the $\psi$ operation
+by this new variable.
+
+The algorithm continues with the argument $arg_{i+1}$, until all
+arguments of the $\psi$ operation are processed. When all arguments
+are processed, the $\psi$ is in its normalized form. When all $\psi$
+operations are processed, the function will contain only
+normalized-$\psi$ operations.
+
+The top-down traversal of the dominator tree will ensure that when a
+variable in a $\psi$ operation is defined by another $\psi$ operation,
+this $\psi$ operation has already been analyzed and put in its
+normalized form. Thus the definition of its first variable already
+dominates the definitions for the other arguments of the $\psi$
+operation.
+
+\subsection{Psi-congruence}
+
+In this pass, we repair the $\psi$ operations when variables cannot be
+put into the same congruence class, because their live ranges
+interfere. In the same way as Sreedhar gives a definition of the
+liveness on the $\phi$ operation, we first give a definition for the
+liveness on $\psi$ operations. With this definition of liveness, an
+interference graph is built.
+
+%\SubSubSection{Liveness and interferences in Psi-SSA}
+\paragraph{Liveness and interferences in Psi-SSA.}
+We have already seen that in some cases, repair code is needed so that
+the arguments and definition of a $\psi$ operation can be renamed into
+a single name. We first give a definition of the liveness on $\psi$
+operations such that these cases can be easily and accurately detected
+by observing that live-ranges for variables in a $\psi$ operation
+overlap.
+
+Consider the code in figure~\ref{fig:psi-select}. The $\psi$ operation
+has been replaced by explicit {\tt select} operations on each
+predicated definition. In this example, there is no relation between
+predicates {\tt p} and {\tt q}. Each of these {\tt select} operations
+makes an explicit use of the variable immediately to its left in the
+argument list of the original $\psi$ operation. We can see that a
+renaming of the variables {\tt a}, {\tt b}, {\tt c} and {\tt x} into a
+single representative name will still compute the same value for the
+variable {\tt x}. Note that this transformation can only be performed
+on normalized $\psi$ operations, since the definition of an argument
+must be dominated by the definition of the argument immediately to its
+left in the argument list of the $\psi$ operation. Using this
+equivalent representation for the $\psi$ operation, we now give a
+definition of the liveness for the $\psi$ operations.
+
+{\bf Definition} {\em We say that the point of use of an argument in a
+normalized $\psi$ operation occurs at the point of definition of the
+argument immediately to its right in the argument list of the $\psi$
+operation. For the last argument of the $\psi$ operation, the point of
+use occurs at the $\psi$ operation itself.  }
+
+\begin{figure}
+\begin{center}
+\footnotesize
+\begin{tabular}{llll}
+           & ${\tt a = op1}$ & ${\tt a = op1}$ \\
+${\tt p?}$ & ${\tt b = op2}$ & ${\tt b = p\ ?\ op2\ :\ a}$ \\
+${\tt q?}$ & ${\tt c = op3}$ & ${\tt c = q\ ?\ op3\ :\ b}$ \\
+           & ${\tt x = Psi(1?a,p?b,q?c)}$ & ${\tt x = c}$ \\
+\\
+\multicolumn{2}{l}{\tt {\bf a) Psi-SSA form}} & {\tt {\bf b) select form}}
+\end{tabular}
+\caption{$\psi$ and select operations equivalence}
+\label{fig:psi-select}
+\end{center}
+\end{figure}
+
+Given this definition of liveness on $\psi$ operations, and using the
+definition of liveness for $\phi$ operations given by Sreedhar, a
+traditional liveness analysis can be run. Then an interference graph
+can be built to collect the interferences between variables involved
+in $\psi$ or $\phi$ operations.
+
+%\SubSubSection{Repairing interferences on $\psi$ operations}
+\paragraph{Repairing interferences on $\psi$ operations.}
+We now present an algorithm that creates congruence classes with
+$\psi$ operations such that there are no interference between two
+variables in the same congruence class.
+
+First, the congruence classes are initialized such that each variable
+in the $\psi$-SSA representation belongs to its own congruence
+class. Then, $\psi$ operations are processed one at a time, in no
+specific order. Two arguments of a $\psi$ operation interfere if at
+least one variable from the congruence class of the first argument
+interferes with at least one variable from the congruence class of the
+second argument. When there is an interference, the two $\psi$
+arguments are marked as needing a repair. When all pairs of arguments
+of the $\psi$ operation are analyzed, repair code is inserted. For
+each argument in the $\psi$ operation that needs a repair, a new
+variable is introduced. This new variable is initialized with a
+predicated copy of the argument's variable. The copy operation is
+inserted just below the definition of the argument's variable,
+predicated with the predicate associated with the argument in the
+$\psi$ operation.
+
+Once a $\psi$ operation has been processed, the interference graph
+must be updated, so that other $\psi$ operations are correctly
+handled. Interferences for the newly introduced variables must be
+added to the interference graph. Conservatively, we can say that each
+new variable interferes with all the variables that the
+original variable interfered with, except those variables that
+are now in its congruence class. Also, conservatively, we can say
+that the original variable interferes with the new variable in order
+to avoid a merge of a later $\psi$ or $\phi$ operation of the two
+congruence classes these two variables belong to. The conservative
+update of the interference graph may increase the number of copies
+generated during the conversion to the $\psi$-CSSA form.
+% Some comments on an exact interference graph update ??
+
+Consider the code in figure~\ref{fig:live-interference} to see how this
+algorithm works. The definition of liveness on the $\psi$ operation
+will create a live-range for variable {\tt a} that extends down to the
+definition of {\tt b}, but not further down. Thus, the variable {\tt a}
+does not interfere with the variables {\tt b}, {\tt c} or {\tt x}. The
+live-range for variable {\tt b} extends down to its use in the
+definition of variable {\tt d}. This live-range creates an
+interference with the variables {\tt c} and {\tt x}. Thus variables
+{\tt b}, {\tt c} and {\tt x} cannot be put into the same congruence
+class. These variables are renamed respectively into variables {\tt
+e}, {\tt f} and {\tt g} and initialized with predicated copies. These
+copies are inserted respectively after the definitions for {\tt b},
+{\tt c} and {\tt x}. Variables {\tt a}, {\tt e}, {\tt f} and {\tt g}
+can now be put into the same congruence class, and will be renamed
+later into a unique representative name.
+
+\begin{figure}
+\begin{center}
+\footnotesize
+\begin{tabular}{llll}
+${\tt p?}$ & ${\tt a = ...}$ & ${\tt p?}$ & ${\tt a = ...}$ \\
+${\tt q?}$ & ${\tt b = ...}$ & ${\tt q?}$ & ${\tt b = ...}$ \\
+           &                 & ${\tt q?}$ & ${\tt e = b}$ \\
+${\tt r?}$ & ${\tt c = ...}$ & ${\tt r?}$ & ${\tt c = ...}$ \\
+           &                 & ${\tt r?}$ & ${\tt f = c}$ \\
+           & ${\tt x = Psi(p?a,q?b,r?c)}$ & & ${\tt g = Psi(p?a,q?e,r?f)}$ \\
+           &                 &            & ${\tt x = g}$ \\
+${\tt s?}$ & ${\tt d = b+1}$ & ${\tt s?}$ & ${\tt d = b+1}$ \\
+\end{tabular}
+\caption{Elimination of $\psi$ live-interference}
+\label{fig:live-interference}
+\end{center}
+\end{figure}
+
+\subsection{Phi-congruence}
+
+When all $\psi$ operations are processed, the congruence classes built
+from $\psi$ operations are extended to include the variables in $\phi$
+operations. In this part, the algorithm from Sreedhar is used, with a few
+modifications.
+
+The first modification is that the congruence classes must not be
+initialized at the beginning of this process. They have already been
+initialized at the beginning of the $\psi$-congruence step, and were
+extended during the processing of $\psi$ operations. These congruence
+classes will be extended now with $\phi$ operations during this step.
+
+The second modification is that the live-analysis run for this part
+must also take into account the special liveness rule on the $\psi$
+operations. The reason for this is that for any two variables in the
+same congruence class, any interference, either on a $\psi$ or on a
+$\phi$ operation, will not preserve the correct semantics if the
+variables are renamed into a representative name.
+
+All other parts of the out-of-SSA algorithm from Sreedhar are
+unchanged, and in particular, any of the three algorithms described
+for the conversion into a CSSA form can be used.
+
+We have described a complete algorithm to convert a $\psi$-SSA
+representation into a $\psi$-CSSA representation. The final step to
+convert the code into a non-SSA form is a simple renaming of all the
+variables in the same congruence class into a representative name. The
+$\psi$ and $\phi$ operations are then removed.
+
+We noew present some improvements that can be added so as to reduce
+the number of copies inserted by this algorithm.
+
+\subsection{Improvements to the out of Psi-SSA algorithm}
+
+\paragraph{Non-normalized $\psi$ operations with disjoint predicates.}
+When two arguments in a $\psi$ operation do not have their definitions
+correctly ordered, the $\psi$ operation is not normalized. We
+presented an algorithm to restore the normalized property by adding a
+new predicated definition of a new variable. However, if we know that
+the predicate domains of the two arguments are actually disjoint, the
+semantics of the $\psi$ operation is independent on their relative
+order. So, instead of adding repair code, these two arguments can
+simply be reordered in the $\psi$ operation itself, to restore the
+normalized property.
+
+\paragraph{Interference with disjoint predicates.}
+When the live-ranges of two variables overlap, an interference is
+added for these two variables in the interference graph. If the
+definitions for these variables are predicated definitions, their
+live-ranges are only valid under a specific predicate domain. These
+domains are the domains of the predicates used on the definitions of
+the variables. Then, if these domains are disjoint, then although the
+live-range overlap, they are on disjoint conditions and thus they do
+not create an interference in the interference graph. Removing this
+interference from the interference graph will avoid the need to add repair code
+when live-ranges on disjoint predicates overlap.
+
+\paragraph{Repair interference on the left argument only.}
+
+When an interference is detected between two arguments in a $\psi$
+operation, only the argument on the left actually needs a repair. The
+reason is that, since the $\psi$ operations are normalized, the
+definition of an argument is always dominated by the definition of an
+argument on its left. Thus adding a copy for the argument on the right
+will not remove the interference. However, the copy must now be put
+just before the definition of the next argument in the $\psi$
+operation, or just before the $\psi$ operation if this is the last
+argument.
+
+\paragraph{Interference with the result of a $\psi$ operation.}
+
+When the live-range for an argument of a $\psi$ operation overlaps
+with the live-range of the variable defined by the $\psi$ operation,
+this interference can be ignored. Actually, there are two cases to
+consider:
+
+\begin{itemize}
+\item If the argument is not the last one in the $\psi$ operation, and
+its live-range overlaps with the live-range of the definition of the
+$\psi$ operation, then this live-range also overlaps with the
+live-range of the last argument. Thus this interference will already
+be detected and repaired.
+
+\item If the argument is the last one of the $\psi$ operation, then
+the value of the $\psi$ operation is the value of this last argument,
+and this argument and the definition will be renamed into the same
+variable out of the SSA representation. Thus, there is no need to
+introduce a copy here.
+\end{itemize}
 
