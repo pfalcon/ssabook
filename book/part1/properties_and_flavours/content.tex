@@ -3,82 +3,438 @@
 
 \textbf{total page count for chapter: 16 pages}
 
-\section{dominance}
+\section{Preliminaries}
+
+Any operation of the form $v \leftarrow \ldots$ that assigns a value
+to variable $v$ is called a \emph{definition} of $v$. Any operation
+of the form $\ldots \leftarrow v$ that reads a value of $v$ is called
+a \emph{use} of $v$. One of the key properties of SSA Form is that
+each variable is defined only once; however, renaming each variable 
+alone is insufficient, and $\phi$-functions are needed to merge
+the disparate redefinitions of each variable. The remaining 
+sections of this chapter provide the theoretical foundations that
+describe precisely how $\phi$-functions are inserted, and then
+derives important properties of the SSA Form that result. 
+
+\section{Dominance}
 
 \textbf{4 pages}
 
-In this section, I will enumerate a number of
-definitions and concepts that are fundamental
-to control flow analysis.
+The concepts of \emph{dominance}, introduced in this section, and 
+\emph{post-dominance}, introduced in the following section, form the
+foundations of a collection of compiler techniques called 
+\emph{control flow analysis}. Intuitively dominance and post-dominance
+respectively tell us which basic blocks are \emph{guaranteed} to
+execute before or after others. Historically, this information has
+been used to identify hierarchies of nested loops. Although this
+problem may seem trivial, given the prevalence of programming 
+constructs to express loops, such as \emph{for}, \emph{while} and
+\emph{do-while}, the problem becomes sigificantly more complicated
+when trying to account for \emph{irreducible loops}, which can be
+constructed using arbitrary \emph{goto} statements
+~\cite{RamlingamSep02}. Our interest, however, is SSA Form
+rather than loop analysis; as we shall see, extensions to these
+basic definitions, in the sections that follow, are necessary to
+understand the criteria for instantiating $\phi$-functions 
+during the construction of SSA Form. 
 
-The basic definitions are as follows:
+In a CFG, basic block $n_{1}$ \emph{dominates} basic block $n_{2}$
+if every path in the CFG from the entry point to $n_{2}$ includes
+$n_{1}$. By convention, every basic block in a CFG dominates itself. Basic 
+block $n_{1}$ \emph{strictly dominates} $n_{2}$ if $n_{1}$ dominates
+$n_{2}$ and $n_{1} \neq n_{2}$. We use the symbols $n_{1} dom n_{2}$
+and $n_{1} sdom n_{2}$ to denote dominance and strict dominance 
+respectively.
 
+The \emph{immediate dominator} of a basic block $n_{2}$, denoted by
+$idom(n_{2})$, is the basic block $n_{1}$ such that $n_{1} sdom n_{2}$, and
+there does not exist any basic block $n_{3}$ such that 
+$n_{1} sdom n_{3} sdom n_{2}$. Intuitively, this means that $n_{1}$ is the
+closest basic block to $n_{2}$ that strictly dominates $n_{2}$. 
+Every basic block other than the entry point has exactly one immediate 
+dominator. 
+
+The \emph{dominator tree} is a data structure that links every basic block
+to its immediate dominator. The entry point of the CFG, itself a basic block,
+is the root of the dominator tree. If $N$ is the set of basic blocks in 
+the CFG and $r$ represents the entry point, then the
+dominator tree is the graph $T = (N, E_{T})$, where 
+$E_{T} = \{(n, idom(n))| n \in N \wedge n \neq r \}$. In other words,
+each edge in the dominator tree points from each basic block, other than $r$,
+to its immediate dominator. 
+
+\section{Post-dominance}
+
+Post-dominance is similar in principle to dominance, as we will see below.
+In fact, all of the post-dominance information described below can be 
+constructed using the basic methods required to compute dominance 
+information. It suffices to reverse every edge in the CFG, and then
+swap the roles of the entry and exit node. The dominance information
+computed for the resulting CFG is wholly equivalent to the post-dominance
+information for the original CFG. 
+
+In a CFG, basic block $n_{2}$ \emph{post-dominates} basic block $n_{1}$
+if every path in the CFG from $n_{1}$ to the exit point includes
+$n_{2}$. By convention, every basic block in the CFG post-dominates itself. 
+Basic block $n_{2}$ \emph{strictly post-dominates} $n_{1}$ if $n_{2}$ 
+post-dominates $n_{1}$ and $n_{2} \neq n_{1}$. We use the symbols 
+$n_{2} pdom n_{1}$ and $n_{2} spdom n_{1}$ to denote post-dominance and 
+strict post-dominance respectively.
+
+The \emph{immediate post-dominator} of a basic block $n_{1}$, denoted by
+$ipdom(n_{1})$, is the basic block $n_{2}$ such that $n_{2} spdom n_{1}$, and
+there does not exist any basic block $n_{3}$ such that
+$n_{2} spdom n_{3} spdom n_{1}$. Intuitively, this means that $n_{2}$ is the
+closest basic block to $n_{1}$ that strictly post-dominates $n_{1}$.
+Every basic block other than the exit point has exactly one immediate 
+post-dominator.
+
+The \emph{post-dominator tree} is a data structure that links every
+basic block to its immediate post-dominator. The exit point of the CFG is
+the root of the post-dominator tree. If $N$ is the set of basic blocks
+in the CFG, and $t$ is the unique exit point, then the post-dominator 
+tree is the graph $P = (N, E_{P})$, where
+$E_{P} = \{(n, ipdom(n)), n \in N \wedge n \neq t}$. In other words,
+each edge in the post-dominator tree points from each basic block, other 
+than $t$, to its immediate post-dominator.  
+
+\section{Join Sets and Dominance Frontiers}
+
+Let $n_{1}$ and $n_{2}$ be distinct basic blocks in a CFG. A basic block
+$n_{3}$, which may or may not be distinct from $n_{1}$ or $n_{2}$, is 
+a \emph{join node} of $n_{1}$ and $n_{2}$ if there exist at least two
+non-empty paths, i.e., paths containing at least one CFG edge, from 
+$n_{1}$ to $n_{3}$ and from $n_{2}$ to $n_{3}$, respectively, such that
+$n_{3}$ is the only basic block that occurs on both of the paths. In
+other words, the two paths converge at $n_{3}$ and no other CFG node. 
+Given a set $S$ of basic blocks, $n_{3}$ is a join node of $S$ if it
+is the join node of at least two basic blocks in $S$. The set of join
+nodes of set $S$ is denoted by the set $\J(S)$. 
+
+Intuitively, a join set corresponds to the placement of $\phi$-functions.
+In other words, if $n_{1}$ and $n_{2}$ are basic blocks that both
+contain the definition of a variable $v$, then we ought to instantiate
+$\phi$-functions for $v$ at every basic block in $\J(n_{1}, n_{2})$. 
+Generalizing this statement, if $S$ is the set of basic blocks containing
+definitions of $v$, then $\phi$-functions should be instantiated in
+every basic block block in $\J(S)$. 
+
+That being said, we still require an efficient method to compute join sets. 
+In principle, we may require join sets for every subset of basic blocks
+in the CFG, although in principle, we are likely to require fewer. For 
+this reason, we will turn, briefly, to an alternative structure based
+on dominance, rather than paths in a graph.
+
+The \emph{dominance frontier} of a basic block $n_{1}$ in a CFG,
+denoted $DF(n_{1})$, is the set of basic blocks $X$, such that
+$n_{1}$ \emph{does not} strictly dominate $X$, but \emph{does} 
+dominate at least one predecessor block of $X$. The dominance 
+frontier of a set $S$ of basic blocks, denoted $DF(S)$, is the union
+of the dominance frontiers of the elements of $S$. 
+
+The following section will make a connection between join sets
+and dominance frontiers.
+
+\section{Iterated Join Sets and Dominance Frontiers}
+
+Let $S$ be a set of basic blocks, and let $\J^{0}(S) = \J(S)$. 
+Now, let us recursively define 
+$\J^{i}(S) = \J(S \cup \J^{i \minus 1}(S))$. By
+construction, it is straightforward to see that
+$\J^{i}(S) \supseteq \J^{i-1}(S)$ for all $i$, as there is
+no process to facilitate vertex removal. If we compute these sets
+iteratively, we will eventually converge to a situation where
+$\J^{i}(S) = \J^{i-1}(S)$ in a finite number of steps, 
+as each CFG contains a finite number of basic blocks. The resulting
+set, denoted by $\J^{+}(S)$, is called the 
+\emph{iterated join set} of $S$. 
+
+We can do something similar with dominance frontiers. Given a set
+$S$ of basic blocks, let $DF^{0}(S) = DF(S)$, and let
+$DF^{i}(S) = DF(S \cup DF^{i-1}(S))$. Once again, we can iteratively
+compute $DF^{i}(S)$ from $DF^{i-1}(S)$, stopping when the two sets
+are equal. The resulting set, denoted by $DF^{+}(S)$ is called
+the \emph{iterated dominance frontier} of $S$. 
+
+There is, in fact, a connection between iterated join sets and 
+iterated dominance frontiers. Let $X$ be any set of CFG nodes
+that contains the CFG entry node. Cytron et al.~\cite{CytronOct91}
+proved that $\J^{+}(X) = DF^{+}(X)$. Weiss~\cite{WeissJun92}
+proved a slightly stronger version, that $\J(X) = DF^{+}(X)$.
+Weiss also conjectured that $\J^{+}(S) = \J(S)$ for any 
+set of CFG nodes $S$, and this conjecture was formally proven
+by Wolfe~\cite{WolfeJul94}. 
+
+For reasons that we will discuss in greater detail below, each
+variable in an SSA Form program has an \emph{implicit} definition
+at the CFG entry point. Based on the results above, either the
+join set or iterated dominance frontier could be used, in principle
+to instantiate $\phi$-functions. Cytron et al.~\cite{CytronOct91} 
+compute iterated dominance frontiers using a worklist algorithm. 
+As noted by Wolfe~\cite{WolfeJul94}, join and iterated join sets 
+are too complicated to compute directly, and no algorithms exist
+that call for their explicit use, outside of any context where
+iterated dominance frontiers suffice.  
+
+Intuitively, dominance frontiers are not enough, which is why
+iterated dominance frontiers are needed. Ignoring the subtle
+differences between dominance frontiers and join sets, consider
+a variable $v$ defined in basic blocks $n_{1}$ and $n_{2}$. Initially,
+we will instantiate a $\phi-$function for $v$ in some basic block
+$n_{3} \in DF(n_{1}, n_{2})$; however, before renaming, this
+$\phi$-function itself is a new definition of $v$, so we will need
+to instantiate additional $\phi$-functions in $DF(n_{3})$ as well.
+Taken ad-infinitum, this line of reasoning is precisely why we
+use iterated dominance frontiers instead of dominance frontiers. 
+
+\section{Split Sets and (Iterated) Post-dominance Frontiers}
+
+We have already noted the existence of a duality between the 
+dominance and post-dominance relations. The \emph{dual} of
+a join set is called a \emph{split set}: given two distinct
+basic blocks $n_{2}$ and $n_{3}$, basic block $n_{1}$ belongs
+to their split set, denoted $\S(n_{1}, n_{2})$ if there 
+are non-empty paths from $n_{3}$ to $n_{1}$ and $n_{2}$
+respectively, such that the only basic block common to both
+paths is $n_{3}$. Clearly, if all of the CFG edges are
+reversed, $n_{3}$ would belong to the join set of $n_{1}$
+and $n_{2}$. Based on Wolfe's~\cite{WolfeJul94} proof,
+there is no need to define an \emph{iterated split set}, 
+as it is equivalent to the split set. 
+
+Similarly, the dominance fronter can be generalized 
+to the \emph{post-dominance frontier} by replacing the
+dominance with the post dominance relation in the definition.
+For a set of basic blocks, $S$, we let $PDF(S)$ denote
+the post-dominance frontier of $S$. Furthermore, we can
+define an \emph{iterated post-dominance frontier} in a 
+manner that is exactly similar to the iterated dominance
+frontier. The iterated post-dominance frontier of a set
+$S$ of vertices is denoted $PDF^{+}(S)$. 
+
+
+\section{Philip's comment}
+
+From the outline, I budgeted 2 pages for the text of
+the preceding sections, and 2 pages for illustrations.
+
+
+\section{Minimal SSA Form}
+
+\emph{Minimal SSA Form} is computed in a straightforward manner,
+given the preceding discussion. Let $S_{v}$ be the set of
+basic blocks containing definitions of variable $v$. Then
+$\phi$-functions for $v$ are instantiated in every basic
+block in $DF^{+}(S_{v})$. This is followed by a pass over
+the program that renames each variable so that it has a
+unique definition, and renames each use to correspond
+precisely to one definition. Detailed pseudocode for these
+procedures can be found in ... 
+
+As we will soon see, Minimal SSA Form is hardly minimal, as
+other algorithms that insert considerably fewer $\phi$-functions
+have been developed; however, Minimal SSA Form does insert
+fewer $\phi$-functions compared to the naive alternative,
+which is to instantiate a $\phi$-function for each variable
+at the entry point of each basic block in the program that
+has more than one predecessor. 
+
+\section(Semi-pruned SSA Form}
+
+\emph{Semi-pruned SSA From}, introduced by Briggs et al.
+~\cite{BriggsJul98}, was based on the observation that
+many variables are never used outside of the basic blocks
+where they are defined. Consequently, there is no need 
+to instantiate any $\phi$-functions for any of them. 
+Specifically, if every use of variable $v$ occurs after
+a definition of $v$ in the same basic block, then no
+$\phi$-functions are necessary, although each definition
+and use must still be renamed. All of these variables
+are filtered out, and the algorithm to construct
+Minimal SSA Form is then applied to the remaining 
+variables. For many applications, the vast majority 
+of variables are filtered, which significantly reduces
+the number of $\phi$-functions that are instantiated,
+and avoids the corresponding increase in the size of the
+symbol table to accommmodate variables that would otherwise
+be defined by $\phi$-functions. 
+
+\section{Liveness and Liveness Analysis}
+
+Now, we turn our attention to variables and their lifetimes. By
+exploiting this information, we can further reduce the 
+number of $\phi$-functions instantiated during the conversion
+to SSA Form. 
+
+Variable $v$ is \emph{live} at some point $p$ in a program if:
 \begin{enumerate}
-\item Dominance
-\item Strict Dominance
-\item Immediate Dominator
-\item Dominator Tree
-\item Post-Dominance
-\item Strict Post-Dominance
-\item Immediate Post-Dominator
-\item Post-Dominator Tree
+\item There is a path from some definition of $v$ to $p$, and
+\item There is a use of $v$ reachable from $p$, meaning that
+there is a path from from $p$ to the use of $v$ that does not
+include a definition of $v$. 
 \end{enumerate}
 
-The more complex definitions, which are
-required to understand SSA construction are
-as follows:
+The \emph{live range} of a variable is the set of points
+at which it is live. A variable must reside in a storage 
+location, in a register, in memory or both, throughout
+its live range.  
 
-\begin{enumerate}
-\item Join Set
-\item Dominance Frontier
-\item Iterated Dominance Frontier
-\item Split Set
-\item Post-Dominance Frontier
-\item Iterated Post Dominance Frontier
-\end{enumerate}
+\emph{Liveness Analysis} is the process of computing the
+live range of each variable in a procedure. The bulk of
+the work is performed by an iterative data flow analysis
+that computes either the \emph{Live-In} or the 
+\emph{Live-Out} sets of each basic blocks, i.e., the set
+of variables that are live at the entry or exit of
+each basic block in the program. Given this information,
+a linear traversal of each basic block yields the 
+exact set of variables that are live at each program
+point. In general, the sets of program points that
+constitute each variable's live range are not computed.
 
-I think that these concepts are fundamental,
-and would benefit greatly from detailed
-illustrations. I anticipate budgeting
-two pages for text/definitions and two
-pages for illustrations. 
+Here, we will show how to compute the Live-Out set of
+each basic block. $LIVEOUT[n]$ will denote the Live-Out
+set of basic block $n$. Each of the sets is represented
+as a bit-vector, with one bit corresponding to each
+variable. If $V$ is the set of variables in the procedure,
+then each bit-vector contains $|V|$ bits. To simplify
+notation, we will associate each variable $v_{i}$ with
+its index $i$, so $LIVEOUT[n][i] = 1$ if $v_{i}$ is live
+at the exit point of basic block $n$, and 
+$LIVEOUT[n][i] = 0$ otherwise. 
 
-\section{liveness}
+To perform liveness analysis, we need two other sets for
+each basic block. $UEVAR[n]$ is defined to be the set of
+\emph{upwards exposed} variables in basic block $n$, i.e.,
+those variables that are used in $n$, but do not have a 
+definition preceding them in $n$. Clearly, the variables
+belonging to $UEVAR[n]$ are live at the entry point of $n$;
+Liveness analysis is a backward dataflow analysis, as
+variable lifetimes are propagated backwards from
+$UEVAR[n]$ and into the predecessors of $n$. 
 
-\textbf{3 pages}
+$VARKILL[n]$ contains the set of variables that are defined
+in basic block $n$. As liveness analysis is a backward
+data flow analysis, the backward propagation of liveness
+information ends with the definition of a variable. 
+The $VARKILL$ sets effectively stop the backward 
+propagation of variables that are live at their definition
+points.
 
-Basic definitions:
-\begin{enumerate}
-\item Definition of a variable
-\item Use of a variable
-\item Path in a CFG vs. Reachability
-\item Formal definition of liveness at a point
-\item Formal definition of the live range of a variable
-\end{enumerate}
+Initially, the sets $LIVEOUT[n]$ are empty for each basic 
+block, and a linear traversal of each basic block yields
+the sets $UEVAR[n]$ and $VARKILL[n]$. Once the initial sets
+are established, the following data flow equations are
+repeatedly computed for each basic block $n$; this is 
+called an \emph{iteration}. The process repeats until an 
+entire iteration fails to change any of the $LIVEOUT$ sets.
+At this point, stability is reached, and the information
+contained in the $LIVEOUT$ sets is wholly accurate.
 
-Briefly discuss/define LiveIn and LiveOut
-sets. Give dataflow equations to compute
-them, and refer back to Jeremy's discussion
-of iterative dataflow analysis in the vanilla section.
+[Insert liveness equations here]
 
-Detailed illustration of a CFG with
-variables defined and used. Each basic block
-is augmented with LiveIn/LiveOut sets. 
+The results of liveness analysis are generally used in
+three contexts: the construction of Pruned SSA Form,
+as described in the following section; register allocation;
+and the translation out of SSA Form. 
 
-I anticipate 2 pages of text and 1 page
-for the illustration.
+\section{Pruned SSA Form}
 
-\section{interference graphs}
+Minimal SSA Form does not take variable liveness information
+into account when instantiating $\phi$-functions. Semi-pruned
+SSA recognizes that many variables are never live across
+the boundaries of the basic blocks that contain their 
+definition, and does not instantiate any $\phi$-functions
+for these variables. Under both Minimal and Semi-pruned
+SSA Form, the $\phi$-functions that are instantiated are
+done so on the basis of iterated dominance frontiers alone,
+and do not account for any additional liveness information
+about the corresponding variable. Therefore, $\phi$-functions
+are often instantiated for variables at the entry point of
+basic blocks where the variable is not actually live. 
+\emph{Pruned SSA Form}, in contrast, requires that 
+$\phi$-functions are only instantiated for a variable $v$
+at the entry point of basic blocks where $v$ is live
+~\cite{ChoiJan91}.  
 
-\textbf{2 pages}
+There are two possible methods to construct Pruned SSA Form.
+The direct method is to perform liveness analysis upfront, and
+check whether a variable is live at the entry point of a 
+basic block before instantiating a $\phi$-function for that
+variable. This approach is straightforward, but requires
+performing liveness analysis upfront. 
 
-Define variable live range intersection. 
-Define variable interference (Chaitin's definition). 
-Discuss why interference definition is intractable,
-and give examples of cases where it becomes 
-reasonable.
+Briggs et al.~\cite{BriggsJul98}, who introduced Semi-pruned
+SSA Form, compared the runtimes of constructing Minimal SSA,
+Semi-pruned SSA, and the direct method of constructing Pruned
+SSA Form. Minimal SSA Form instantiated an exorbitant number
+of $\phi$-functions, and, as a consequence, it had the slowest
+runtime. Semi-pruned SSA Form was the fastest to construct,
+because Pruned SSA Form required liveness analysis in advance.
+Although Semi-pruned SSA Form instantiated significantly 
+more $\phi$-functions than Pruned SSA Form, the overhead of
+liveness analysis was significantly greater than the overhead
+of instantiating the extra $\phi$-functions. 
 
-Define interference graph for a procedure.
+It is also possible to construction Pruned SSA by first
+building Semi-Pruned SSA and then using a simplified dead code
+elimination algorithm on $\phi$-functions to convert the
+resulting program into Pruned SSA Form; in fact, a more
+algorithm that eliminates dead code as well as dead $\phi$
+functions also suffices. To the best of our knowledge, such
+an algorithm has not been formally published; however, Choi
+et al.~\cite{ChoiJan91} suggested that such an algorithm
+may exist, and the method has even been patented
+[I'm not sure how to cite this]. As long as the runtime of
+the dead code elimination step plus the cost of instantiating
+the extra $\phi$-functions, which are later removed, is 
+cheaper than performing liveness analysis, this latter
+method will run faster. 
+
+\section{Live Range Insersection and Interference}
+
+Liveness information also plays an important role in
+register allocation. Any variable must reside in a 
+storage location, a register, in memory, or both, at each
+point when it is live; otherwise, its value will be lost.
+The register allocator, therefore, must partition the
+variables between register and memory at each point in
+the program, and make sure that at most one variable is
+allocated to each register at any point. 
+
+The live ranges of two variables \emph{intersection} if
+there is at least one point in a procedure where both
+variables are live. In general, two variables whose live
+ranges intersect cannot share the same storage location;
+however, there is one exception: Chaitin et al.
+~\cite{Chaitin81,ChaitinJun82} suggested that two variables
+whose live ranges overlap, but are known to always hold
+the same value, can share the same register; unfortunately,
+testing whether or not two computations produce the same
+result is undecideable, as it is a generalization of
+the \emph{Halting Problem}. Therefore, Chaitin's more
+general notion of live range \emph{interference} is often 
+simplified to live range intersection, or intersection
+with provisions to account for constant values. 
+
+Many register allocators build an auxiliary data structure
+called an \emph{interference graph} to assist with the
+allocation process. An interference graph is denoted by
+the tuple $G = (V, E, A)$, where $V$ is a set of vertices,
+one for each variable in the procedure, $E$ is a set of
+\emph{interference edges}, and $A$ is a set of 
+\emph{affinity edges}. An interference edge $(v_{i}, v_{j})$
+is placed between every pair of variables $v_{i}$ and 
+$v_{j}$ that interfere with one another; in principle,
+any definition of interference that at least includes
+intersection can be used. An affinity edge $(v_{k}, v_{l})$
+is placed between two variables that are repectively 
+defined and used by a copy operation, i.e., 
+$v_{k} \leftarrow v_{l}$ or $v_{l} \leftarrow v_{k}$;
+in this case, assigning $v_{k}$ and $v_{l}$ to the
+same register eliminates the copy operation. More details
+on this process will be provided in section ...
+
+\section{Philip's comments}
 
 Detailed example (hopefully, corresponding to
 the procedure illustrated in the preceding 
@@ -104,17 +460,6 @@ SSA construction algorithm, conceptually differentiate
 reasoning regarding phi placement using dominance 
 frontiers and join sets. 
 
-\section{pruned/semi-pruned/minimal}
-
-\textbf{2 pages}
-
-Define the 3 flavors of SSA. "Borrow" the very nice
-example from Briggs et al. SPE 1998 paper. 
-
-Discuss "folklore" and patent regarding conversion
-from minimal or semi-pruned SSA to pruned SSA via
-dead code elimination. Provide an example if there
-is space. 
 
 \section{conventional}
 
