@@ -1,4 +1,4 @@
-\chapter{Properties and flavours \Author{P. Brisk}}
+#\chapter{Properties and flavours \Author{P. Brisk}}
 \numberofpages{16}
 
 \textbf{total page count for chapter: 16 pages}
@@ -212,12 +212,136 @@ manner that is exactly similar to the iterated dominance
 frontier. The iterated post-dominance frontier of a set
 $S$ of vertices is denoted $PDF^{+}(S)$. 
 
-
 \section{Philip's comment}
 
 From the outline, I budgeted 2 pages for the text of
 the preceding sections, and 2 pages for illustrations.
 
+\section{SSA Form, Def-Use, and Use-Def Chains}
+
+A procedure is defined to be in SSA Form if it satisfies
+two properties. Firstly, each variable can only be defined
+once. This property is easily achieved: assuming that varible
+$v$ is defined $k$ times in the procedure, rename each of the
+definites to $v_{1}, v_{2}, \cdots, $v_{k}$ respectively. 
+The second property is that each use of $v$ must now be
+renamed to correspond to precisely one definition. Without
+loss of generality, if there is a use of $v$ in a basic block
+that belongs to the join set of two (or more) definitions
+$v_{i}$ and $v_{j}$, then the second property is implicitly
+unsatisfied: renaming this use of $v$ to be a use of $v_{i}$ or
+$v_{j}$ will not maintain correct program semantics. In order
+to rectify the situation, a $\phi$-function must be instantiated
+to merge the definitions of $v_{i}$ and $v_{j}$ into a new 
+variable $v_{l}$, and the use of $v$ is replaced with a use
+of $v_{l}$. 
+
+Note: insert a figure here to illustrate. 
+
+Two important data structures that are used in compilers are
+\emph{Definition-Use (DU) Chains} and 
+\emph{Use-Definition (UD) Chains}. A definition $D$ of variable
+$v$ reaches a use $U$ of $v$ if there is a path in the CFG
+from $D$ to $U$ that does not include another definition of $v$. 
+A DU Chain connects $D$ to all uses of $v$ that are reachable
+from $D$; a UD Chain connects a use $U$ of $v$ to all of the 
+definition of $v$ from which $U$ is reachable. 
+
+Under SSA Form, as mentioned above, each variable is defined 
+once and each use corresponds to a single definition. Therefore,
+there is exactly one DU Chain per variable (the definition points
+to all of the uses), and one UD Chain per use, which points to the
+single definition. Thus, the UD chains are explicit, and do not
+need to be represented.
+
+Note: Insert a figure here to illustrate what happens to DU
+and UD chains by the conversion to SSA Form.  
+
+\section{Dead Code Elimination Under SSA}
+
+Note: In an email on October 19, 2009, Fabrice suggested that
+I include this section. If I choose to write it and include it
+here, I will base the discussion on The SSA DCE algorithm from
+Robert Morgan's textbook, which was used in MachSUIF (among 
+other places). Alternativly, I could use the DCE algorithm
+from the classic Cytron et al. 1991 paper. 
+
+I have not yet written this section, because I am not sure
+whether an introductory chapter is the appropriate place
+to insert a discussion of DCE, or whether it is better moved
+to a chapter on SSA-based optimizations. 
+
+\section{SSA with dominance property}
+
+A procedure is defined to be \emph{strict} if every variable
+is defined before it is used along every path from the entry
+to exit point~\cite{BudimlicJun02}; otherwise, it is \emph{non-strict}. 
+Some languages, such as Java, impose strictness as part of the language
+definition; others, such as C/C++, impose no such restrictions. 
+
+It is possible to define SSA Form in a manner that ensures strictness,
+even if the original procedure itself is non-strict; it is also possible
+to define SSA Form in a way that does not ensure strictness. The designer
+of an SSA-based compiler must determine which definition is most appropriate.
+
+Any existing SSA construction algorithm can ensure strictness: it suffices
+to add a pseudo-definition of each variable at the entry point of the 
+procedure. This pseudo-definition does not affect the live range of the
+variable: it is only used to guide the placement of $\phi$-functions.
+Any SSA construction algorithm that uses iterated dominance frontiers,
+as we will shortly show, uses this implicit definition. 
+
+Let $v_{0}$ denote the pseudo-definition corresponding to variable $v$ in
+a pre-SSA procedure. Any instruction that uses $v_{0}$ indicates a likely
+programmer error. The instruction will use a non-initialized variable; in
+the general case, this leads to unpredictable program behavior whenever
+this instruction is executed.
+Similarly, a $\phi$-function may also contain $v_{0}$ as a parameter. 
+If the corresponding path is taken into the basic block containing the
+$\phi$-function, then an uninitialized variable (denoted by the pseudo-
+definition) will be copied to the variable defined by the $\phi$-function.
+As these programs are still legal, depending on the language definition,
+the best that a compiler can do is to present a warning to the user in
+order to alert him or her of the situation. 
+
+Let $S_{v}$ be the set of basic blocks containing definitions of variable 
+$v$, and let $n_{0}$ denote the entry point of the CFG. Conceptually, 
+non-strict SSA Form can be constructed by placing $\phi$-functions at the
+entry points of each basic block belonging to $J(S_{v}) = J^{+}(S_{v})$, 
+i.e., using join sets. Using iterated dominance frontiers, in contrast, 
+ensures strict SSA Form, since $DF^{+}(S_{v}) = J(S_{v} \cup n_{0})$.  
+
+As there are no known efficient algorithms to compute join sets, the
+most straightforward way to compute non-strict SSA Form is to first
+built strict SSA Form and then remove $\phi$-functions that are 
+otherwise extraneous. Consider, for example, a $\phi$-function that
+defines variable $v_{j}$: one of the parameters is another definition of
+$v$, denoted by $v_{i}$, while \emph{all} of the remaining parameters 
+are $v_{0}$: the implicit definition. It is possible, in this case, to
+eliminate this $\phi$-function by replacing all uses of $v_{j}$ with
+uses of $v_{i}$ instead. Although this destroys the dominance property,
+it does reduce the number of $\phi$-functions in the program. 
+
+Note: Insert an example here, as described in an email from Fabrice:
+'example of a double diamond with a def and used on the left and b def 
+and used on the right: no interference'. I also have some decent examples
+from a paper published at IWLS 2007 (no official proceedings). 
+
+There are certainly situations where one would want the dominance property
+as well. Most of these situations exploit properties relating to liveness
+and interference, which are briefly outlined in the following sections 
+of this chapter, and are described in much greater detail in subsequence
+chapters. 
+
+It is also important to note that many program transformations may
+cause strict SSA Form to become non-strict. Examples of such transformations
+include copy propagation and spilling. Techniques to convert non-strict
+to strict SSA Form without explicitly destroying and rebuilding SSA 
+Form will be discussed in Section ...
+
+(requires coordination with Sebastian).
+(possibly put an example here showing how copy propagation destroys
+strictness property; spilling works too). 
 
 \section{Minimal SSA Form}
 
@@ -258,6 +382,7 @@ the number of $\phi$-functions that are instantiated,
 and avoids the corresponding increase in the size of the
 symbol table to accommmodate variables that would otherwise
 be defined by $\phi$-functions. 
+
 
 \section{Liveness and Liveness Analysis}
 
@@ -394,14 +519,14 @@ method will run faster.
 
 Liveness information also plays an important role in
 register allocation. Any variable must reside in a 
-storage location, a register, in memory, or both, at each
+storage location: a register, in memory, or both, at each
 point when it is live; otherwise, its value will be lost.
 The register allocator, therefore, must partition the
 variables between register and memory at each point in
 the program, and make sure that at most one variable is
 allocated to each register at any point. 
 
-The live ranges of two variables \emph{intersection} if
+The live ranges of two variables \emph{intersect} if
 there is at least one point in a procedure where both
 variables are live. In general, two variables whose live
 ranges intersect cannot share the same storage location;
@@ -434,6 +559,20 @@ in this case, assigning $v_{k}$ and $v_{l}$ to the
 same register eliminates the copy operation. More details
 on this process will be provided in section ...
 
+An SSA Form program that is also strict satisfies a very important
+property: the definition point of each variable dominates each use
+~\cite{BudimlicJun02}; from there, it is fairly straightforward to
+show that the definition point not only dominates each use, but 
+the entire live range of the resulting variable. In other words,
+each live range is a subtree of the dominator tree. The resulting
+interference graph, therefore, is the intersection graph of a set
+of subtrees of a tree, which is precisely the definition of the 
+class of \emph{chordal} graphs. Chordal graphs are significant because
+several problems that are NP-complete for general graphs have efficient
+polynomial-time solutions for chordal graphs, including graph coloring,
+which is often used as a model for register allocation. This theory
+will be presented in much greater detail in future chapters of this book.
+
 \section{Philip's comments}
 
 Detailed example (hopefully, corresponding to
@@ -443,29 +582,75 @@ section.
 Here, I anticipate 1 page of text and 1 page
 for the illustration.
 
-\section{SSA with dominance property}
+\section{Conventional and Transformed SSA Form}
 
-\textbf{3 pages}
+The conversion to SSA form replaces each variable $v$ in the pre-SSA
+program with a set of variables $v_{1}, v_{2}, \ldots, v_{k}$, which
+perfectly partition $v$. At every point in the procedure where $v$ is
+live, \emph{exactly} one variable $v_{i}$ is also live; and none of
+the $v_{i}$ are live at any point where $v$ is not. 
 
-Formal definitions of SSA. Introduce
-phi functions, and show why they are
-necessary. Include an illustration of
-a program before and after conversion to SSA.
+Based on this observation, we can partition the variables in a 
+program that has been converted to SSA Form into congruence classes. 
+We say that $x$ and $y$ are \emph{$\phi$-related} to one another
+if they are referenced by the same $\phi$-function, i.e.: 
+either both $x$ and $y$ are parameters of the $\phi$-function, or,
+without loss of generality, $x$ is a parameter, and $y$ is defined by
+the $\phi$-function. This relation is
+\begin{enumerate}
+\item \emph{reflexive}: $x$ is $\phi$-related to $x$;
+\item \emph{symmetric}: $x$ is $\phi$-related to $y$ if and only if
+$y$ is $\phi$-related to $x$; and
+\item \emph{transitive}: if $x$ is $\phi$-related to $y$ and 
+$y$ is $\phi$-related to $z$, then $x$ is $\phi$-related to $z$.
+\end{enumerate}
+Therefore, this notion of $\phi$-relationship is itself and equivalence
+relation, meaning that the transitive closure of the relation partitions
+the variables defined locally in the procedure into equivalence classes. 
+By the reflexive property, each variable that is not involved in a 
+$\phi$-function belongs to a singleton class. 
+Let \emph{$\phi$-CongruenceClass${x}$} denote the equivalence class 
+containing variable $x$. 
 
-Discuss strict vs. non-strict SSA conceptually.
-Discuss how/why strict SSA implicitly assumes
-that each variable has a pseudo-definition at
-the CFG entry node. Without providing a full-blown
-SSA construction algorithm, conceptually differentiate
-reasoning regarding phi placement using dominance 
-frontiers and join sets. 
+The conversion to SSA Form, as described above, ensures that all varibles
+$v_{i}$ introduced for pre-SSA variable $v$ belong to the same $\phi$-
+congruence class. The program can be immediately translated out of SSA
+Form by replacing each definition or use of $v_{i}$ with $v$ instead, 
+and deleting the $\phi$-functions. This simplistic reverse transformation
+is not always possible after SSA-based program transformations and 
+optimizations such as dead code elimination, copy folding and propagation,
+and various forms of code motion are applied~\cite{BriggsJul98}. 
 
+In particular, transformations applied to an SSA Form program may
+merge the $\phi$-congruence classes of distinct variables
+$u_{i}$ and $v_{j}$, which respectively correspond to pre-SSA variables
+$u$ and $v$ respectively. Moreover, $u_{i}$ and $v_{j}$ may interfere,
+making it impossible to replace all of the variables in a single
+$\phi$-congruence class with a single variable. 
 
-\section{conventional}
+Note: A figure showing an example here would be very nice.
 
-\textbf{2 pages}
+For example, suppose
+that the lifetimes of $u_{i}$ and $v_{j}$ overlap, and we replace all
+of the variables in their $\phi$-congruence class with a new variable $x$
+during the translation out of SSA Form. Then when the program executes,
+there will be a point where $x$ is live, and it will contain one value: 
+either the value corresponding to $u_{i}$ or $v_{j}$, but not both. 
+This is incorrect, as both values are required, because they will be used
+at some point later in the program as per the definition of liveness.
+As a consequence, the semantics of the program have not been preserved
+during the translation out of SSA Form. 
 
-Introduce Sreedhar's definition of CSSA. Conceptually
-explain how/why it simplifies SSA destruction, but do
-not give algorithms. Borrow examples heavily from
-Sreedhar's SAC 1999 paper.
+Sreedhar et al.~\cite{SreedharSep99} defines a program to be in 
+\emph{Conventional SSA (CSSA)} if it is possible to replace all occurrences
+of variables in a $\phi$-congruence class with a single variable without
+affecting program correctness; in other words, none of the variables in
+a $\phi$-congruence class interfere with one another under CSSA Form. 
+The basic SSA construction algorithms all build CSSA Form; however, CSSA
+Form is not preserved after numerous transformations and optimizations
+are applied. A program is defined to be \emph{Transformed SSA (TSSA)}
+Form if at least two variables in a $\phi$-congruence class interfere. 
+The conversion from TSSA to CSSA Form is an important and required 
+step in order to translate out of SSA Form. Efficient and effective algorithms
+to translate out of SSA Form will be presented in Sections ... 
+
