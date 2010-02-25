@@ -1,4 +1,4 @@
-\chapter{Classical construction/update/destruction algorithm \Author{J. Singer, F. Rastello}}
+       \chapter{Classical construction/update/destruction algorithm \Author{J. Singer, F. Rastello}}
 \numberofpages{8}
 
 \def\phiops{$\phi$-functions}
@@ -28,33 +28,39 @@ Probably construct minimal SSA form.}
 
 In this chapter, each procedure is represented as a control flow graph (CFG). All node of the CFG is supposed to be reachable from the entry node $r$.
 
-The classical construction algorithm for SSA form falls into two phases. 
-First \phiops\ are inserted so that any use of a given variable is reached by only one definition of this variable. 
-Then variables are renamed so that the code contains textually only one definition per variable, and such that each use refers to its corresponding unique reaching definition.
+Transforming a code that has no \phiops\ to a code that has SSA form is called SSA construction. The classical construction algorithm for SSA form falls into two phases. 
+First \phiops\ are inserted so that any use of a given variable is reached (without traversing another definition) by only one definition of this variable. In other words, this first phase of \phiops\ insertion splits live-ranges. The so obtained live-ranges have the property of having only one definition.
+Then variables are renamed so that the code contains textually only one definition per variable, and such that each use refers to its corresponding unique reaching definition. In other words, this second phase assigns one variable per live-range. 
 
-Cytron et al.~\cite{cytron:1991:ssa} noticed that is it useless to insert \phiops\ elsewhere than join nodes, i.e. nodes that can be reached by two different definitions of the same variable using two disjoint paths. 
-% FAB: in fact Cytron et al. iterate on join sets. Weiss said that J+(S)=J(S). Fix this sentence.
-Under the asumption that each variable has a {\em pseudo definition} at the root~$r$ of the CFG, they also show that this set of join nodes is exactly the iterated dominance frontier.
+Historically, SSA came into different flavors. Building the so called minimal SSA (which is not completely minimal as we will see further) requires to insert \phiops\ at join nodes, i.e. nodes that can be reached by two different definitions of the same variable using two disjoint paths. 
+% FAB: in fact Cytron et al. iterate on join sets. Weiss said that J+(S)=J(S). So removed the citation that was useless
+Under the assumption that each variable has a {\em pseudo definition} at the root~$r$ of the CFG, this set of join nodes is exactly the iterated dominance frontier.
 It ends up with a very simple algorithm that places \phiops\ variable per variable. 
 For a given variable it places \phiops\ at the iterated dominance frontier $DF^{+}(S)$ of the set of definition points $S$ for this variable. 
-Because only the dominance frontier of each CFG node is precomputed, the \phiops\ are inserted iteratively using a worklist of definition points, and flags (to avoid multiple insertions). 
+Considering that the dominance frontier of each CFG node is precomputed, the \phiops\ can be inserted iteratively using a worklist of definition points, and flags (to avoid multiple insertions). 
 This gives the following pseudo-code for \phiops\ insertion:
 \begin{verbatim}
-foreach global variable v
-  let Worklist:=definitions(v)
-  let Inserted:=emptyset
-  foreach D in Worklist
-    foreach I in DF(D) \ Inserted
-      insert "v=phi(v,...,v)" @ beginning of node I
-      Inserted += {I}
+proc phi_insertion
+// places phi functions at the iterated dominance frontier
+  foreach global variable v
+    let Worklist:=definitions(v)
+    let Inserted:=emptyset
+    foreach D in Worklist
+      foreach I in DF(D) \ Inserted
+        insert "v=phi(v,...,v)" @ beginning of node I
+        Inserted += {I}
 \end{verbatim}
 
-If the uses of a \phiop\ are considered to be on the corresponding predecessor blocks, then use-def chains are along the dominance tree. 
-This is why it is good to perform renaming in a DFS order of the dominance tree: 
-one just have to keep track during the traversal for each variable, its nearest dominating definition.
+Once \phiops\ are placed using this algorithm, the code may still contain several definitions per variables, but a use may refer to only one definition (that reach him). Moreover, with the following semantic for \phiops\ where its uses are considered to be on the corresponding predecessor blocks, then use-def chains are along the dominance tree. In other word the unique definition that reach a use dominates it. 
+
+To obtain a code with a single assignment per variable, renaming have to be performed. But thanks to the dominance property this can be easily achieved using a DFS traversal of the dominance tree: 
+during the traversal one just have to keep track for each variable, of its nearest dominating definition.
 This gives the following pseudo-code for variable renaming:
 \begin{verbatim}
 proc renaming:
+// rename variable def and use to have one definition per variable
+  foreach v: Variable
+    let v.reachingDef:=undef
   foreach B: basicBlock in DFS preorder of the dominance tree
     foreach inst: instruction from top to bottom of B
       foreach o: a use operand of inst
@@ -83,11 +89,28 @@ proc v.update_reachingDef(o):
   v.reachingDef:=rd
 \end{verbatim}
 
+As detailed and explained further, this simple algorithm ends up with a SSA form that is minimal (with the meaning given by Cytron et al.), that could be pruned (some dead \phiops\ are unnecessarily inserted), that is conventional (the transformation that renames back all $\phi$-related variables into a unique representative one, and removes all \phiops\ is a correct SSA-destruction algorithm), and has the dominance property (each variable use is dominated by its unique definition).
 \section{Destruction \Author{F. Rastello}}
 \label{sec:classical_destruction}
 \textbf{2-3 pages}
 
-The simplest way is to split critical edges and replace $\phi$-fonctions by parallel copies on predecessor blocks (no coalescing). Provide a ``W'' example with a back-edge (parallel copies and edge splitting is required). Outline that this technique may not work for machine code, do not perform coalescing, and is not optimized for speed. Refer to the advanced technique described in \ref{sec:advanced_destruction}. Provide a simple but not optimal pseudo code for parallel copy sequentialization. Provide the pseudo-code for $\phi$-function replacement.
+SSA form is a simple and efficient way of having sparse representation of some program information used by some code analysis and optimization. Once we are done with SSA based optimizations, or at least before code generation, one have to get rid of \phiops\ that are not machine instructions. This phase is called SSA destruction. 
+Destructing a freshly constructed SSA code is easy. One just have to first rename back into a unique representative variable all $\phi$-related variables (called SSA-webs) that had initially the same name. Then each \phiop\ have all its operands identical and can be removed to coalesce the related live-ranges.
+Finding SSA-webs can be performed efficiently using the classical union-find algorithm for merging sets:
+\begin{verbatim}
+proc find_webs
+// find the ssa web of each variable
+foreach variable v:
+  ssaweb(v) := {v}
+foreach instruction of the form "a=phi(a1,...,an)"
+  foreach ai union(ssaweb(a),ssaweb(ai))
+\end{verbatim}
+
+An SSA form is said to be conventional if for each ssaweb, all its variables can be safely renamed into a unique representative one. In other words each SSA web should be interference free. If a freshly constructed SSA code is conventional, this is generally not the case after optimizations such as copy folding.
+
+The simplest (but not the more efficient) way for destructing non conventional SSA form is to split all edge, and then replace \phiops\ by parallel copies on predecessor blocks. 
+
+Outline that this technique may not work for machine code, do not perform coalescing, and is not optimized for speed. Refer to the advanced technique described in \ref{sec:advanced_destruction}. Provide a simple but not optimal pseudo code for parallel copy sequentialization. Provide the pseudo-code for $\phi$-function replacement.
 
 \section{Turning general SSA into conventional/pruned/dominance property}
 \textbf{2 pages}
