@@ -1,20 +1,28 @@
 % vim:spell:spelllang=en
 \chapter{Register Allocation\Author{F. Bouchez, S. Hack}}
+\label{chap:register-allocation}
 
 {
 
-\numberofpages{15}
-Page count: 15
+%% Local macros for personal use
+\newcount\todocount \todocount=0
+\def\todo#1{\global\advance\todocount by 1 {\bf TODO:} #1}
+\newlinechar=`\^^J
+\def\endofchapter{\ifnum\todocount>0\immediate\write16{^^JLaTeX Warning: There 
+was still TODO macros: \the\todocount.^^J}\fi}
 
 
 \def\ac#1{#1}
 \def\dom{\preceq}
 \def\ssa{SSA\xspace}
 
+\numberofpages{15}
+Page count: 15
+
 
 \chapterauthor{Bouchez, Hack}
 
-{\it
+{\sl
 We will start by giving an overview and intuitive understanding why SSA helps 
 register allocation. Then we present the sub-problems of spilling and 
 coloring/coalescing, as two separate phases, under the light of SSA. Finally, 
@@ -30,6 +38,8 @@ discussed.
 }
 
 
+\todo{Longer introduction}
+
 The goal of register allocation is to map the variables of a program to 
 physical memory locations. The compiler must indeed decide, in advance, in 
 which locations will be held the values necessary for the computations of the 
@@ -44,11 +54,12 @@ unbounded in number.
 
 
 
-\section{Why does SSA help register allocation?}
+\section{Why does SSA help for register allocation?}
 
 
 \subsection{Classical register allocation}
 
+{\sl
 \begin{itemize}
   \item based on graph coloring, linear scan
   \item spilling \& coloring are dependent
@@ -56,13 +67,65 @@ unbounded in number.
   \item avoiding spills is more important than coalescing
   \item Fab: It is important to outline that with decoupled reg-alloc, spilling and coloring become much simpler and more efficient.
 \end{itemize}
+}
+
+Traditionally, register allocation schemes come in two flavors: based on 
+graph-coloring, for better results but more time and memory consuming, suitable 
+for off-line compilation; and based on ``linear scans,'' for easiness of the 
+scheme and quick compilation, suitable for Just-in-Time (JIT) compilation.  The 
+goal of any register allocation algorithm is to make the best use of registers 
+possible, i.e., minimizing the \emph{spilling} (storing variables to memory), and to 
+reduce data movements between registers by performing \emph{coalescing} (putting 
+variables linked by copy instructions in the same register).
+
+\subsubsection{Spilling \& coalescing inter-dependence.}
+For all modern architectures, reducing the spilling is more important that 
+maximizing the coalescing, since loading or storing a variable in memory takes 
+more cycles than performing a register-to-register {\tt move} instruction. 
+However, the two optimisations are often performed at the same time (\todo{true 
+for linear-scan too?}) because they both depends on whether there is enough 
+registers for the variables or not. For instance, in traditional graph-coloring 
+register allocation, spilling allows to remove some node of the interference 
+graph, hopefully reducing the number of colors required. Conjointly, coalescing 
+two variables merges the corresponding nodes, which can have positive effects
+or negative effects: on the one hand, it will remove a copy in the program and 
+diminishes the degree of the nodes that are common neighbours, hence augmenting 
+their chances to be simplified (\todo{define simplification, or link to iterated 
+register coalescing?}), i.e., increasing the chances that the graph becomes 
+colorable; on the other hand, the created node will have more neighbours, hence 
+diminishing its chances to be simplified and augmenting its chances of being 
+spilled, in which case two variables are being spilled (the coalesced ones) 
+instead of just one, or even maybe none. 
+
+Since there is no way to know the minimum number of colors required to color a 
+general graph, coalescing strategies are usually \emph{conservative}, to avoid 
+transforming a $k$-colorable graph into a non $k$-colorable one. This means 
+opportunities to improve the spilling and the coalescing are missed.
+
+\subsubsection{Decoupling register allocation.}
+We will see that, under SSA form, we have a polynomial algorithm that can tell 
+whether $R$ registers are sufficient or not. This allows to decouple register 
+allocation into two phases: the first phase spills variables until we know that 
+$R$ registers are sufficient, at which point no coalescing can help reducing 
+the coloring number any further, then, the remaining variables are assigned to 
+registers while performing as much coalescing as possible, forbidding any more 
+spill.
+
+This for one allows for much simpler register allocation schemes, as each phase 
+must be handled separately, which relieves the compiler of the worries of 
+coalescing affecting the spilling. This makes also for a simpler architecture, 
+where the two phases are cleanly separated (compare to IRC).
+
+\todo{STOPPED HERE}
+
+
+
 
 
 \subsection{Programs under SSA have chordal interference graphs}
-{\it 
+{\sl 
 \begin{itemize}
-  \item Proof programs under SSA are chordal. Fab: I prefer not to have any 
-    proofs.
+  \item Reminder that programs under SSA are chordal
   \item What difference does it make? Knowing the minimum number of colors is 
     easy: we know if spilling is mandatory or not
   \item why are the graphs chordal? View of SSA variables as subtrees of the 
@@ -92,60 +155,57 @@ always be equal.
 %(Definition~\ref{def:chaitin-interf}) as there is no remaining copy in the 
 %program.
 }
-
-
+This was already mentioned in Chapter~\ref{chap:properties-and-flavours}. We 
+recall here the theorem since it is a vital property for register allocation:
 
 \begin{theorem}
   \label{thm:ssa-chordal}
-  The interference graph~$G$ of a program under \ac{SSA} with dominance property is chordal.
-  \index{dominance|exampleidx}
+  The interference graph~$G$ of a program under \ac{SSA} with dominance 
+  property is chordal.
 \end{theorem}
 
+The major impact for register allocation is that, while coloring a general graph 
+with the minimum number of colors in NP-complete, it is polynomial in the case 
+of chordal graphs. Since register allocation amounts to coloring the 
+interference graph of a program, this means that, under SSA, we can have an
+algorithm that answer in polynomial time whether $R$ registers are sufficient 
+or not for allocation all variables, i.e., \emph{whether spilling is mandatory 
+or not.} This is a fundamental breakthrough as, up to know, register 
+allocation algorithms all depends on coloring \emph{heuristics} to decide 
+whether to spill or not.
 
-It is possible to give a more direct proof, without using the characterization 
-of chordal graphs as the intersection graph of subtrees of a tree. It was by 
-finding this proof that we first realized that the interference graph of a 
-program under \ac{SSA} is chordal, which is the very first contribution of this 
-thesis.  Then, we figured out that the chordal representation as subtrees of a 
-tree would perfectly match the live-ranges under \ac{SSA}.
 
-\begin{proof}
-  Let $G$ be an interference graph of a program under \ac{SSA}.
-  Let us define the following orientation of the 
-  edges: if $def(u) \dom def(v)$, then $u \rightarrow v$.
-  Property~\ref{prop:a-interf-b} states that every edge is directed.
-%
-  Consider a cycle $C$ of length at least $4$ in $G$, if there is one.  From 
-  Theorem~\ref{thm:dom-partial-order}, the dominance relation is a partial 
-  order: $C$~cannot form a directed cycle, thus there are two edges $u 
-  \rightarrow v$ and $v \leftarrow w$, directed from~$u$ to~$v$ and from $w$ 
-  to~$v$, i.e., the definitions of $u$ and of $w$ dominate the definition of 
-  $v$.
-%
-  Since $u$ and $v$ interfere, and $u\rightarrow v$, $u$ is alive at $def(v)$ 
-  and the same is true for $w$. $u$ and $w$ are both alive at the $def(v)$,
-  they interfere and there is an edge between $u$ and $w$ in the graph, i.e., a 
-  chord in~$C$.
-
-%  Property~\ref{prop:st-dominent-u} states that either the definition of $u$ 
-%  dominates the definition of $w$ or the converse, hence there is an edge 
-%  between $u$ and $w$ in the graph, i.e., a chord in $C$.
-\end{proof}
 
 
 \subsubsection{Why so chordal?}
 
-There is another, shorter proof that SSA interference graphs are chordal, 
-although it uses more advanced graph theory. This proof shows however very well 
-why these graphs are chordal.
+The key observation leading to this theorem was that the dominance graph of a 
+program under SSA is a tree, and since every definition of a variable dominates  
+its uses, the live-ranges of variables are subtrees of the dominance tree. This 
+is a characterisation of chordal graphs (see \cite[Thm.~4.8]{Golumbic} and 
+Appendix~\ref{app:chordal-graphs}).
 
-\begin{proof}[Short proof]
-  Corollary~\ref{cor:ssa-subtrees} states that under \ac{SSA}, live-ranges 
-  are subtrees of the dominance graph. Hence the interference graph is the 
-  intersection graph of a family of subtrees (the live-ranges) of a tree (the 
-  dominance tree), which is another characterization of chordal graphs 
-  \cite[Thm.~4.8]{Golumbic}.
-\end{proof}
+
+Since Chaitin et al.'s NP-completeness proof on register allocation in 
+1981~\cite{Chaitin81}, we know that the interference graphs of programs are 
+general, i.e., any graph can be the interference graph of a program. The 
+question is: Why, under SSA form, the interference graph of a program is not 
+general anymore but instead becomes chordal? The answer of course lies in the 
+element that modify the program structure: the \phifuns.
+
+To visualize how the \phifuns transform an interference graph into a chordal 
+graph, let us take the dominance tree of a program under SSA. Before going to 
+SSA, the variables had no reason to be subtree of this tree, meaning that 
+live-ranges can span across multiple branches, not following only paths on the 
+tree but also using paths of the control flow that are not part of the 
+dominance tree. These paths are in fact all control-flow edges leading to basic 
+blocks with multiple predecessors (hence, not ``dominance edges''). This means 
+that when going to SSA, every variable crossing these edges (and being 
+different on other incoming edges) will be ``cut'' there by the insertion of a 
+\phifun. The parallel semantics of \phifuns means indeed that these variables 
+are now ``split'' into at least two parts one before the control-flow edge and 
+one after. These two live-ranges can be allocated to different registers and do 
+not ``cross'' the control-flow edge anymore.
 
 
 
@@ -261,4 +321,5 @@ The point is that its coloring might be stucked (Chaitin reduction). So the poss
 \end{itemize}
 
 
+\endofchapter
 }
