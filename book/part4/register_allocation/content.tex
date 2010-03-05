@@ -1,13 +1,140 @@
-\chapter{register allocation \Author{S. Hack}}
-\section{TODO}
-\chapterauthor{Hack}
+% vim:spell:spelllang=en
+\chapter{Register Allocation\Author{F. Bouchez, S. Hack}}
 
-
+\numberofpages{15}
 Page count: 15
 
-We will start be giving an overview and intuitive understanding why SSA helps register allocation.
-Then, we present the principal architecure of an SSA-based register allocator.
 
-We discuss spilling, assignment, and coalescing in further detail and review the proposed techniques.
-Finally, we present the corresponding complexity results for each phase.
+\chapterauthor{Bouchez, Hack}
+
+{\it
+We will start by giving an overview and intuitive understanding why SSA helps 
+register allocation. Then we present the sub-problems of spilling and 
+coloring/coalescing, as two separate phases, under the light of SSA. Finally, 
+practical issues like register constraints and critical edge splitting are 
+discussed.
+
+%% Intro by Hack
+%We will start by giving an overview and intuitive understanding why SSA helps register allocation.
+%Then, we present the principal architecture of an SSA-based register allocator.
+
+%We discuss spilling, assignment, and coalescing in further detail and review the proposed techniques.
+%Finally, we present the corresponding complexity results for each phase.
+}
+
+
+\section{Why does SSA help register allocation?}
+
+
+\subsection{Classical register allocation}
+
+\begin{itemize}
+  \item based on graph coloring, linear scan
+  \item spilling \& coloring are dependent
+  \item heuristics are used to find a working solution
+  \item avoiding spills is more important than coalescing
+\end{itemize}
+
+
+\subsection{Programs under SSA have chordal interference graphs}
+\begin{itemize}
+  \item Proof programs under SSA are chordal
+  \item What difference does it make? Knowing the minimum number of colors is 
+    easy: we know if spilling is mandatory or not
+  \item why are the graphs chordal? View of SSA variables as subtrees of the 
+    dominance tree; made possible because of \phifuns
+  \item \phifuns allows colors to be ``re-arranged'' on incoming edges: this 
+    is implicit shuffle code. For this to work, remember that semantics of 
+    \phifun is they are \emph{parallel copies}. Hence, the SSA-variables of 
+    same initial variable in different branches of dominance tree are 
+    color-independent.
+\end{itemize}
+
+\subsection{Maxlive and colorability of graphs}
+\begin{itemize}
+  \item definition of Maxlive
+  \item show that Maxlive is the minimum number of colors required
+  \item scan of the dominance tree sufficient to know Maxlive: pseudo-code
+\end{itemize}
+    
+
+
+\section{The problem of spilling}
+
+\subsection{Lowering Maxlive}
+\begin{itemize}
+  \item The min number of colors is Maxlive. Variables must be stored in memory 
+    to lower the register pressure at points where it is $>R$.
+  \item Whenever, Maxlive $\leq R$, we know for sure that spilling more in 
+    unnecessary.
+\end{itemize}
+
+\subsection{SSA does not help for spilling}
+\begin{itemize}
+  \item easy spill method: spill everywhere
+  \item SSA split points are good for coloring, but not really for spilling 
+    (see article spill everywhere under SSA)
+  \item other split points to avoid spill everywhere are probably better
+\end{itemize}
+
+
+\subsection{Spilling under SSA}
+Still, we give a possibility to perform spilling under SSA
+\begin{itemize}
+  \item Hack's algorithm: simplified version?
+  \item \`a la Belady following dominance tree?
+\end{itemize}
+
+
+
+\section{Coloring and coalescing}
+\subsection{Chordal property for coloring}
+\begin{itemize}
+  \item two simplicial nodes
+  \item color in the reverse order of simplification
+  \item one such order considers subtrees from the root of the tree
+  \item no need to construct interference graph
+\end{itemize}
+
+\subsection{Fast tree-scan solution}
+\begin{itemize}
+  \item On the dominance tree, possible to scan from top and assign colors to 
+    variables as they come.
+  \item Biased coloring is used to coalesce variables linked by \phifuns.
+  \item see next section for more involved coalescing
+\end{itemize}
+
+
+
+\section{Practical and advanced discussions}
+
+\subsection{Handling registers constraints}
+\begin{itemize}
+  \item ABI contraints
+  \item split beforehand solution: many parallel copies, need good biased 
+    coloring
+  \item repair afterwards solution: biased try to give right color, else, 
+    actual copies are added
+\end{itemize}
+
+
+\subsection{Out-of-SSA and critical edge splitting}
+\begin{itemize}
+  \item \phifuns are not machine instructions, they are replaced by actual 
+    copies in out-of-SSA phase
+  \item in our case, colored SSA: Sreedhar not possible
+  \item SSA implicitly 
+    actual ``parallel copies'' are placed on edges
+  \item problem with some critical edges: abnormal edges, back-edge of loop
+\end{itemize}
+
+
+\subsection{More repairing on \phifuns}
+\begin{itemize}
+  \item Biased coloring is fast but not very good at coalescing
+  \item Basic parallel copy motion: move to next edge.
+  \item More involved problem: spill variables
+  \item Better solution: look at biblio (parallel copy motion)
+\end{itemize}
+
 
