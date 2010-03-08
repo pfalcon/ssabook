@@ -11,11 +11,15 @@ TODO: ?
 
 \section{Overview/Motivations}
 
-If-conversion is the process to remove conditional branches by transforming a control flow region into a single equivalent basic block. Removing branches improves performance in several ways: by removing the mis-prediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows the static scheduler to schedule earlier long latencies operations and to improve ILP with an optimized allocation of the multiple data path. 
+If-conversion is the process to remove conditional branches by transforming a control flow region into a single equivalent basic block, replacing conditional control flow execution by a sequence of conditional instruction. 
 
-Several algorithmic or design choices influence the effectiveness of if-conversion. As an optimisation, the region to if-conversion must be large enough to enlarge the scope of scheduling framework, but in the same time it must not exceed the machine resources (registers, cpus). We must make sure that the newly formed basic block doesn't have a higher schedule estimation than the one that would have been taken if the code was not if-converted. If-conversion removes instructions, but also can add some overhead (new instructions to merge predicates, register pressure for speculative conditional, bigger dependence height for predicated conditionals). This framework allows the decision functions to be accurate enough to avoid beeing too conservative and aggresively if-convert code.moving multiple control paths together can easely exceed processors resources (leading to exesive register pressure) or move unfrequently used expensive instruction (memory loads) into the critical path. 
+Removing branches improves performance in several ways: by removing the mis-prediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows the static scheduler to schedule earlier long latencies operations and to improve the ILP by merging multiple flows of execution, with an optimized allocation of the different data paths. 
+
+Several algorithmic or design choices influence the effectiveness of if-conversion. As an optimisation, the region to if-conversion must be large enough to enlarge the scope of scheduling framework, but in the same time it must not overcommit the machine resources (registers, cpus). If-conversion removes branches, but also can add some overhead (new instructions to merge predicates, register pressure for speculative conditional, bigger dependence height for predicated conditionals). The newly formed basic block doesn't have a higher schedule estimation than the one that would have been taken if the code was not if-converted.
 
 For this reason, existing approaches of if-conversion are either local using peepholes or intrinsics, or scoping larger but restricted regions such as loops hyperblocks. Such approaches require that the region is isolated from the rest of the control flow, for instance using tail duplication (cause for code bloat), and more important requires a complicated estimation of the future if-converted region. So many factor impact this (predicate computation, register pressure, dependence height) that the objective function needs to be very conservative. 
+
+The SSA framework allows the decision functions to be accurate enough to avoid beeing too conservative and aggresively if-convert code.moving multiple control paths together can easely exceed processors resources (leading to exesive register pressure) or move unfrequently used expensive instruction (memory loads) into the critical path. 
 
 \subsection{Architectural requirements}
 Conditional operations can be done thanks to different ways (predication, speculation, conditional moves and requires predicate computation and merge operation). The SSA framework described here supports a mix, or all of those ways. We suppose that the target architectures has a way to emit conditional execution of instruction. This is usually achieved in 3 different ways: In this chapter we use following notation for the simple $x = p \cond a + b : 0$ assignment.
@@ -39,24 +43,54 @@ $x = select \; p \cond t : 0 $ \\
 \end{minipage}
 \end{figure}
 
-\subsection{why SSA ?}
+\subsection{SSA if-conversion overview}
 
-problems introduced by if-conversion and predication:
-1) renaming problem since the same definition is partially redefined on the same path.
-2) minimally predicate instructions. Which instruction need to be conditionalized ? only those that merge.  others can be safely speculated without the need of a special predicate reduction pass.
+Locally, we notice then if-conversion require two problems to be solved.
+\begin{itemize}
+\item A renaming problem to avoid the multiple definitions of a different variables assignment merged into a single path. 
+\item Minimalize the number of instructions to be predicated. Only instruction that merge need to be conditionalized inside the predicate set that control the merge. Others can be safely speculated without the need of a special predicate reduction pass. 
+\end {itemize}
 
-SSA \cite{BriggsSSA} provides an efficient intermediate representation in which all false data dependencies have been removed, thus removing the need for register renaming needed when merging two definitions into one. Each assignment target (def) is assigned a unique register name. Registers are re-materialized at join nodes using $\phi$ operations. A procedure is in minimal SSA form if the number of $\phi$ instructions at join nodes is as small as possible. 
+SSA \cite{BriggsSSA} provides an efficient intermediate representation in which all false data dependencies have been removed, thus removing the need for register renaming needed when merging two definitions into one. Each assignment target (def) is assigned a unique register name. Registers are re-materialized at join nodes using $\phi$ operations. A procedure is in minimal SSA form if the number of $\phi$ instructions at join nodes is as small as possible. SSA-form representation gives the properties that a variable is assigned only once, and their merging point is exposed info $\phi$ operations solves those problems. 
 
-During this SSA algorithm, we view the if-conversion into 2 different problems. First as a global problem the region to if-convert must be defined, using objective functions and branch probabilities to avoid moving to the hot path less frequently used instruction. Since if-conversion also transforms control flow dependencies into data flow dependencies, register pressure can dependencies can become significantly high.
-Then as a local problem, for each basic block considered into the region, a predicate must be computed and assigned to the corresponding instructions. Finally predicated or speculative instructions must be emitted into the IR, and the SSA IR maintained.
-We start here to describe the local operations, that will be the basis, by iterative transformations for the region construction process. Conventional approaches is to use a top down hyperblock frameworks (refs) to detect interesting regions, using heuristics to predicts the beneficibility and then an if-conversion algorithm for predicate assignment and reductions. This is usually poor because resources dependencies height (due to data flow dependencies introduced by new predicates) are very difficult to predict globally. Also Such regions are usually isolated from the rest of the control flow graph using tail dupication. Finally variable renaming needs to be performed an join point expressed conditionally. 
+Once the operations to be conditionalized have be isolated. The framework still need to answer two other questions: As a global problem the region to if-convert must be defined, using objective functions and branch probabilities to avoid moving to the hot path less frequently used instruction. Since if-conversion also transforms control flow dependencies into data flow dependencies, register pressure can become significantly high. Such decision function must take into account operations created by the process itself, such as predicate merging or new copies. 
+
+Locally, for each basic block considered into the region, a predicate must be computed and assigned to the corresponding instructions. Finally predicated or speculative instructions must be emitted into the IR, and the SSA IR maintained.
+
+Conventional approaches is to use a top down hyperblock frameworks (refs) to detect interesting regions, using heuristics to predicts the beneficibility and then an if-conversion algorithm for predicate assignment and reductions. This is usually poor because resources dependencies height (due to data flow dependencies introduced by new predicates) are very difficult to predict globally. Also Such regions are usually isolated from the rest of the control flow graph using tail duplication. Finally variable renaming needs to be performed an join point expressed conditionally. 
 
 This algorithm takes as input SSA form and produces eith PSI-SSA if predicated instructions are available or pure SSA using select instructions to realized join points.
 
-multiple definition problem introduced by predication: In order to perform if-conversion the architecture most provide some kind of conditional selection of operands. If such operation exist, the algorithm produces SSA to SSA form.
-however, with predication we introduce a renaming problem because r is only partially redefined in the second assignment, but two definition exist. In order for the algorithm to works with SSA properties we choose to materialize using psi
+\subsection{SSA representation of conditional instructions}
+
+We expose here the edge dependency that is removed after the control flow optimisation by a new dependency into the $select$ or $\psi$ operation. Note that the $select$ operation is a real instruction. If the target architecture doesn't provide such instruction to switch between speculated instruction, it can be emulated using two conditional moves. One advantage to generate $select$ instruction at this stage is that the program stays in full SSA form and make all the data dependencies explicit, to can be feed to all SSA optimizers. 
+
+\begin{figure}
+\begin{minipage}[t]{4cm}
+\mbox{SSA:} \\
+$ if (p) $ \\
+$   x_1 = a+b $ \\
+$ else $ \\
+$   x_2 = 0 $ \\
+$ x = \phi (x_1, x_2) $ \\
+\end{minipage}
+\begin{minipage}[t]{4cm}
+\mbox{SSA-speculative form:} \\
+$x_1 = a + b $ \\
+$x_2 = 0 $ \\
+$x = select p ? x_1, x_2$ \\
+\end{minipage}
+\begin{minipage}[t]{4cm}
+\mbox{PSI-SSA form:} \\
+$x_1 = a + b $ \\
+$x_2 = 0 $\\
+$x = \psi (p \cond x_1, \overline{p} x_2) $ \\
+\end{minipage}
+\end{figure}
 
 \subsection{SSA operations on basic blocks}
+
+We first start to describe the local operations, that will be the basis, by iterative transformations for the region construction process. 
 
 \begin{figure}
 \begin{minipage}[t]{5cm}
@@ -96,7 +130,7 @@ Because, the join node is excluded from the if-converted region, while still par
 
 Consider a conditional branch depending on a predicate $p$ and a region starting at $BBhead$. Let $BBp$ be the set of single exit basic blocks $(BBi,\dots,BB_n)$ that are on the taken path if $p$ is true and $BBq$ be the set of single exit basic blocks $(BBj,\dots,BB_m)$ that are executed if $p$ is false. The merge point of the if-converted region is at $BBjoin$. We distinct 4 types of basic SSA transformation that the framework uses and produces:
 \subsubsection{$\phi$ removal} (figure \ref{fig:phi_rem})
-The join node of the considered region has two predecessors and $\phi$ instructions are of the form $r=\phi(r_1,r_2)$. After speculation of the definitions of $r_1$ and $r_2$ the instruction can be rewritten as $r=\psi(p,r_1,\overline{p}r_2)$.
+The join node of the considered region has two predecessors and $\phi$ instructions are of the form $r=\phi(r_1,r_2)$. After speculation of the definitions of $r_1$ and $r_2$ the instruction can be rewritten as $r=\psi(p?r_1,\overline{p}?r_2)$.
 \begin{proof} Once $BBp$ and $BBq$ have been promoted into $BBhead$, $BBjoin$ has for only predecessor $BBhead$ so it is not in its dominance frontier. The $\phi$ is not necessary and is removed.
 \end{proof}
 \subsubsection{$\phi$ reduction} (figure \ref{fig:phi_red})
@@ -123,7 +157,7 @@ The basic idea behind the SSA transformations is to replace $\phi$ operations by
 
 The $select$ generation being done after instruction selection, the if-conversion framework can take opportunities for local optimizations such as conditional constant propagation like the $r2=2$ assignment in figure \ref{fig:ssa} if it can be absorbed by the $select$ instruction. Doing such optimizations locally enables the heuristics to be more precise in the formation of candidate if converted new regions.
 
-\subsubsection{Partial redefinition problem}
+\subsubsection{Partial redefinition}
 
 The psi exposes the control flow dependencies to the data flow, by expressing the merge of two definitions. Note that the order of the partial definition is important, so a second definition redefines the first one. We use this propriety to speculate the first definitions, so it becomes speculated instead of disjoint. This local optimisation allow to remove a predicate dependency but also creates a new partial dependency (predicates are not disjoint).
 
@@ -148,17 +182,22 @@ The $\psi$ definition is defined on the $T$ predicate set, therefore it is specu
 
      \subsubsection{$\psi$ speculation properties}
 
-Since the algorithm process the regions from inner to outer, conditional operations will be in turn speculated or reconditionalized with a new condition. We define here $\phi$ operand promotion rules.
+Since the algorithm process the regions from inner to outer, conditional operations will be in turn speculated or reconditionalized with a new condition. We define here $\psi$ operand promotion rules.
 
-Consider if the following region, containing a subregion already processed
+Consider the code \ref{fig:nested_psi}  containing a subregion already processed
 
-per construction the predicate set of a $\psi$ is $True$. Since the second definition partially replace the first one we can speculate the first definition.
+Note the value produced in (4) is not defined for $p \& \overline{c}$ and $overline{p} \& \overline{c}$. Gladly all operations in defines $d_2 the \overline{c}$.
 
-Since the algorithm works the phi, only those operations need to be conditionalized, thus the psi instruction becomes a speculatable properites, because it definition domain is true. A psi can be predicated by distributed the new predicate into the operands's predicates
+\subsubsection{$\psi$ predication properties}
 
+If the instructions are not speculable, then they must be predicated:
+The c condition must be merged with all conditions under which the phi operands are used. here d1 uses !p, so the psi can be rewritten as
+
+We can see with this example that the decision to speculate or predicate can be done at the level of each joining definition, allowing a mix of them in the final program. The advantage to speculation over predication is a reduced dependency length. The disadvantage of speculation is that it increases register pressure untill the merge point, and put long latencies operation on the critical path.
+ 
 \begin{figure}
 \footnotesize
-\begin{minipage}[b]{5.5cm}
+\begin{minipage}[b]{4cm}
 $ if (c) $ \\
 $ \{ $ \\
 \hspace*{2mm}$ x_1 = a + b $ \\
@@ -169,23 +208,31 @@ $ \} $ \\
 $ else $ \\
 \hspace*{2mm}$ d_2 = 3 $ \\
 $ d = \phi(d_1,d_2) $ \\
-\caption{nested if, after one iteration}
+\caption{nested if}
+\label{fig:nested_psi}
 \end{minipage}
-\begin{minipage}[b]{5.5cm}
+\begin{minipage}[b]{4cm}
+$ x_1 = a + b $ \\
+$ \overline{p} \cond x_2 = c $ \\
+$ x = \psi(T \cond x_1, \overline{p} \cond x_2) $ \\
+$ d_1 = use (x) $ \\
+$ \overline{c} \cond d_2 = 3 $ \\
+$ d = \psi(T \cond d_1, \overline{c} \cond d_2) $ \\
+\caption{speculated nested if}
+\label{fig:nested_psi_speculated}
+\end{minipage}
+\begin{minipage}[b]{4cm}
 $ p_1 = \overline{p} \& {c} $ \\
 $ c \cond x_1 = a + b $ \\
 $ p_1 \cond x_2 = c $ \\
 $ x = \psi(c \cond x_1, p_1 \cond x_2) $ \\
 $ d_1 = use (x) $ \\
 $ \overline{c} \cond d_2 = 3 $ \\
-$ d = \psi(c \cond d_1, \overline{c} \cond d_2) $ \\
-\caption{nested if, after second iteration distributed condition}
+$ d = \psi(T \cond d_1, \overline{c} \cond d_2) $ \\
+\caption{predicated nested if}
+\label{fig:nested_psi_predicated}
 \end{minipage}
 \end{figure}
-
-\subsubsection{psi predication properties}
-
-The c condition must be merged with all conditions under which the phi operands are used. here d1 uses !p, so the psi can be rewritten as
 
 \subsubsection{Predicate merging}
 
