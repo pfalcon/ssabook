@@ -6,7 +6,7 @@
 
 %% Local macros for personal use
 \newcount\todocount \todocount=0
-\def\todo#1{\global\advance\todocount by 1 {\bf TODO:} #1}
+\def\todo#1{\global\advance\todocount by 1 {\color{blue} {\bf TODO:} #1}}
 \newlinechar=`\^^J
 \def\endofchapter{\ifnum\todocount>0\immediate\write16{^^JLaTeX Warning: There 
 was still TODO macros: \the\todocount.^^J}\fi}
@@ -15,6 +15,8 @@ was still TODO macros: \the\todocount.^^J}\fi}
 \def\ac#1{#1}
 \def\dom{\preceq}
 \def\ssa{SSA\xspace}
+\def\maxlive{Maxlive\xspace}
+\def\irc{Iterated Register Coalescing\xspace}
 
 \numberofpages{15}
 Page count: 15
@@ -52,6 +54,8 @@ the other hand, in the initial program representation and until very late in
 the compiler back-end, values are stored in variables or temporaries, which are 
 unbounded in number.
 
+
+\todo{Explain reg-alloc = coloring, i.e., color = register.}
 
 
 \section{Why does SSA help for register allocation?}
@@ -107,16 +111,15 @@ We will see that, under SSA form, we have a polynomial algorithm that can tell
 whether $R$ registers are sufficient or not. This allows to decouple register 
 allocation into two phases: the first phase spills variables until we know that 
 $R$ registers are sufficient, at which point no coalescing can help reducing 
-the coloring number any further, then, the remaining variables are assigned to 
-registers while performing as much coalescing as possible, forbidding any more 
-spill.
+the coloring number any further; then, the remaining variables are assigned to 
+registers while performing as much coalescing as possible as long as it does 
+not induce more spill.
 
 This for one allows for much simpler register allocation schemes, as each phase 
 must be handled separately, which relieves the compiler of the worries of 
-coalescing affecting the spilling. This makes also for a simpler architecture, 
-where the two phases are cleanly separated (compare to IRC).
-
-\todo{STOPPED HERE}
+coalescing affecting the spilling. As such, each phase can be optimized more 
+easily and the resulting register allocation phase can be more efficient.
+\todo{finish explanations}
 
 
 
@@ -144,7 +147,7 @@ where the two phases are cleanly separated (compare to IRC).
 It is known since 2005 that, under SSA, the interference graph of a program is 
 chordal \cite{Brisk05,Pereira05:chordal,Hack06}.  Note that the interference 
 graph depends on the interference notion, and we need that two variables alive 
-at the same interfere even if they have the same value.\footnote{Note that, under 
+at the same time interfere even if they have the same value.\footnote{Note that, under 
 SSA, there is only one definition, hence, if variable $b$ is defined as $b\gets 
 a$, it is possible to replace every occurrence of $b$ by $a$ since they will 
 always be equal.
@@ -155,8 +158,9 @@ always be equal.
 %(Definition~\ref{def:chaitin-interf}) as there is no remaining copy in the 
 %program.
 }
-This was already mentioned in Chapter~\ref{chap:properties-and-flavours}. We 
-recall here the theorem since it is a vital property for register allocation:
+This chordal property was already mentioned in 
+Chapter~\ref{chap:properties-and-flavours}. We recall here the theorem since it 
+is a vital property for register allocation:
 
 \begin{theorem}
   \label{thm:ssa-chordal}
@@ -168,10 +172,10 @@ The major impact for register allocation is that, while coloring a general graph
 with the minimum number of colors in NP-complete, it is polynomial in the case 
 of chordal graphs. Since register allocation amounts to coloring the 
 interference graph of a program, this means that, under SSA, we can have an
-algorithm that answer in polynomial time whether $R$ registers are sufficient 
-or not for allocation all variables, i.e., \emph{whether spilling is mandatory 
+algorithm that answers in polynomial time whether $R$ registers are sufficient 
+or not to allocate all variables, i.e., \emph{whether spilling is mandatory 
 or not.} This is a fundamental breakthrough as, up to know, register 
-allocation algorithms all depends on coloring \emph{heuristics} to decide 
+allocation algorithms all depend on coloring \emph{heuristics} to decide 
 whether to spill or not.
 
 
@@ -193,57 +197,233 @@ question is: Why, under SSA form, the interference graph of a program is not
 general anymore but instead becomes chordal? The answer of course lies in the 
 element that modify the program structure: the \phifuns.
 
-To visualize how the \phifuns transform an interference graph into a chordal 
-graph, let us take the dominance tree of a program under SSA. Before going to 
-SSA, the variables had no reason to be subtree of this tree, meaning that 
-live-ranges can span across multiple branches, not following only paths on the 
-tree but also using paths of the control flow that are not part of the 
-dominance tree. These paths are in fact all control-flow edges leading to basic 
+To visualize how the \phifuns transform a general graph into a chordal graph, 
+let us take the dominance tree of a program under SSA. Before going to SSA, the 
+live-ranges of at least some variables are not subtrees of this tree,
+spanning across multiple branches and not following only paths on 
+the tree. These other paths are in fact all control-flow edges leading to basic 
 blocks with multiple predecessors (hence, not ``dominance edges''). This means 
 that when going to SSA, every variable crossing these edges (and being 
 different on other incoming edges) will be ``cut'' there by the insertion of a 
 \phifun. The parallel semantics of \phifuns means indeed that these variables 
-are now ``split'' into at least two parts one before the control-flow edge and 
+are now ``split'' into at least two parts: one before the control-flow edge and 
 one after. These two live-ranges can be allocated to different registers and do 
-not ``cross'' the control-flow edge anymore.
+not ``cross'' the control-flow edge anymore. At runtime, this means that when 
+removing the \phifun, shuffle code will be inserted on the edge to move 
+variables that have sub-parts colored differently on their right registers.
 
 
 
 \subsection{Maxlive and colorability of graphs}
+
+{\sl
 \begin{itemize}
   \item definition of Maxlive
   \item show that Maxlive is the minimum number of colors required
   \item scan of the dominance tree sufficient to know Maxlive: pseudo-code
   \item Fab: MAXLIVE minimum if interference graph==intersection graph. Clearly we do not want to go into such details but be careful to use precise and correct terms.
-
 \end{itemize}
+}
     
+The register pressure at a program point is the number of variables alive at 
+this point.\footnote{Considering all simultaneously alive variables interfere.}
+The greatest register pressure over all a program is called \maxlive, 
+since it is the maximum number of simultaneously alive variables. Obviously, 
+spilling is mandatory if \maxlive is strictly greater than $R$, the number of 
+registers.
+Under SSA, the good news is that this is the only case where spilling is 
+required, i.e., if \maxlive $\leq R$, there is no need for spilling. Indeed, 
+\maxlive is the coloring number of the chordal interference graph of the 
+program (\todo{ref to chapter 2?}). So, we can devise a polynomial test to know 
+whether spilling is necessary or not by computing \maxlive. This can be done by 
+checking on every program point the number of variables that are alive. If 
+liveness information is available on the whole program, the order does not 
+matter. However, in the case of SSA, this is not required as \maxlive can 
+easily be computed without liveness information by performing a scan of the 
+dominance tree, starting from the root. We only need to know which uses are 
+``last-uses.'' The pseudo-code is given on Figure~\ref{code:compute-maxlive}.
+\todo{check \maxlive scan needs last uses}.
+
+
+\begin{figure}[ht]
+  \begin{verbatim}
+  function compute-branch (p, live)
+    live <- live - { uses in p that are last uses }
+    live <- live + { definitions of p }
+    maxlive <- max( maxlive, #live )
+    foreach child c of p
+      compute-branch (c, live)
+
+  function compute-maxlive
+    maxlive <- 0
+    compute-branch (root, {})
+  \end{verbatim}
+  \caption{Pseudo-code for \maxlive}
+  \label{code:compute-maxlive}
+\end{figure}
+
+
 
 
 \section{The problem of spilling}
-
 \subsection{Lowering Maxlive}
+
+{\sl
 \begin{itemize}
   \item The min number of colors is Maxlive. Variables must be stored in memory 
     to lower the register pressure at points where it is $>R$.
   \item Whenever, Maxlive $\leq R$, we know for sure that spilling more in 
     unnecessary.
-  \item Fab: if MAXLIVE<=R spilling is unecessary under some conditions (we color SSA code, going out of SSA code might require some additionnal spilling. Also without naming constraints). So again be careful about what you say. I think that the idea is to have a register allocator under SSA as simple as possible with a very simple modeling and nice properties. Then we cope with real world issues during the colored-SSA destruction.
-
-
+  \item Fab: if MAXLIVE$\leq R$ spilling is unecessary under some conditions (we color SSA code, going out of SSA code might require some additionnal spilling. Also without naming constraints). So again be careful about what you say. I think that the idea is to have a register allocator under SSA as simple as possible with a very simple modeling and nice properties. Then we cope with real world issues during the colored-SSA destruction.
 \end{itemize}
+}
+
+Usually, there are too many variables in a program and \maxlive is greater than 
+$R$. In that case, we need to lower the register pressure at program points 
+where it exceeds $R$ by spilling, i.e., storing variables in memory instead of 
+registers. Whenever we reach a point where \maxlive $\leq R$, it will be 
+possible to color all SSA variables with the $R$ registers. For now, the 
+difficulty lies in choosing which variables to spill, and where to spill them. 
+Indeed, a careful choice will lead to performance, while making bad decisions 
+can lead to big slowdowns. As accesses to variables in memory require more time 
+that accesses to registers, it is for instance better to avoid spilling 
+variables used inside frequently executed code regions like loops.
+
+\todo{spilling while keeping SSA property}
+
+
+\subsection{Spilling is a difficult problem}
+
+The problem of spilling is a difficult one in the literature, even under one of 
+its simpler forms, the spill everywhere problem, where spilled variables stay 
+so on their entire live-range~\cite{todo}. This spilling is advocated on the 
+first graph-coloring algorithms~\cite{Chaitin81} and even in subsequent 
+algorithms~\cite{IRC} because it fits better the graph-coloring representation. 
+In these schemes, this amounts to removing nodes from a non $R$-colorable graph 
+until it becomes $R$-colorable. Although this node deletion problem is known to 
+be NP-complete, this allows the writing of simple heuristics based on the 
+number of neighbours in the graph and a cost attached to nodes representing the 
+overhead incurred in case they were to be spilled. An added problem is the fact 
+that, for many architectures like RISC, spilled variables cannot be accessed 
+directly from memory but must instead by copied back to the registers, when 
+they are used, or which must be in a register when defined, just before being 
+copied to memory. This creates new variables with very short live-ranges at the 
+definition and use points, which must be accounted for register allocation. 
+This explains why algorithms such as \irc must rebuild the interference graph 
+after a phase of spilling and start again, until no more spilling is required.
+
+
+The actual spilling problem is even more difficult, as variables do not have to 
+be spilled on their entire live-range.
+% borrowed from sebastian's CC'09 paper
+Consider a loop with excessive register pressure and a variable that is defined 
+before the loop and used afterwards. Ideally, a compiler would store (spill) 
+the variable in front of the loop and load (reload) the variable after the 
+loop. If the variable was reloaded inside the loop, the reload would be 
+executed in each loop iteration. Another example is a variable that is used in 
+a loop but has already been spilled before the loop. Reloading this variable 
+directly before its use in the loop will cause memory traffic in each loop 
+iteration. Thus, it is preferable to put the reload in front of the loop.
+% end of borrowing
+This poses a new problem on top of choosing which variables to spill: now we 
+need also to choose where to spill them, i.e., where to put {\tt load} and {\tt 
+store} instructions. This more general problem where the goal is to minimize 
+the overhead of these added instructions is called the load-store optimization 
+problem and is known to be NP-complete, even for a 
+basic-block~\cite{Liberatore00}.  
+
 
 \subsection{SSA does not help for spilling}
+{\sl
 \begin{itemize}
   \item easy spill method: spill everywhere
   \item SSA split points are good for coloring, but not really for spilling 
     (see article spill everywhere under SSA)
   \item other split points to avoid spill everywhere are probably better
-  \item Fab: if you need an example to illustrate that SSA does not really help in practice for spilling ask Quentin. It does help a little bit (dynamic programming possible for spill everywhere with few registers; further first can be generalized). But what you want to point it here is the fact that the disadvantages seem more important than advantages.
+  \item Fab: if you need an example to illustrate that SSA does not really help 
+    in practice for spilling ask Quentin. It does help a little bit (dynamic 
+    programming possible for spill everywhere with few registers; further first 
+    can be generalized). But what you want to point it here is the fact that 
+    the disadvantages seem more important than advantages.
   \item Fab: the LCTES spill everywhere article does not discuss practical issues (such as the fact that it might insert a load or a store inside a loop...). It is more algorithmical issues.
-
-
 \end{itemize}
+}
+
+For the spilling problem, the SSA is not really of much help. Over a blind 
+spill everywhere algorithm on the initial program, it has however the slight 
+advantage of allowing the spilling of SSA variables, i.e., sub-variables of the 
+initial variables. One major disadvantage is the added complexity when spilling
+variables defined in \phifuns \todo{explain the problem if not all args are 
+spilled, or if spilled in $\neq$ locations}.
+
+{\sl Examples by Quentin}
+\begin{minipage}{.45\textwidth}
+\begin{verbatim}
+CSSA :
+   a =
+   b =
+ /       \
+c= a   d = b
+ \       /
+ e = phi(c,d)
+ = e
+\end{verbatim}
+\end{minipage}
+\begin{minipage}{.45\textwidth}
+After spilling spill :
+\begin{verbatim}
+   a =
+   b =
+ /          \
+c= a     d = b
+C=st c  D = st d
+ \          /
+ E = phi(C,D)
+ e = ld E
+ = e
+\end{verbatim}
+\end{minipage}
+In that case, memory locations C, D and E can be the same. But this does not 
+mean that placement of {\tt store} instruction is the best one.
+
+\begin{minipage}{.45\textwidth}
+\begin{verbatim}
+SSA :
+   a =
+   b =
+ /         \
+ \         /
+ e = phi(a,b)
+ = e
+\end{verbatim}
+\end{minipage}
+\begin{minipage}{.45\textwidth}
+Spill supposing {\tt store}s are after definition
+\begin{verbatim}
+   a =
+   A = st a
+   b =
+   B = st b
+ /         \
+ \ <--     / <--
+ E = phi(A,B)
+ e = ld E
+ = e
+\end{verbatim}
+\end{minipage}
+
+On the two edges pointed by arrows (or on the preceding basic block if they are 
+not critical), additional memory transactions must reconcile the values:
+\begin{verbatim}
+tmp = ld X
+Y = st tmp
+\end{verbatim}
+
+This can induce more spill, unforeseen.
+Without SSA, this problem does not exist: for instance, with spill everywhere, 
+the same memory slot is affected to all definitions of the same variable so no 
+post-treatment is required as it is under SSA.
+
 
 
 \subsection{Spilling under SSA}
@@ -255,7 +435,10 @@ Still, we give a possibility to perform spilling under SSA
   \item Fab: The last Algorithm from Sebastian is Belady like. So yes try to simplify it, provide the pseudo code and give the intuitions on how the full version improves it.
 
 \end{itemize}
+\todo{Ask Sebastian to do it.}
 
+
+\cite{Braun09:spilling-ssa}\todo{file braun09cc.pdf in biblio}
 
 
 \section{Coloring and coalescing}
@@ -265,7 +448,13 @@ Still, we give a possibility to perform spilling under SSA
   \item color in the reverse order of simplification
   \item one such order considers subtrees from the root of the tree
   \item no need to construct interference graph
-  \item Fab: make it as more intuitive as possible. Avoid as much as possible chordal stuffs which are useless. Greedy coloring and its relationship with the subtree representation is important on the other hand. See with Philip to avoid redundancies between your chapter and his (SSA properties). It is important to outline here that this property that is due to decoupled+SSA enables more aggressive coalescing heuristics. But also simpler (tree-scan).
+  \item Fab: make it as more intuitive as possible. Avoid as much as possible 
+    chordal stuffs which are useless. Greedy coloring and its relationship with 
+    the subtree representation is important on the other hand. See with Philip 
+    to avoid redundancies between your chapter and his (SSA properties). It is 
+    important to outline here that this property that is due to decoupled+SSA 
+    enables more aggressive coalescing heuristics. But also simpler 
+    (tree-scan).
 \end{itemize}
 
 \subsection{Fast tree-scan solution}
