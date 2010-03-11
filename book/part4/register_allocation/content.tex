@@ -488,7 +488,9 @@ greater than~$R$ at all time and there is no way to reduce their degree than
 simplifying one of them, which is impossible. The side effect is that the 
 greedy scheme defines a class of graphs that we call the 
 \emph{greedy-$k$-colorable} graphs. These are the graphs $k$-colorable using 
-the greedy scheme.
+the greedy scheme. The pseudo-code for testing if a graph is 
+greedy-$k$-colorable is given on Figure~\ref{code:is-k-greedy}.
+
 
 
 \begin{comment}
@@ -513,13 +515,85 @@ $\mbox{worklist} = \{ v \in V \mid \mbox{degree[$v$]} < k\}$ \;
 \end{function} 
 \end{comment} 
 
+\begin{figure}
+\begin{verbatim}
+Function Is_kGreedy(G)
+  Data: Undirected graph G = (V, E);
+  ∀v ∈ V, degree[v] = #neighbors of v in G,
+  k number of colors
+stack = {} ; worklist = {v ∈ V | degree[v] < k} ;
+while worklist != {} do
+  let v in worklist ;
+  foreach w neighbor of v do
+    degree[w] = degree[w]-1 ;
+    if degree[w] = k - 1 then worklist = worklist U {w}
+  push v on stack ; worklist = worklist \ {v} ; /* Remove v from G */
+if V = {} then return TRUE else return FALSE
+\end{verbatim}
+\caption{Iskgreedy function}
+\label{code:is-k-greedy}
+\end{figure}
 
+\subsubsection{Simplification on chordal graphs.}
+
+Chordal graphs are easily colorable using a \emph{simplicial elimination 
+scheme}. There is indeed a property that chordal graph have at least two 
+simplicial vertices, i.e., nodes whose neighbours in the graph are a clique (a 
+complete subgraph) \todo{check if already said in chapter 2, or cf. Appendix}.  
+A simplicial elimination scheme is a particular order of simplification of 
+nodes in which only simplicial nodes may be chosen. Such an order gives the 
+minimum number of colors to the graph in polynomial time, but can be a bit 
+tedious to obtain. In practice, in register allocation, we do not need the 
+minimum number of colors, we just need that at most $R$ colors are used. Since 
+enough spilling has already been done in the previous section, we know that 
+\maxlive is at most $R$, hence that the interference graph is $k$-chordal with 
+$k\leq R$. This means that every simplicial node in the simplicial elimination 
+scheme has a degree at most $k-1$ in the remaining graph, hence any simplicial 
+elimination order is also a valid simplification order for a 
+greedy-$k$-coloring. Hence a $k$-chordal graph is also greedy-$k$-colorable, 
+hence greedy-$R$-colorable and any simplification scheme for $R$ registers will 
+manage to color it with at most $R$ colors.
+
+
+This means we do not need a fancy coloring algorithm tuned for chordal graphs, 
+the original simplification scheme of Chaitin et al.\ does the job, without any 
+modification. Following a call to Is\_k\_Greedy, it is possible to re-use the 
+stack to assign the colors by making a call to Assign\_colors, 
+Figure~\ref{code:assign-color}. Among the good things, this also means that 
+existing register allocators can be easily modified to handle SSA code and that 
+register allocation can benefit from powerful coalescing strategies such as 
+aggressive or conservative ones. Moreover, the fact that register allocation 
+can be decoupled into a phase of spilling first and then a phase of 
+coloring/coalescing allows the writing of more involved coalescing \todo{cite 
+examples}.
+
+
+\begin{figure}
+\begin{verbatim}
+Function Assign_colors(G)
+  available = new array of size R and values True
+  while stack != {} do
+    v = pop stack ;
+    for each neighbour w in G
+      available[color(w)] = False
+    col = 0;
+    for each color c from 1 to R
+      if available[c]
+        col = c
+      available[c] = True /* prepare for next round */
+    color(v) = col
+    add v to G
+\end{verbatim}
+\caption{Assign\_color function}
+\label{code:assign-color}
+\end{figure}
 
 
 
 
 
 \subsection{Fast tree-scan solution}
+{\sl
 \begin{itemize}
   \item On the dominance tree, possible to scan from top and assign colors to 
     variables as they come.
@@ -528,10 +602,168 @@ $\mbox{worklist} = \{ v \in V \mid \mbox{degree[$v$]} < k\}$ \;
   \item Fab: I think that you already talked about scan coloring. Ok to talk about biased.
   \item Fab: You can talk about biased coloring that uses the result of an aggressive coalescing (see with Quentin). It is not more complicated and it improves results.
 \end{itemize}
+}
+
+One of the advantages of SSA is to make things simpler, faster, and use less 
+memory. For the register assignment problem, we have seen that the existing 
+greedy scheme based on simplification still works, however, this still requires 
+the construction and maintaining of an interference graph, a structure judged 
+to big and cumbersome to be used in JIT context, where compilation time and 
+memory prints matters more. This is one of the reasons linear-scan allocators 
+are being developed, even if their performance does not equal those of 
+aggressive time-consuming off-line compilers. We will now present a method to 
+perform fast register assignment for SSA programs which does not need more than 
+the dominance tree and def-use chains.
+
+Let us get back at the dominance tree representation, with live-ranges being 
+subtrees of this tree. This representation reflects the chordal property of the 
+interference graph. Consider the variables alive at a leaf of the dominance 
+tree (the ``end'' of a branch), they form a clique of the graph and because of 
+the dominance property, the definition of one of them, say $v$, is dominated by 
+the definitions of all the others.  This variable has a ``smaller'' live-range, 
+compared to the other variables, which are all already alive at its definition.  
+This means that every variable interfering with $v$ also interfere with the 
+other variables. In other words, all neighbours of $v$ form a clique, i.e., $v$ 
+is a simplicial node in the interference graph, and it has at most $R-1$ 
+neighbours.  This means that all ``leaf'' variables, i.e., the ones that have 
+their definition the closest to the end of their branch in the dominance tree, 
+are candidate for simplification by the greedy algorithm. Once they are 
+simplified, other variables become leaf variables and the simplification 
+process can continue again, until we reach the root of the dominance tree.
+
+Following the idea of the greedy algorithm, the stack is now filled with 
+variables ordered by appearance of their definition, i.e., if the definition of 
+$a$ appears before the definition of $b$ on the path from the root to $b$, $a$ 
+is higher in the stack, hence will be colored before $b$. In short, it is 
+possible to color all subtrees of the dominance tree by starting at the root 
+and scanning the dominance tree in a top-down fashion, assigning colors to 
+variable as their definition is encountered. This is possible since, under SSA,  
+variables are subtrees hence do not interfere if they belong to different 
+branches. A pseudo-code to assign colors is given in procedure Tree\_Scan,
+Figure~\ref{code:assign-tree-scan}.
+
+
+\begin{figure}
+  The {\tt colors} array is boolean and represent available colors.
+
+  \begin{verbatim}
+Tree_Scan(T)
+
+  function assign_color(p,colors)
+    for each v last use at p
+      colors[color(c)] = True   /* colors not used anymore */
+
+    for each v defined at p
+      choose_color(v,colors)    /* choose available color */
+      colors[c] = False
+      color(v) = c
+
+    for each child p' of p
+      assign_color(p', colors)
+
+  color(root(T))
+
+  \end{verbatim}
+  \caption{Tree scan coloring algorithm for SSA.}
+  \label{code:assign-tree-scan}
+\end{figure}
+
+
+This coloring algorithm is really fast as it only needs one traversal of the 
+dominance tree. Since the number of colors is fixed and small, it can be 
+implemented as a bit-set so as to speed-up updates of which colors are 
+available or not. The pseudo-code for function {\tt choose\_color} is 
+deliberately not given yet. A very basic implementation can just scan the 
+color array until it finds one that is not taken (this is assured since we are 
+under SSA and spilling has already been done). We will now see why it might be 
+beneficial to bias the choosing of colors so as to perform some coalescing.
+
+
+
+\subsubsection{Biased coalescing.}
+
+The goal of coalescing is to minimize the number of register-to-register {\tt 
+move} instructions in the final code. While there may not be so many such 
+``copies'' at the high-level (e.g., instruction {\tt a = b} in C), especially 
+after a phase of copy propagation under SSA (\todo{See chapter X}), there can 
+be much more of these after the register allocation phase. One reason is that 
+it helps treating register constraints, we will explain this point in 
+Section~\ref{sec:practical-regalloc}. One even more obvious and unavoidable 
+reason is the presence of \phifuns due to SSA form. Indeed, remember that a 
+\phifun represents in fact parallel copies on incoming edges of basic blocks. 
+For instance, if the function is $a \gets \phi(b,c)$, then it means that 
+instructions $a\gets b$ should be executed on the edge coming from the left, 
+and $a\gets c$ on the one from the right. Suppose now that register allocation 
+decided to put $a$ and $b$ in register $R_1$, but $c$ in register $R_2$, then 
+the copy $a\gets b$ does not need to be executed anymore, but $a\gets c$ does 
+since the value of variable $c$, will be contained in $R_2$ and needs to 
+transfered to $R_1$, which means the final code will contain instruction {\tt 
+mov $R_1$, $R_2$} or the like.
+
+Obviously, it is better to assign variables linked by a \phifun, as definition 
+and argument, to the same register. This concerns for instance all subscripts 
+of the same variable: it is usually better to assign $a_1$, $a_2$, etc.\ to the 
+same register since they come from the same variable $a$. In fact we can define 
+a notion of \emph{affinity}, acting as the converse of the relation of 
+interference, expressing how much two variables ``want'' to have the same 
+color, i.e., share the same register. A metric can be added to this notion, 
+measuring the benefit one could get if the two variables are assigned to the 
+same register. Hence, for two variables $a$ and $b$, count 1 for each time they 
+appear in the same copy instruction ($a\gets b$ or $b\gets a$) or \phifun 
+($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$). These numbers 
+can of course be weighted using empirically parameters (classically, times ten 
+for each level of nested loop, halved if in a conditional branch, etc.) or 
+using actual execution frequencies based on profiling.
+
+
+Since the number of affinities is sparse compared to the number of possible 
+pairs of variables, we propose to keep for each variable a list affinities, 
+where each element is a pair composed of a variable and the weight of the 
+affinity with this variable. In that case, the function {\tt choose\_color} can 
+be written as in Figure~\ref{code:choose-color}. This is a very simple bias, 
+where at each point the color chosen is the one that maximizes, under the 
+current knowledge, the coalescing for the variable being colored. It is not of 
+course optimal since the general problem of coalescing is NP-complete 
+(\todo{ref}), and biased algorithms are known to be easily misguided.
+
+
+\begin{figure}
+  The {\tt colors} array is boolean and represent available colors.
+
+  \begin{verbatim}
+global variables
+  count = array of size #colors and elements 0
+
+choose_color(v, colors)
+  for each (u,w) in affinity_list(v)
+    count[color(u)] += w
+  max_w = -1
+  col = 0
+  for each color c
+    if colors[c] = true /* color is not used by a neighbour of v */
+      if count[c] > max_w
+        col = c
+        max_w = count[c]
+    count[c] = 0 /* prepare array for next call to choose_color */
+  \end{verbatim}
+  \caption{Choosing a color with a bias for coalescing.}
+  \label{code:choose-color}
+\end{figure}
+
+
+\subsubsection{Aggressive coalescing to improve biased coalescing.}
+
+There is another simple and interesting idea to improve biased coalescing. We 
+still consider a JIT context where compilation speed is very important.
+\todo{what kind of aggressive? Ask fab\ldots}
+
+
+
 
 
 
 \section{Practical and advanced discussions}
+\label{sec:practical-regalloc}
 
 \subsection{Handling registers constraints}
 \begin{itemize}
