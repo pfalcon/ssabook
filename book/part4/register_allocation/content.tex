@@ -765,23 +765,112 @@ still consider a JIT context where compilation speed is very important.
 \section{Practical and advanced discussions}
 \label{sec:practical-regalloc}
 
+
 \subsection{Handling registers constraints}
+{\sl
 \begin{itemize}
   \item ABI contraints
   \item split beforehand solution: many parallel copies, need good biased 
     coloring
   \item repair afterwards solution: biased try to give right color, else, 
     actual copies are added
-  \item Fab: For the repair afterward at the time we will publish the book you will be able to cite the current paper we write on tree-scan coalescing. We plan to elaborate on the repairing mechanism and illustrate it in the context of tree-scan.
-  \item Fab: For the repair afterward you will build an interference graph with negative 
-affinity weights. Current coalescers do not handle it. A workaround (but 
-costly) for affinity adge (a,b) with weight W<0 is replace it by an 
-interference edge (a,ab) and an affinity edge (ab,b) of weight -W with ab a 
-dummy node. For iterated reg-alloc (Briggs \& George's test) you can rewrite the different rules by doing as if you had such a dummy node (you virtualize it). You can discuss this with Quentin. Of course the idea is not to describe it here but it can be interesting to discuss a little bit the implications.
+  \item Fab: For the repair afterward at the time we will publish the book you 
+    will be able to cite the current paper we write on tree-scan coalescing. We 
+    plan to elaborate on the repairing mechanism and illustrate it in the 
+    context of tree-scan.
+  \item Fab: For the repair afterward you will build an interference graph with 
+    negative affinity weights. Current coalescers do not handle it. A 
+    workaround (but costly) for affinity adge (a,b) with weight W<0 is replace 
+    it by an interference edge (a,ab) and an affinity edge (ab,b) of weight -W 
+    with ab a dummy node. For iterated reg-alloc (Briggs \& George's test) you 
+    can rewrite the different rules by doing as if you had such a dummy node 
+    (you virtualize it). You can discuss this with Quentin. Of course the idea 
+    is not to describe it here but it can be interesting to discuss a little 
+    bit the implications.
 \end{itemize}
+}
+
+In theory, register allocation algorithms are always nicely working with nodes 
+and colors. In practice, however, not all variables or registers are 
+equivalent. Depending on the architecture, some registers might be dedicated 
+to perform memory operations, some instructions expects their operands to 
+reside in particular registers, and in general conventions are defined to 
+simplify for example the writing of libraries, by specifying how parameters to 
+functions are passed and how results are returned. This adds constraints to the 
+register allocation, usually by restricting the coloring possibilities of 
+variables. Some examples are given in Figure~\label{fig:reg-constraints}.
+
+\begin{figure}
+  \begin{tabular}{ccc}
+    Constraint  & Instruction & Effect on reg. alloc. \\
+    Division in registers $R_x$ and $R_y$ & $a / b$ & $a$ in $R_x$, $b$ in $R_y$\\
+    Memory load cannot use $R_z$ & $a = load(b)$ & $b$ cannot be in $R_z$\\
+    Functions arguments in $R_1$, $R_2$\ldots & $a = f(b,c)$ & $b$ in $R_1$, 
+    $c$ in $R_2$ \\
+  \end{tabular}
+  \caption{Examples of register constraints.}
+  \label{fig:reg-constraints}
+\end{figure}
+
+
+The problem with such constraints is that they cannot be expressed directly in 
+the register allocation problem. For instance, if variable $a$ and $b$ must 
+absolutely reside in register $R_1$, it is not possible to pre-color them with 
+color $R_1$ as the interference graph could not be chordal anymore.  
+Furthermore, $a$ and $b$ maybe interfere, for instance if they are both the 
+first parameter of successive function calls, it that case putting them in the 
+same register without check would break the program. We propose two solutions 
+to deal with this problem. The first is classic in the literature, and the 
+second is newer and promising.
+
+
+\subsubsection{Splitting variables to handle register constraints.}
+
+Traditionally, variables involved in constraining operations are split before 
+and after the operation. For instance, if $a$ is involved in a division on an 
+x86, the instructions $a'\gets a$ and $a\gets a'$ are issued before and after 
+the division so that, if $a$ is not in the right register, it can be moved in 
+it for the operation. This however still poses the problem of variable $a'$ 
+which still interfere with every variable alive during the division, and hence 
+is part of the interference graph. Moreover, $a$ is redefined which breaks the 
+SSA. A workaround solution is to split \emph{all} variables alive before and 
+after the operation using a \emph{parallel copy}. New subscripted variables 
+must be defined by the second split to keep the SSA property (and subsequent 
+uses must be changed accordingly). The use of parallel copies assures that 
+the locally created variables, with very short live-ranges (span of only one 
+instruction), are completely disconnected from the interference graph. Their 
+only relation with the other, ``normal'' variable are affinities that each 
+variable share with the two other parts coming from the same original variable.
+In that case, the danger is that many copy instructions can be added if the 
+coalescing is not good enough to assign most of the created copies to the same 
+register.
+
+
+\subsubsection{Repairing problems afterwards.}
+
+Another possibility is to let register allocation do its job, and then 
+intervene to repair the coloring whenever it does not fit the constraints, by 
+adding copies afterwards around mismatches. To minimize the number of conflicts 
+on constraints, it is however important to drive the coloring so that it still 
+gives the right color whenever possible. For example, if variable $a$ must 
+reside in register $R_1$, it is possible to consider a clique of $R$ nodes 
+otherwise disconnected from the graph, one for each register, and adding $R_1$ 
+in the affinity list of $a$. On the contrary, if $a$ cannot be assigned to a 
+register, say $R_2$, an affinity of \emph{negative weight} is added to the 
+list, representing the added cost it will required if $a$ is still put in 
+register $R_2$. Existing coalescing algorithms in the literature currently do 
+not support negative weight \todo{see Fab's hack}.
+
+
+
+
+
+
 
 
 \subsection{Out-of-SSA and critical edge splitting}
+
+{\sl
 \begin{itemize}
   \item \phifuns are not machine instructions, they are replaced by actual 
     copies in out-of-SSA phase
@@ -792,6 +881,20 @@ dummy node. For iterated reg-alloc (Briggs \& George's test) you can rewrite the
   \item Fab: Sreedhar IS possible. It generates local variables not colored.
 The point is that its coloring might be stucked (Chaitin reduction). So the possible need to split edges...
 \end{itemize}
+}
+
+As mentioned previously, the \phifuns are not actual machine instructions.  
+They must be removed when going ``out-of-SSA.'' In traditional translation 
+out-of-SSA, this happens before register allocation, but in our case, variables 
+are already allocated to memory or registers, and arguments and results of 
+\phifuns are not variables anymore but registers.
+
+
+If the definition and arguments 
+of a \phifun have been allocated to the same register, then it can be safely 
+removed. If this is not the case, however, the some {\tt move} instructions 
+must be added to keep the behaviour of the program. 
+
 
 
 \subsection{More repairing on \phifuns}
