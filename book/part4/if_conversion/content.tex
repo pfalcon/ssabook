@@ -1,25 +1,37 @@
 \chapter{if conversion \Author{C. Bruel}}
 \numberofpages{10}
 \graphicspath{{img/}{/if_conversion/img}{part4/if_conversion/img/}}
-
+	
 \newcommand\cond{~?~}
 
-TODO: compare speculation and predication dependence heigh
+TODO: compare speculation and predication dependence height
 TODO: example with branch probabilities and beneficibility
 TODO: running example on complex region
 TODO: ?
 
 \section{Overview/Motivations}
 
-If-conversion is the process to remove conditional branches by transforming a control flow region into a single equivalent basic block, replacing conditional control flow execution by a sequence of conditional instruction. 
+In \ref{ferriere:sec:psi-ssa} $\psi$-SSA was described as a way to express a predicated form of SSA extension. Such representation is usually built from already predicated code, non SSA, originating from inlined assembly, peepholes, intrinsics functions or local transformations of control flow idioms.
+
+If-conversion is a global process to remove conditional branches by transforming a control flow region into a single equivalent basic block, replacing conditional control flow execution by a sequence of conditional instructions. 
 
 Removing branches improves performance in several ways: by removing the mis-prediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows the static scheduler to schedule earlier long latencies operations and to improve the ILP by merging multiple flows of execution, with an optimized allocation of the different data paths. 
 
-Several algorithmic or design choices influence the effectiveness of if-conversion. As an optimisation, the region to if-conversion must be large enough to enlarge the scope of scheduling framework, but in the same time it must not overcommit the machine resources (registers, cpus). If-conversion removes branches, but also can add some overhead (new instructions to merge predicates, register pressure for speculative conditional, bigger dependence height for predicated conditionals). The newly formed basic block doesn't have a higher schedule estimation than the one that would have been taken if the code was not if-converted.
+Several algorithmic or design choices impact the effectiveness of if-conversion. As an optimization, the region to if-convert, e.g hyperblock, must be just large enough to have the largest scope of scheduling framework, but in the same time it must not over-commit the machine resources (registers, CPUs). On the contrary, although if-conversion removes branches, I also add some overhead (new instructions to merge predicates, register pressure for speculative conditional, bigger dependence height because of the presence of new data dependencies on the predicates). The newly formed basic block doesn't have a higher schedule estimation than the one that would have been taken if the code was not if-converted.
 
-For this reason, existing approaches of if-conversion are either local using peepholes or intrinsics, or scoping larger but restricted regions such as loops hyperblocks. Such approaches require that the region is isolated from the rest of the control flow, for instance using tail duplication (cause for code bloat), and more important requires a complicated estimation of the future if-converted region. So many factor impact this (predicate computation, register pressure, dependence height) that the objective function needs to be very conservative. 
+For this reason, existing approaches of if-conversion are either local using peepholes or intrinsics, or scoping larger but restricted regions such as loops hyperblocks. Such approaches require that the region is isolated from the rest of the control flow, for instance using tail duplication (cause for code bloat), and more important requires a complicated estimation of the future if-converted region. So many factor impact this (predicate computation, register pressure, dependence height) that the objective function needs to be very conservative. Traditionally if-conversion cover the following steps:
 
-The SSA framework allows the decision functions to be accurate enough to avoid beeing too conservative and aggresively if-convert code.moving multiple control paths together can easely exceed processors resources (leading to exesive register pressure) or move unfrequently used expensive instruction (memory loads) into the critical path. 
+\begin{itemize}
+\item Isolate the control flow region for which if-conversion is beneficial, using predictive heuristics. Using tail duplication to remove incoming edges. For example using the Hyperblock framework.
+\item Compute and assign a predicate to each basic block.
+\item Convert the instructions into predicated ones using the predicate computed from the basic block, and merge the basic blocks.
+\item Apply some predicate reduction mechanism to simplify predicate equations.
+\item Finally emit the newly predicate computations and the predicated code. If the ISA is not fully predicated, an additional pass is needed to conditionalize them using conditional moves only.
+\end{itemize}
+
+All those operations make the if-conversion process a complex optimization, forcing designers to be extremely conservative, as the objective functions must contain variables not known at the start of the transformation. (such as the complexity of the predicate equations) since moving multiple control paths together can easily exceed processors resources (leading to excessive register pressure) or move infrequently used expensive instruction (memory loads) into the critical path. 
+
+The SSA framework allows the decision functions to be accurate enough to avoid being too conservative and aggressively if-convert code, we will see in this chapter than an iterative bottom up process, on the SSA form can be more efficient, and more effective than the traditional top down techniques.
 
 \subsection{Architectural requirements}
 Conditional operations can be done thanks to different ways (predication, speculation, conditional moves and requires predicate computation and merge operation). The SSA framework described here supports a mix, or all of those ways. We suppose that the target architectures has a way to emit conditional execution of instruction. This is usually achieved in 3 different ways: In this chapter we use following notation for the simple $x = p \cond a + b : 0$ assignment.
@@ -48,22 +60,20 @@ $x = select \; p \cond t : 0 $ \\
 Locally, we notice then if-conversion require two problems to be solved.
 \begin{itemize}
 \item A renaming problem to avoid the multiple definitions of a different variables assignment merged into a single path. 
-\item Minimalize the number of instructions to be predicated. Only instruction that merge need to be conditionalized inside the predicate set that control the merge. Others can be safely speculated without the need of a special predicate reduction pass. 
+\item Minimize the number of instructions to be predicated. Only instruction that merge need to be conditionalized inside the predicate set that control the merge. Others can be safely speculated without the need of a special predicate reduction pass. 
 \end {itemize}
 
 SSA \cite{BriggsSSA} provides an efficient intermediate representation in which all false data dependencies have been removed, thus removing the need for register renaming needed when merging two definitions into one. Each assignment target (def) is assigned a unique register name. Registers are re-materialized at join nodes using $\phi$ operations. A procedure is in minimal SSA form if the number of $\phi$ instructions at join nodes is as small as possible. SSA-form representation gives the properties that a variable is assigned only once, and their merging point is exposed info $\phi$ operations solves those problems. 
 
 Once the operations to be conditionalized have be isolated. The framework still need to answer two other questions: As a global problem the region to if-convert must be defined, using objective functions and branch probabilities to avoid moving to the hot path less frequently used instruction. Since if-conversion also transforms control flow dependencies into data flow dependencies, register pressure can become significantly high. Such decision function must take into account operations created by the process itself, such as predicate merging or new copies. 
 
-Locally, for each basic block considered into the region, a predicate must be computed and assigned to the corresponding instructions. Finally predicated or speculative instructions must be emitted into the IR, and the SSA IR maintained.
+Locally, for each basic block considered into the region, a predicate must be computed and assigned to the corresponding instructions. Finally predicated or speculative instructions must be emitted into the IR, and the SSA IR maintained. Note that basically, Since a SSA $\phi$ express the merging point of $n$ definitions from $n$ predecessors, we can safely say the the definition points depends on their nearest condition under which they depend. Intuitively we already know that thanks to SSA the definition point is straightforward to find. Definitions not merging into a $\phi$ don't need to be conditionalized
 
-Conventional approaches is to use a top down hyperblock frameworks (refs) to detect interesting regions, using heuristics to predicts the beneficibility and then an if-conversion algorithm for predicate assignment and reductions. This is usually poor because resources dependencies height (due to data flow dependencies introduced by new predicates) are very difficult to predict globally. Also Such regions are usually isolated from the rest of the control flow graph using tail duplication. Finally variable renaming needs to be performed an join point expressed conditionally. 
-
-This algorithm takes as input SSA form and produces eith PSI-SSA if predicated instructions are available or pure SSA using select instructions to realized join points.
+This algorithm takes as input SSA form and produces either $\psi$-SSA if predicated instructions are available or pure SSA using select instructions to realized join points.
 
 \subsection{SSA representation of conditional instructions}
 
-We expose here the edge dependency that is removed after the control flow optimisation by a new dependency into the $select$ or $\psi$ operation. Note that the $select$ operation is a real instruction. If the target architecture doesn't provide such instruction to switch between speculated instruction, it can be emulated using two conditional moves. One advantage to generate $select$ instruction at this stage is that the program stays in full SSA form and make all the data dependencies explicit, to can be feed to all SSA optimizers. 
+$\psi$-SSA expose the edge dependency from the basic block into which the definitionition of the $\phi$ argument is defined in the original CFG by a new data dependency. This dependency needs to be matemarialized into a $select$ or $\psi$ operation. Note that the $select$ operation is a real instruction that don't need to be replaced by the out-of-ssa process. If the target architecture doesn't provide such instruction to switch between speculated instruction, it can be emulated using two conditional moves. One advantage to generate $select$ instruction at this stage is that the program stays in full SSA form and make all the data dependencies explicit, and can be feed to all SSA optimizers. 
 
 \begin{figure}
 \begin{minipage}[t]{4cm}
@@ -81,12 +91,14 @@ $x_2 = 0 $ \\
 $x = select p ? x_1, x_2$ \\
 \end{minipage}
 \begin{minipage}[t]{4cm}
-\mbox{PSI-SSA form:} \\
+\mbox{$\psi$-SSA form:} \\
 $x_1 = a + b $ \\
 $x_2 = 0 $\\
 $x = \psi (p \cond x_1, \overline{p} x_2) $ \\
 \end{minipage}
 \end{figure}
+
+Note that unlike $\phi$ arguments are executed simultaneously (they don't depend each other), $\psi$ arguments are executed sequentially and ordered from their definition predicate set. This propriety is necessary because if-conversion replaces the ``spacial'' dependency from the CFG by a ``temporal'' dependency from the straight line predicated code.
 
 \subsection{SSA operations on basic blocks}
 
@@ -140,10 +152,11 @@ The join block $E$ has $n$ predecessors with $n$ > 2, and $n$ blocks in its domi
 \end{proof}
 \subsubsection{$\phi$ augmentation} (figure \ref{fig:phi_aug})
 The objective is to remove incoming edges into the region. 
-Consider a join node with $n$ predecessors among which $p$ is duplicated into $q$.  The join node of the considered region have $\phi$ instructions of the form $r=\phi(r_1,p,r_i,r_j,\dots,r_{n-1})$. The instruction is rewritten $t=select(p,r_i,r_j)$ and \mbox{$r=\phi(r_1,t,q,\dots,r_n)$}. \\
+Consider a join node with $n$ predecessors among which $p$ is duplicated into $q$.  The join node of the considered region have $\phi$ instructions of the form $r=\phi(r_1,p,r_i,r_j,\dots,r_{n-1})$. The instruction is rewritten $t=select(p,r_i,r_j)$ and \mbox{$r=\phi(r_1,t,q,\dots,r_n)$}. 
 \begin{proof}The duplicated blocks are new dominators of $BBjoin$ that define new $defs$. These blocks are now in the dominance frontier of $BBjoin$. SSA is maintained with new $\phi$ upgraded with the new reaching points.
 Since the algorithm works the control flow in post order mode, the dominator tree doesn't change, and it's possible to maintain the SSA locally to the inner region. By recurence the if-converted region can be in turn be optimized out if it's head belongs to the dominance frontier of an outer region.
 \end{proof}
+Note that block duplication doesn't necessary implies more code size, since data flow dependencies are broken, noew oportunities for propagation or scalar optimisation arise. Here the local $t$ appears temporary, since $r2$ can be propagated into the $\phi$.
 
 \section{SSA promotion}
 
@@ -159,7 +172,7 @@ The $select$ generation being done after instruction selection, the if-conversio
 
 \subsubsection{Partial redefinition}
 
-The psi exposes the control flow dependencies to the data flow, by expressing the merge of two definitions. Note that the order of the partial definition is important, so a second definition redefines the first one. We use this propriety to speculate the first definitions, so it becomes speculated instead of disjoint. This local optimisation allow to remove a predicate dependency but also creates a new partial dependency (predicates are not disjoint).
+$\psi$ operation exposes new control flow dependencies to the data flow, by expressing the merge of two definitions. Note that the order of the partial definition is important, so a definition partially redefines the preceding ones. We use this propriety to speculate the first definitions, so it becomes speculated instead of disjoint. This local optimisation allow to remove a predicate dependency but also creates a new partial dependency (predicates are not disjoint). Removing a predicate dependency is usually best because it allows to schedule the predicate computation earlier.
 
 \begin{figure}
 \footnotesize
@@ -269,7 +282,7 @@ The algorithm to perform SSA block duplication is decomposed into three steps:
 
 \section{Hyperblock Region contruction}
 
-These operation are performed iterativelly on post order, consequently one of the propriety of the algorithms is that psi can be predicated. A Partial out of SSA can be iteratively performed on those regions by removing the $\phi$s and maintening a correct SSA internal representation. The algorithm takes SSA as input and produces SSA if a select instruction is available or PSI SSA if predicated instructions are available. 
+These operation are performed iterativelly on post order, consequently one of the propriety of the algorithms is that psi can be predicated. A Partial out of SSA can be iteratively performed on those regions by removing the $\phi$s and maintening a correct SSA internal representation. The algorithm takes SSA as input and produces SSA if a select instruction is available or $\psi$-SSA if predicated instructions are available. 
 
 \subsubsection{Running example}
 Consider the control flow transformations for the $wc$ program (figure \ref{fig:wc_cfg}).
