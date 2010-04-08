@@ -82,8 +82,7 @@ follows:
 	single SSA name $N_i$ associated to that
 	value\footnote{In some propagation problems it may be
 	useful to allow statements to return more than one
-	interesting name.  But the current implementation is
-	limited to just one.}.
+	interesting name.}.
 
 	All the statements with immediate uses of $N_i$ are then
 	added to the SSA work list so that they can also be
@@ -163,80 +162,11 @@ name $N_i$, but the final values must not be replaced in the IL
 until propagation has finished.  During propagation, names may
 get more than a single value.
 
-Once propagation has finished, final values may be replaced into
-the IL with a call to \lident{substitute_and_fold}.  The only
-argument it receives is an array $PV$ of propagated values indexed by
-SSA index.  If name $N_i$ has final value $V$ then $PV[i] == V$.
-The call to \lident{substitute_and_fold} is optional,
-individual users are free to use the final propagated values in
-any other way.
+Once propagation has finished, final values for every SSA name in
+the program are available in the array $PV$, which holds propagated
+values indexed by SSA index.  If name $N_i$ has final value $V$
+then $PV[i] == V$.
 
-
-\subsection{Propagating memory loads and stores}
-
-SSA names for GIMPLE registers (also known as \textit{real
-names}) represent a single object, so when the propagator
-associates a value with a real name $N_i$, uses of $N_i$ can be
-replaced directly.  On the other hand, an SSA name for partial
-or aliased stores (also known as \textit{virtual names})
-may represent different objects or parts of an object.  For
-instance, given
-
-\begin{center}
-\parbox{2in}{\lgrindfile{store-prop-1.c.tex}}
-\end{center}
-
-Depending on the exact value of $i_9$ at runtime, different
-locations of $A$ may be used to store $13$.  However, both the
-memory store represented by $A_3$ at line $1$ and the subsequent
-memory load at line $7$ are guaranteed to read the same value
-because they are both loading from array slot $i_9$.
-
-To support propagation in these cases, the array of propagated
-values also includes a field denoting what memory expression was
-used in the store operation that created the associated name.
-When simulating the memory store to $A_3$ in line $2$, the
-implementation of \lident{ssa_prop_visit_stmt} in SSA-CCP will
-associate two things to $A_3$, namely the value $13$ and the
-memory expression $A[i_9]$.
-
-Once simulation has finished, the call to
-\lident{substitute_and_fold} will proceed as follows: On finding
-the VUSE for $A_3$ at line $7$, it will compare the memory load
-expression on the RHS of the assignment with the memory store
-expression from line $2$.  In this case, both expressions are
-identical so line $7$ will be converted to $x_3 = 13$.
-
-If the propagator is interested in working with memory loads and
-stores, then it needs to handle them in both the statement and
-the $\phi$ simulator.  For instance, given the following,
-admittedly contrived, code snippet
-
-\begin{center}
-\parbox{2in}{\lgrindfile{store-prop-2.c.tex}}
-\end{center}
-
-When visiting the $\phi$ node $A_6$ at line $6$,
-\lident{ssa_prop_visit_phi} will examine $\phi$ arguments $A_4$
-and $A_5$.  Since they both represent stores to the same memory
-expression, $A[i_3]$, it will store value $42$ and memory
-expression $A[i_3]$ into $A_6$.  Similarly, the visit to $\phi$
-node $A_8$ will assign value $42$ and memory expression $A[i_3]$
-to $A_8$.
-
-Notice that propagation of memory stores and loads is necessarily
-slower than propagation of GIMPLE register values because of the
-additional comparison of memory expressions.  Therefore, the
-``\textit{store}'' versions of the propagators are usually
-implemented as separate passes.
-
-Propagated values are represented using an array indexed by SSA
-name index.  Each element of the array is of type
-\lident{prop_value_t} defined in \lident{tree-ssa-propagate.h}:
-
-\begin{center}
-\parbox{2in}{\lgrindfile{prop-value-t.c.tex}}
-\end{center}
 
 To summarize, every propagation algorithm should define three
 basic elements:
@@ -379,21 +309,11 @@ CFG.
 
 This transformation is similar to constant propagation but
 instead of propagating single constant values, it propagates
-known value ranges.  GCC's implementation is based on Patterson's
-range propagation algorithm \cite{novillo:bib:patterson-95}.  In
-contrast to Patterson's algorithm, this implementation does not
-propagate branch probabilities nor it uses more than a single
-range per SSA name. This means that the current implementation
-cannot be used for branch prediction (though adapting it would
-not be difficult).
-
-The current implementation is used to remove NULL pointer checks
-and redundant conditional branches.  For instance, the code in
-Figure \ref{novillo:fig:vrp-1} is extracted from a typical
-expansion of bound checking code in languages like Java.
-Notice how the bound checking done at line 3 is not really
-necessary as variable $i$ is guaranteed to take values in the
-range [$0$, a->len].
+known value ranges.  For instance, the code in Figure
+\ref{novillo:fig:vrp-1} is extracted from a typical expansion of
+bound checking code in languages like Java. Notice how the bound
+checking done at line 3 is not really necessary as variable $i$
+is guaranteed to take values in the range [$0$, a->len].
 
 \begin{figure}
     \centering
@@ -459,7 +379,7 @@ a$_5$ at line $14$ does not use a known value.
 
 The technique used by VRP to overcome this problem is to create
 new SSA names to which we can pin the range information that we
-want to propagate.  GCC generates a new expression called
+want to propagate.  The compiler generates a new expression called
 \lcode{ASSERT_EXPR} that captures this information and stores it
 into a new SSA name.  When the compiler finds an expression that
 contains interesting range information for name $N_i$, it
@@ -476,9 +396,7 @@ The pointer dereference in line $6$ produces the assertion
 p$_5$ = \lcode{ASSERT_EXPR <}p$_4$, p$_4$ != $0$\lcode{>}.  With
 this conversion, all uses of p$_5$ are guaranteed to be uses of a
 non-NULL pointer.  Similarly, uses of a$_6$ are guaranteed to use
-the constant value $10$\footnote{For equality expressions, GCC
-generates straight assignments instead of \lcode{ASSERT_EXPR},
-but the effect is the same.}.
+the constant value $10$.
 
 \subsection{Incremental updates of the SSA form}
 
@@ -492,37 +410,15 @@ As assertions are inserted in the IL, a replacement mapping is
 built.  In the example code of Figure
 \ref{novillo:fig:assert-expr-after}, the compiler will build two
 mappings, namely p$_5 \rightarrow$ p$_4$ and a$_6 \rightarrow$
-a$_5$.  Once all the assertions have been inserted, a call to
-\lcode{update_ssa} replaces all the uses of every existing name
-dominated by the new name.
+a$_5$.  Once all the assertions have been inserted, the SSA form 
+can be incrementally updated by applying all the name mappings.
 
 The mechanics of the updating process are a little more
 elaborate than this, but in essence all it does is search and
 replace inside the sub-regions of the CFG affected by the
-existing names and their replacements.  More details about the
-replacement process and its API are available in the GCC internal
-documentation (\url{http://gcc.gnu.org/onlinedocs/gccint/SSA.html}).
+existing names and their replacements.
 
 \subsection{Propagating ranges}
-
-The current VRP implementation uses two range representations:
-
-\begin{description}
-\item	\textsc{range} $[MIN, MAX]$ to denote all the values that
-	are between MIN and MAX (i.e., N such that MIN <= N <=
-	MAX), and,
-
-\item	\textsc{anti-range} \verb"~"$[MIN, MAX]$ to denote all
-	the values that are \textbf{not} between MIN and MAX
-	(i.e., N such that N < MIN or N > MAX).
-\end{description}
-
-As opposed to Patterson's formulation, SSA names cannot take
-multiple disjoint ranges.  This was done mainly for simplicity of
-implementation and compile-time performance\footnote{In general,
-I have found the current VRP implementation to be about 4x slower
-than the CCP pass.}.  But it would be perfectly feasible to allow
-names to take disjoint ranges in the future.
 
 \begin{figure}
     \centering
@@ -543,8 +439,8 @@ the same in terms of propagation, they both represent known
 range values for the associated SSA names.  The key difference is
 in the semantics of the actual value when evaluating expressions.
 
-Statements are evaluated by \lcode{vrp_visit_stmt}.  Two types of
-statements are considered interesting by the propagator:
+Two types of statements are considered interesting by the
+propagator:
 
 \begin{enumerate}
 \item	Assignments of the form $N_i$ = EXPR, where EXPR is of
@@ -559,11 +455,6 @@ statements are considered interesting by the propagator:
 	$N_i$ to $[42, 42]$.  Similarly, expressions involving
 	names with known ranges may yield useful information.
 
-	If scalar evolution information is available for $N_i$,
-	the computed range is augmented with the bounds computed
-	by $N_i$'s chain of recurrences
-	\cite{novillo:bib:berlin.ea-04}.
-
 \item	Conditional branches are also evaluated.  If the
 	controlling predicate includes names with known ranges,
 	only the taken edges are added to the CFG work list.
@@ -575,75 +466,11 @@ arguments with ranges VR0 and VR1:
 
 \begin{enumerate}
 \item	If VR0 and VR1 have an empty intersection the resulting
-	range is set to VARYING.  Note that if VR0 and VR1
-	were adjacent, the result could actually be the VR0
-	$\bigcup$ VR1, but this has not been implemented at the
-	time of this writing.
+	range is set to VARYING.
 
 \item	Otherwise, the resulting range is VR0 $\bigcup$ VR1.
 \end{enumerate}
 
 Propagation continues while names change from one state to the
 other.  Once all the basic blocks have been simulated and no
-state transitions occur, simulation stops.  The resulting ranges
-are recorded in the \lcode{SSA_NAME_VALUE_RANGE} field of each
-SSA name and the affected conditional expressions are folded.
-
-\section{Conclusion}
-\label{novillo:sec:conclusion}
-
-This paper describes an abstraction of one of the main components
-of a commonly used constant propagation algorithm
-\cite{bib:wegman.ea-91}.  The basic propagation and simulation
-done to propagate constants in SSA-CCP can be factored out and
-re-used for several other transformations that need to propagate
-values globally.
-
-We have also described two transformations that are based on this
-generic propagation engine.  Several other applications are
-possible: attributes like string lengths, variable types, bit
-values, etc. may be propagated using this technique.  Some of
-these applications are either planned or in the process of being
-implemented.  
-
-When implementing a propagation pass using this engine, three
-basic elements must be defined:
-
-\begin{enumerate}
-\item	A lattice value to control state transitions for SSA
-	names.  It is important to only allow transitions in one
-	direction and to limit the depth of the lattice.  State
-	transitions that go in different directions may throw the
-	propagator into an infinite loop.  Also, deep lattices
-	take longer to converge.
-
-	In most cases, the majority of the values will tend to be
-	varying, so providing a fast path to the varying state
-	speeds up the simulation.
-
-\item	An implementation for \lcode{ssa_prop_visit_stmt}.  This
-	function will receive a statement taken from either the
-	SSA or the CFG work list.  If evaluation produces a
-	new value, the name $N_i$ for which that value is
-	produced must be returned so that the propagator can add
-	the SSA edges for $N_i$ to the work list.
-
-	If the statement is a conditional branch and the
-	controlling predicate can be computed to a known value,
-	the corresponding outgoing edge E should be returned.
-	In that case, only E will be added to the CFG work list.
-
-	If a statement is considered varying, the simulator will
-	not schedule any more visits to it.
-
-\item	An implementation for \lcode{ssa_prop_visit_phi}.  Think
-	of this function as a \textit{merge} operation.  If all
-	the $\phi$ arguments that flow through executable edges
-	have compatible values according to the lattice then the
-	result will be an interesting value.  Otherwise, the
-	result should be marked varying, in which case this
-	$\phi$ node will not be visited again.
-\end{enumerate}
-
-\bibliographystyle{plain}
-\bibliography{chapter}
+state transitions occur, simulation stops.
