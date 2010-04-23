@@ -1,9 +1,11 @@
 \providecommand\lcode{\begingroup \small\urlstyle{tt}\Url}
 \providecommand\lident{\begingroup \small\urlstyle{tt}\Url}
 
-\chapter{Propagating information using SSA\Author{D. Novillo}}
+\chapter{Propagating Information using SSA\Author{D. Novillo}}
 \numberofpages{6}
 \chapterauthor{Novillo}
+
+\newcommand{\obacht}[2]{\marginpar{\tiny\textbf{#1:} #2}}
 
 \graphicspath{{img/}{constant_propagation_is_easier/img/}{part3/constant_propagation_is_easier/img/}}
 
@@ -30,44 +32,304 @@
 
 \section{Overview}
 
-Several compiler transformations are based on the concept of
-propagation.  Values or attributes generated at various producing
-sites are propagated into other sites consumers of those values.
-For instance, in constant propagation we are interested in
-replacing loads from registers or memory into direct constant
-references.
+A central task of compilers is to \emph{optimize} a given input program such
+that the resulting code is more efficient in terms of execution time, code size,
+or some other metric of interest. However, in order to perform optimizations and
+program transformations typically some form of \emph{program analysis} is
+required in order to determine if a given transformation is applicable, to
+estimate its profitability, or guarantee correctness.
 
-The most commonly used algorithm for constant propagation in SSA
-form is known as SSA-CCP (Conditional Constant Propagation)
-\cite{bib:wegman.ea-91}.  The basic idea is very simple,
-constants are propagated by simulating the execution of the
-program while keeping track of constant assignments.  Since the
-program is in SSA form, every constant assignment of the form
-$N_i = CST$ is recorded in an internal table indexed by SSA
-index $i$.  During simulation, uses of $N_i$ are replaced with
-$CST$, if that yields another constant value, the new constant
-value is used for further propagation.  The simulation includes
-keeping track of conditional predicates, if they are deemed to
-have a statically computable value, the predicted branch is
-simulated, and the others ignored.  Once simulation stops, the
-values stored in the constant value table are replaced in the
-program, expressions folded and the control flow graph adjusted
-to account for predicted branches.
+\emph{Data flow analysis}~\cite{novillo:bib:NNH99} is a simple, yet powerful,
+approach to program analysis that is utilized by many compiler frameworks and
+program analysis tools today. We will introduce the basic concepts of
+traditional data flow analysis in this chapter and show that \emph{static single
+assignment} form (SSA) facilitates the design and implementation of equivalent
+analyses, while leveraging properties of programs in SSA-form allows to reduce
+the asymptotic complexity and memory consumption.
+\obacht{Examples}{
+  \begin{itemize}
+    \item Copy Propagation
+    \item Constant Propagation
+    \item Value Range Propagation
+    \item Dead Code Elimination
+    \item Liveness - refer to Chapter
+  \end{itemize}
+}
 
-This chapter describes a generalization of this basic simulation
-scheme used by SSA-CCP so that it can be used in other
-transformations that can be expressed in terms of value
-propagation.  The paper also describes some applications of this
-\textit{propagation engine} to copy propagation and value range
-propagation.  Section \ref{novillo:sec:prop-engine} describes the
-propagation engine and its implementation in GCC.  Section
-\ref{novillo:sec:copy-prop} describes an extension to the
-traditional SSA based copy propagation that can also propagate
-copies across conditionals.  Section \ref{novillo:sec:vrp}
-describes an implementation of Value Range Propagation (VRP) in
-GCC \cite{novillo:bib:patterson-95} and some infrastructure
-changes for doing incremental updates to the SSA form.
+Traditionally, data flow analysis is performed on a \emph{control flow graph}
+(CFG) representation of the input program, where nodes in the graph represent
+operations and edges the possible flow of control during program execution.
+Information on certain \emph{program properties} of interest is propagated among
+the nodes along the control flow edges until the computed information at the
+nodes stabilizes, i.e., no \emph{new} information can be devised from the
+program.
 
+The \emph{propagation engine} presented in the following sections is an
+extension of the well known approach by Wegman and Zadeck for \emph{sparse
+conditional constant propagation}~\cite{bib:wegman.ea-91} (also known as
+SSA-CCP). Instead of using the CFG they represent the input program as an
+\emph{SSA-graph}~\cite{novillo:bib:CFRWZ91}. Operations are again represented as
+nodes in this graph, however, the edges represent \emph{data dependencies}
+instead of control flow. This representation allows a selective propagation of
+program properties among data dependent graph nodes only. As before, the
+processing stops when the information at the graph's nodes stabilizes. The basic
+algorithm is not limited to constant propagation and can also be applied to
+efficiently solve other data flow problems~\cite{novillo:bib:N05} as will be
+shown in the following.
+
+The remainder of this chapter is organized as follows. First, the basic concepts
+of (traditional) data flow analysis are presented in
+Section~\ref{novillo:sec:preliminaries}. This will provide the theoretical
+foundation and background for the discussion of the SSA-based propagation
+engine in Section~\ref{novillo:sec:prop-engine}. We then provide examples of
+data flow analyses that can be realized efficiently by the described engine,
+namely constant propagation in Section~\ref{novillo:sec:constant-prop}, copy
+propagation in Section~\ref{novillo:sec:copy-prop}, and value range propagation
+in Section~\ref{novillo:sec:vrp}. We finally conclude and provide links for
+further reading in Section~\ref{novillo:sec:conclusion}
+\obacht{TODO:}{Mention Dead Code Elimination}
+
+% Several compiler transformations are based on the concept of
+% propagation.  Values or attributes generated at various producing
+% sites are propagated into other sites consumers of those values.
+% For instance, in constant propagation we are interested in
+% replacing loads from registers or memory into direct constant
+% references.
+%
+% The most commonly used algorithm for constant propagation in SSA
+% form is known as SSA-CCP (Conditional Constant Propagation)
+% \cite{bib:wegman.ea-91}.  The basic idea is very simple,
+% constants are propagated by simulating the execution of the
+% program while keeping track of constant assignments.  Since the
+% program is in SSA form, every constant assignment of the form
+% $N_i = CST$ is recorded in an internal table indexed by SSA
+% index $i$.  During simulation, uses of $N_i$ are replaced with
+% $CST$, if that yields another constant value, the new constant
+% value is used for further propagation.  The simulation includes
+% keeping track of conditional predicates, if they are deemed to
+% have a statically computable value, the predicted branch is
+% simulated, and the others ignored.  Once simulation stops, the
+% values stored in the constant value table are replaced in the
+% program, expressions folded and the control flow graph adjusted
+% to account for predicted branches.
+%
+% This chapter describes a generalization of this basic simulation
+% scheme used by SSA-CCP so that it can be used in other
+% transformations that can be expressed in terms of value
+% propagation.  The paper also describes some applications of this
+% \textit{propagation engine} to copy propagation and value range
+% propagation.  Section \ref{novillo:sec:prop-engine} describes the
+% propagation engine and its implementation in GCC.  Section
+% \ref{novillo:sec:copy-prop} describes an extension to the
+% traditional SSA based copy propagation that can also propagate
+% copies across conditionals.  Section \ref{novillo:sec:vrp}
+% describes an implementation of Value Range Propagation (VRP) in
+% GCC \cite{novillo:bib:patterson-95} and some infrastructure
+% changes for doing incremental updates to the SSA form.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Preliminaries}
+\label{novillo:sec:preliminaries}
+
+Data flow analysis is at the heart of many compiler transformations and
+optimizations, but also finds application in a broad spectrum of analysis and
+verification tasks in program analysis tools such as program checkers, profiling
+tools, and timing analysis tools. This section gives a brief introduction to the
+basics of data flow analysis. However, due to space considerations, we can not
+cover this topic in full depth, interested readers are thus advised to consult
+standard text books, such as the one by Nielsen, Nielsen, and
+Hankin~\cite{novillo:bib:NNH99}.
+\obacht{TODO:}{May/Must Information}
+
+As noted before, data flow analysis allows to derive information of certain
+interesting program properties that may help to optimize the program. Typical
+examples of interesting properties are: The set of \emph{live} variables at a
+given program point, the constant value a variable may take, or the set of
+program points that are reachable at run-time. Liveness information is critical,
+for example, during register allocation, while the two latter properties help
+in simplifying computations and avoiding useless calculations as well as dead
+code.
+
+The information is gathered from the input program by propagating information
+among the operations of that program along all possible execution paths. The
+propagation is typically performed repeatedly until the computed results
+stabilize. Formally, a data flow problem can be specified using a \emph{monotone
+framework} that consists of:
+\begin{itemize}
+  \item a \emph{complete lattice} representing the property space,
+  \item a \emph{flow graph} resembling the control flow of the input program,
+  \item and a set of \emph{transfer functions} modeling the effect of individual
+        operations \\ on the property space.
+\end{itemize}
+
+%///////////////////////////////////////////////////////////////////////////////
+\subsection{Property Space}
+\label{novillo:sec:property_space}
+
+
+\begin{figure}[b]
+  \vspace{-1em}
+  \begin{center}
+    \includegraphics{constprop_lattice}
+  \end{center}
+  \vspace{-1em}
+  \caption{Lattice commonly used to represent whether a variable is known to
+           hold a constant value at a given program point.}
+  \label{novillo:fig:lattice_constant_propagation}
+  \vspace{-1em}
+\end{figure}
+
+A key concept for data flow analysis is the representation of the property
+space via \emph{partially ordered sets}. A partially ordered set $(L,
+\sqsubseteq)$ is a set $L$ that is equipped with a reflexive, transitive, and
+anti-symmetric relation $\sqsubseteq: L \times L \rightarrow \{true, false\}$.
+Based on the relation an \emph{upper bound} for subsets of $L$ can be defined:
+$l \in L$ is the upper bound for a subset $Y$ of $L$ if $\forall l' \in Y: l'
+\sqsubseteq l$. Furthermore, $l \in L$ is the \emph{least upper bound} if it is
+an upper bound and for any other upper bound $l_o$ of $Y$ : $l \sqsubseteq l_0$.
+Lower bounds and greatest lower bounds are defined analogously.
+
+A particularly interesting class of partially ordered sets are \emph{complete
+lattices}, where all subsets have a least upper bound as well as a greatest
+lower bound. These bounds are unique and are denoted by $\bigsqcup$ and
+$\bigsqcap$. In the context of program analysis the former is often referred to
+as the \emph{join operator}, while the latter is termed the \emph{meet
+operator}. Complete lattices have two distinguished elements, the \emph{least
+element} and the \emph{greatest element}, often denoted by $\bot$ and $\top$
+respectively.
+
+An \emph{ascending chain} is a totally ordered subset $\{l_1, \ldots, l_n \}$ of
+a complete lattice, where for all $i, j \in \{1, \ldots, n\}, i < j: l_i
+\sqsubseteq l_j$. A chain is said to \emph{stabilizes} if there exists an $i_0
+\in N$, where $\forall i \in N, i > i_0: l_i = l_{i_0}$; $i_0$ is then called
+the \emph{length} of the chain.
+
+Consider, for example, the lattice presented in
+Figure~\ref{novillo:fig:lattice_constant_propagation} that is commonly used to
+represent whether a given variable is known to hold a specific constant value at
+a given program point at run-time. For this lattice, $\top$ indicates that no
+specific information on the variable's value is known. The symbol $\bot$, on the
+other hand, indicates that the analysis was not able to prove that the variable
+holds a constant value in all cases. The other elements in the lattice denote
+that the variable is known to hold the respective value. The $\sqsubseteq$
+relation is represented by the arrows in the figure. Clearly, all chains for
+this lattice are at most of length three ($\bot \sqsubseteq c \sqsubseteq \top$,
+$c \in N$).
+
+%///////////////////////////////////////////////////////////////////////////////
+\subsection{Program Representation}
+
+\begin{figure}[b]
+  \vspace{-1em}
+  \begin{center}
+    \includegraphics{contr_flow_graph}
+  \end{center}
+  \vspace{-1em}
+  \caption{Combining data flow information using the join operator.}
+  \label{novillo:fig:control_flow_graph}
+  \vspace{-1em}
+\end{figure}
+
+Individual functions of the input program are represented as separate flow
+graphs of the form $G = (V,E)$, where the nodes represent operations, or
+instructions, at a program point, and edges denote the possible flow of control
+at run-time. The graph contains two distinguished nodes, the \emph{start} and
+the \emph{exit} node, denoted by $s$ and $t$ respectively. These two nodes are
+special in that the former is the only node that does not have any predecessors
+and the latter is the only node without any successors.
+
+During the analysis, data flow information is propagated from one node to
+another adjacent node along the respective graph edges. If the target node has a
+single incoming edge only, the propagation corresponds to a simple copy.
+However, in the more general case of multiple incoming edges, we need to combine
+the information from all those edges. This is accomplished using the \emph{join
+operator} of the lattice that represents the property space. For example,
+consider the lattice shown in
+Figure~\ref{novillo:fig:lattice_constant_propagation} and the flow graph shown
+in Figure~\ref{novillo:fig:control_flow_graph}. We can clearly say that, after
+executing operation $1$ on the top left side, variable \texttt{x} holds the
+constant value of $4$, as indicated by the annotation $(x, 4)$ below. The same
+applies for operation $2$ on the right, with the slight difference that the
+variable holds the value of $5$. Combining this information yields $3 \bigsqcup
+5 = \bot$, i.e., \texttt{x} does not hold a constant value.
+
+In many cases it is helpful to reverse the flow graph to propagate information,
+i.e., reverse the direction of the graph's edges. Analyses relying on this
+reversed flow graph are termed \emph{backward analyses}, while those using the
+regular flow graph are called \emph{forward analyses}. As shown before,
+computing whether a variable holds a certain constant value is a forward
+problem, while determining whether a computation is dead, i.e., not used, is a
+typical backward problem.
+
+We limit our discussion to \emph{intra-procedural} analyses that operate locally
+on functions. Note, however, that data flow analysis can also be applied to
+perform \emph{intra-procedural} analyses~\cite{novillo:bib:NNH99}.
+
+%///////////////////////////////////////////////////////////////////////////////
+\subsection{Transfer Functions}
+
+\begin{table}[t]
+  \begin{center}
+    \begin{tabular}{lp{8mm}l}
+      Operation          & & Transfer Function                      \\ \hline
+      x = $c$, $c \in N$ & & $f_{x=c}(L) = L \setminus \{ (x, c') | (x, c') \in L \} \cup \{ (x, c) \}$ \\
+      x = y              & & $f_{x=y}(L) = L \setminus \{ (x, c') | (x, c') \in L \} \cup \{ (x, c) | (y,c) \in L\}$ \\
+      x = $\ldots$       & & $f_{x=\ldots}(L) = L \setminus \{ (x, c') | (x, c') \in L \}$ \\
+      $\ldots$            & & $f_{\ldots}(L) = L$ \\ \hline
+    \end{tabular}
+  \end{center}
+  \caption{A simplified set of transfer functions for constant propagation
+           analysis.}
+  \label{novillo:fig:transfer_functions}
+  \vspace{-2.5em}
+\end{table}
+
+Aside from the control flow, the effect of the input program's operations
+need to be accounted for during analysis. However, in contrast to the actual
+execution, we are only interested in an abstract model of the operations'
+effects with respect to the data flow information. Operations are thus mapped to
+a set of abstract \emph{transfer functions} of the form $f_{op}: L \rightarrow
+L$.
+
+Continuing the example from above, a simple set of transfer functions can be
+defined, as shown in Table~\ref{novillo:fig:transfer_functions}. Assignments to
+variables invalidate the information that is available on that particular
+variable. However, in the case of copy operation or the assignment of a known
+constant value, new information is obtained.
+
+%///////////////////////////////////////////////////////////////////////////////
+\subsection{Solving Data Flow Problems}
+
+Putting all those elements together, i.e., a complete lattice, a flow graph, and
+a set of transfer functions, yields an instance of a monotone framework. Which,
+in fact, describes a set of \emph{data flow equations} that need to be solved in
+order to retrieve the analysis result. A very popular and intuitive way of
+solving these equations is to compute the \emph{maximal fixed point} (MFP) using
+an iterative work-list algorithm. The work-list contains operations that need
+to be reevaluated by first combining the information form all their predecessors
+in the flow graph, then applying their transfer function, and finally
+propagating their information to their successors by appending them to the
+work-list. The algorithm terminates when the data flow information stabilizes
+and the work-list becomes empty~\cite{novillo:bib:NNH99}.
+
+It is obvious that a single operation can be appended several times to the
+work-list in the course of the analysis. It may even happen that an infinite
+feedback-loop prevents the algorithm from terminating. We are thus interested in
+bounding the number of reevaluations. Recalling the definition of chains from
+Section~\ref{novillo:sec:property_space}, the \emph{height} of a lattice is
+defined by the length of its longest chain. We can ensure termination for
+lattices fulfilling the \emph{ascending chain condition}, which ensures that the
+lattice has finite height. Given a lattice with finite height $h$ and a flow
+graph $G=(V, E)$ it is easy to see that the MFP solution can be computed in
+$O(|E|*h)$ time, or, due to the fact that $|E| \leq |V|^2$, in $O(|V|^2*h)$.
+
+Apart from computing the maximal fixed point, data flow equations can also be
+solved using a more powerful approach called the \emph{meet over all paths}
+(MOP) solution. Even though more powerful the MOP solution is often harder to
+compute or even undecidable~\cite{novillo:bib:NNH99}. Consequently, the MFP
+solution is preferred in practice.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Propagation Engine}
 \label{novillo:sec:prop-engine}
 
@@ -220,6 +482,9 @@ Once an implementation for \lident{ssa_prop_visit_stmt} and
 call to \lident{ssa_propagate}.
 
 %---------------------------------------------------------------------------
+
+\section{Constant Propagation}
+\label{novillo:sec:constant-prop}
 
 \section{Copy Propagation}
 \label{novillo:sec:copy-prop}
@@ -568,3 +833,8 @@ arguments with ranges VR0 and VR1:
 Propagation continues while names change from one state to the
 other.  Once all the basic blocks have been simulated and no
 state transitions occur, simulation stops.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Conclusion}
+\label{novillo:sec:conclusion}
+
