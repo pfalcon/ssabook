@@ -164,9 +164,7 @@ framework} that consists of:
 \subsection{Property Space}
 \label{novillo:sec:property_space}
 
-
 \begin{figure}[b]
-  \vspace{-1em}
   \begin{center}
     \includegraphics{constprop_lattice}
   \end{center}
@@ -174,7 +172,6 @@ framework} that consists of:
   \caption{Lattice commonly used to represent whether a variable is known to
            hold a constant value at a given program point.}
   \label{novillo:fig:lattice_constant_propagation}
-  \vspace{-1em}
 \end{figure}
 
 A key concept for data flow analysis is the representation of the property
@@ -218,14 +215,12 @@ $c \in N$).
 \subsection{Program Representation}
 
 \begin{figure}[b]
-  \vspace{-1em}
   \begin{center}
     \includegraphics{contr_flow_graph}
   \end{center}
   \vspace{-1em}
   \caption{Combining data flow information using the join operator.}
   \label{novillo:fig:control_flow_graph}
-  \vspace{-1em}
 \end{figure}
 
 Individual functions of the input program are represented as separate flow
@@ -237,18 +232,20 @@ special in that the former is the only node that does not have any predecessors
 and the latter is the only node without any successors.
 
 During the analysis, data flow information is propagated from one node to
-another adjacent node along the respective graph edges. If the target node has a
-single incoming edge only, the propagation corresponds to a simple copy.
-However, in the more general case of multiple incoming edges, we need to combine
-the information from all those edges. This is accomplished using the \emph{join
-operator} of the lattice that represents the property space. For example,
-consider the lattice shown in
+another adjacent node along the respective graph edges. Every node is associated
+with data flow information using two sets, \emph{in} and \emph{out}. If the
+target node has a single incoming edge only, the propagation corresponds to a
+simple copy from the source node's out set to the target node's in set. However,
+in the more general case of multiple incoming edges, we need to combine the
+information from all those edges. This is accomplished by applying the
+\emph{join operator} of the lattice that represents the property space. For
+example, consider the lattice from
 Figure~\ref{novillo:fig:lattice_constant_propagation} and the flow graph shown
 in Figure~\ref{novillo:fig:control_flow_graph}. We can clearly say that, after
 executing operation $1$ on the top left side, variable \texttt{x} holds the
-constant value of $4$, as indicated by the annotation $(x, 4)$ below. The same
-applies for operation $2$ on the right, with the slight difference that the
-variable holds the value of $5$. Combining this information yields $3 \bigsqcup
+constant value of $4$, as indicated by the out annotation $(x, 4)$ below. The
+same applies for operation $2$ on the right, with the slight difference that the
+variable holds the value of $5$. Combining this information yields $4 \bigsqcup
 5 = \bot$, i.e., \texttt{x} does not hold a constant value.
 
 In many cases it is helpful to reverse the flow graph to propagate information,
@@ -261,7 +258,7 @@ typical backward problem.
 
 We limit our discussion to \emph{intra-procedural} analyses that operate locally
 on functions. Note, however, that data flow analysis can also be applied to
-perform \emph{intra-procedural} analyses~\cite{novillo:bib:NNH99}.
+perform \emph{inter-procedural} analyses~\cite{novillo:bib:NNH99}.
 
 %///////////////////////////////////////////////////////////////////////////////
 \subsection{Transfer Functions}
@@ -273,13 +270,12 @@ perform \emph{intra-procedural} analyses~\cite{novillo:bib:NNH99}.
       x = $c$, $c \in N$ & & $f_{x=c}(L) = L \setminus \{ (x, c') | (x, c') \in L \} \cup \{ (x, c) \}$ \\
       x = y              & & $f_{x=y}(L) = L \setminus \{ (x, c') | (x, c') \in L \} \cup \{ (x, c) | (y,c) \in L\}$ \\
       x = $\ldots$       & & $f_{x=\ldots}(L) = L \setminus \{ (x, c') | (x, c') \in L \}$ \\
-      $\ldots$            & & $f_{\ldots}(L) = L$ \\ \hline
+      $\ldots$           & & $f_{\ldots}(L) = L$ \\ \hline
     \end{tabular}
   \end{center}
   \caption{A simplified set of transfer functions for constant propagation
            analysis.}
   \label{novillo:fig:transfer_functions}
-  \vspace{-2.5em}
 \end{table}
 
 Aside from the control flow, the effect of the input program's operations
@@ -287,7 +283,8 @@ need to be accounted for during analysis. However, in contrast to the actual
 execution, we are only interested in an abstract model of the operations'
 effects with respect to the data flow information. Operations are thus mapped to
 a set of abstract \emph{transfer functions} of the form $f_{op}: L \rightarrow
-L$.
+L$ that transform the information available from the in set of the respective
+flow graph nodes and store the result in the corresponding out set.
 
 Continuing the example from above, a simple set of transfer functions can be
 defined, as shown in Table~\ref{novillo:fig:transfer_functions}. Assignments to
@@ -320,6 +317,7 @@ lattices fulfilling the \emph{ascending chain condition}, which ensures that the
 lattice has finite height. Given a lattice with finite height $h$ and a flow
 graph $G=(V, E)$ it is easy to see that the MFP solution can be computed in
 $O(|E|*h)$ time, or, due to the fact that $|E| \leq |V|^2$, in $O(|V|^2*h)$.
+\obacht{Bounds}{Memory consumption??, post-order traversals, rapid data flow problems}
 
 Apart from computing the maximal fixed point, data flow equations can also be
 solved using a more powerful approach called the \emph{meet over all paths}
@@ -329,158 +327,237 @@ solution is preferred in practice.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Propagation Engine}
-\label{novillo:sec:prop-engine}
+\label{novillo:sec:prop-engine} \obacht{Rename?}{Propagation in SSA-form}
 
-Propagation is performed by simulating the execution of every
-statement that produces interesting values.  In this context, an
-\textit{interesting} value is anything that the specific
-implementation is looking to propagate: constants in SSA-CCP,
-copies in copy propagation, range information in VRP, etc.
+SSA form allows to solve a large class of data flow problems more efficiently
+than the standard fixed-point solution presented previously. The basic idea is
+to directly propagate information computed at the unique definition of a
+variable to all its uses. Intermediate program points on regular control flow
+paths from the definition to those uses are skipped, reducing memory consumption
+and run-time complexity.
 
-Both control and data flow are simulated using two separate work
-lists: a list of control flow edges (\textit{CFG work list}) and a
-list of def-use edges (\textit{SSA work list}).  Simulation proceeds as
-follows:
+%///////////////////////////////////////////////////////////////////////////////
+\subsection{Program Representation}
 
-\begin{enumerate}
-\item	Initially, every edge in the CFG is marked not executable
-	and the CFG work list is seeded with all the statements in
-	the first executable basic block.  The SSA work list is
-	initially empty.
+Programs in SSA-form exhibit, aside from the regular operations of the original
+program, special operations called $\phi$-operations, which are placed at join
+points of the original CFG -- see Part~\ref{part:vanilla_ssa} of this book for
+more information. In the following, we assume that possible many
+$\phi$-operations are associated with the corresponding CFG nodes at the those
+join points.
 
-\item	\label{novillo:prop-return-value}A basic block $B$ is
-	taken from the CFG work list and every statement $S$ in
-	$B$ is evaluated with a call to a user-provided callback
-	function (\lident{ssa_prop_visit_stmt}).  This evaluation
-	may produce 3 results:
+\obacht{Reference for SSA-graphs}{Point directly to a chapter in the book?}
+Data flow analysis under SSA-form relies on a specialized program
+representation based on \emph{SSA-graphs}~\cite{novillo:bib:CFRWZ91}, which
+allows to simplify the propagation of data flow information. The nodes of an
+SSA-graph correspond to the operations of the program. In particular the
+program's $\phi$-operations are represented by dedicated nodes in the SSA-graph.
+The edges of the graph connect the unique definition of a variable with all its
+uses, i.e., an edge represents a true data-dependence among two nodes.
 
-	\lident{SSA_PROP_INTERESTING}: $S$ produces a
-	value deemed interesting by the callback function and
-	that can be computed at compile time.  When this occurs,
-	\lident{ssa_prop_visit_stmt} is responsible for
-	storing the value in a separate table and returning a
-	single SSA name $N_i$ associated to that
-	value\footnote{In some propagation problems it may be
-	useful to allow statements to return more than one
-	interesting name.}.
+An important property of SSA-graphs is that they also capture, besides the data
+dependencies, the \emph{relevant} join points of the program's CFG. A join point
+is relevant for the analysis, whenever the value of two or more definitions may
+reach a use by passing through that join. Due to the properties of SSA-form, it
+is ensured that a $\phi$-operations is placed at a all those join points and
+that the use has been properly updated to refer to the respective
+$\phi$-operation. Other join points can safely be ignored, because uses are
+guaranteed to receive the same value on all paths through joins due to the
+dominance relation between definitions and uses.
 
-	All the statements with immediate uses of $N_i$ are then
-	added to the SSA work list so that they can also be
-	simulated.  Furthermore, if $S$ is a conditional jump and
-	\lident{ssa_prop_visit_stmt} has determined that it
-	always takes the same edge $E$, then only the basic block
-	reachable through $E$ is added to the CFG work list.
+\begin{figure}[t]
+  \begin{center}
+    \includegraphics{ssa_graph}
+  \end{center}
+  \vspace{-2em}
+  \caption{Example program and its SSA-graph.}
+  \label{novillo:fig:ssa_graph}
+\end{figure}
 
-	If $S$ is not a conditional jump, or if $S$ is a
-	conditional jump whose value cannot be determined, all
-	the immediate successors of $B$ are added to the CFG
-	work list.
+Consider for example, the code excerpt shown in
+Figure~\ref{novillo:fig:ssa_graph}, along with the corresponding SSA-graph and
+CFG. Assume we are interested in propagating information from the assignment of
+variable y$_1$ at the beginning of the code excerpt down to its unique use at
+the end. Using the traditional CFG representation this requires the propagation
+through several intermediate program points. These program points are concerned
+with computations of the variables x$_1$  through x$_3$ and are thus irrelevant
+for the computation at hand. The SSA-graph representation, on the other hand,
+allows to propagate the desired information directly without any intermediate
+steps. On the other hand, we also find that the control flow join after the
+\textbf{if} is properly reflected by the $\phi$-operation defining the variable
+x$_3$ in the SSA-graph.
 
-	\lident{SSA_PROP_NOT_INTERESTING}: Statement $S$
-	produces nothing of interest and does not affect any of
-	the work lists.  The statement may be simulated again if
-	any of its input operands change in future iterations of
-	the simulator.
+Even though the SSA-graph captures data dependencies, it lacks information on
+\emph{control dependencies}. However, analysis results can often be improved
+significantly by considering the additional information that is available from
+the control dependencies in the program's CFG. As an example consider once more
+the code excerpt shown in Figure~\ref{novillo:fig:ssa_graph}. Assume that the
+condition associated with the \textbf{if} operation is known to be false for all
+possible program executions. Consequently, the $\phi$-operation will select the
+value of x$_2$ in all cases, which is known to be of constant value $5$.
+However, due to the shortcomings of the SSA-graph this information cannot be
+derived. It is thus important to use both graphs during data flow analysis
+in order to obtain the best possible results.
 
-	\lident{SSA_PROP_VARYING}: The value produced
-	by $S$ cannot be determined at compile time and further
-	simulation of $S$ is not needed.  If $S$ is a conditional
-	jump, all the immediate successors of $B$ are added to
-	the CFG work list.  Once a statement yields a varying
-	value, it is never simulated again.
+%///////////////////////////////////////////////////////////////////////////////
+\subsection{Sparse Data Flow Propagation}
 
-	Once all the statements in basic block $B$ have been
-	simulated, its statements are not traversed again.
-	Statements are only visited more than once if they are
-	added to the SSA work list when visiting other statements.
+\begin{algorithm}[t!]
+  \begin{enumerate}
+    \item Initially, every edge in the CFG is marked not executable and the
+          \emph{FlowWorkList} is seeded with the outgoing edges of the flow
+          graph's \emph{start} node.  The \emph{SSAWorkList} is empty.
+    \item \label{novillo:alg:propagation:loop} Remove the top element of either
+          of the two work lists.
+    \item \label{novillo:alg:propagation:flowedge} If the element is a flow edge
+          that is marked to be executable, do nothing, \\ otherwise proceed as
+          follows:
+          \begin{itemize}
+            \item Mark the edge as executable.
+            \item Visit every $\phi$-operation associated with the edge's target
+                  node.
+            \item When the target node was reached the first time via the
+                  \emph{FlowWorkList} visit its operation.
+            \item When the target node has a single outgoing edge append that
+                  edge to the \emph{FlowWorkList}.
+          \end{itemize}
+    \item \label{novillo:alg:propagation:ssaedge} If the element is an edge from
+          the SSA-graph, process the target operation as follows:
+          \begin{enumerate}
+            \item[a.] When the target operation is a $\phi$-operation visit that
+                      $\phi$-operation.
+            \item[b.] \label{novillo:alg:propagation:ssaedge:regular} For
+                      regular target operations, examine the corresponding
+                      executable flag of the incoming edges of its corresponding
+                      flow graph node. If any of those edges is marked
+                      executable visit the operation, otherwise do nothing.
+          \end{enumerate}
+    \item Continue with step \ref{novillo:alg:propagation:loop} until both work
+          lists become empty.
+    \vspace{-1em}
+  \end{enumerate}
 
-\item	If block $B$ has any $\phi$ nodes, they are simulated
-	with a call to the callback function
-	\lident{ssa_prop_visit_phi}.  As opposed to regular
-	statements, $\phi$ nodes are \textit{always} simulated
-	every time $B$ is added to the CFG work list.  This is
-	because $\phi$ nodes receive their inputs from different
-	incoming edges, so every time a new edge is marked
-	executable, a new argument of each $\phi$ node will
-	become available for simulation.
+  \caption{Sparse Data Flow Propagation}
+  \label{novillo:alg:propagation}
+\end{algorithm}
 
-	It is up to \lident{ssa_prop_visit_phi} to only
-	consider $\phi$ arguments flowing through executable
-	edges (marked with flag \lident{EDGE_EXECUTABLE}). The
-	return value from \lident{ssa_prop_visit_phi} has the
-	same semantics described in \ref{novillo:prop-return-value}.
+Similar to monotone frameworks for traditional data flow analysis, frameworks
+for \emph{sparse data flow propagation} under SSA-form can be defined. As
+before, such a framework consist of: (1) a complete lattice, (2) a set of
+transfer functions, (3) a flow graph, and additionally (4) an SSA-graph. We
+again seek a maximal fixed point solution (MFP) using an iterative work list
+algorithm. However, in contrast to the algorithm described before, data flow
+information is not propagated along the edges of the flow graph but along the
+edges of the SSA-graph. For regular uses the propagation is straightforward due
+to the fact that every use receives its value from a unique definition. Special
+care has to be taken for $\phi$-operations, which select a value among their
+operands depending on the incoming flow edges. The data flow information of all
+incoming operands has to be combined using the meet operator of the lattice.
+Furthermore, we use the flow graph in order to track which operations are not
+reachable under any program execution and are thus safe to ignore during the
+computation of the fixed point solution.
 
-	Also, the evaluation of $\phi$ nodes is different from
-	other statements.  A $\phi$ node is a merging point
-	of potentially different values from different SSA
-	names.  In general, the resulting value of a $\phi$ node
-	will be the ``intersection'' of all the incoming values.
-	Each propagator will have a different concept of
-	intersection according to its own lattice value rules.
+The algorithm processes two work lists, the \emph{FlowWorkList} containing edges
+of the flow graph and the \emph{SSAWorkList}, which consists of edges from the
+SSA-graph. It proceeds by removing the top element of either of those lists and
+processing the respective edge as indicated by
+Algorithm~\ref{novillo:alg:propagation}. Throughout the algorithm operations of
+the program may be visited in order to update the work lists and propagate
+information as shown by Algorithm~\ref{novillo:alg:visit}. We will highlight
+the most relevant parts of the algorithms in the following paragraphs and
+explain some important aspects of their interaction.
 
-\item	Simulation terminates when both work lists are drained.
-\end{enumerate}
+\begin{algorithm}[b!]
+  \begin{enumerate}
+    \item[a.] \label{novillo:alg:visit:phi} If the operation is a
+              $\phi$-operation, combine the data flow information from all its
+              operands that are reachable, i.e., if the corresponding flow edge
+              is marked executable.
+    \item[b.] \label{novillo:alg:visit:branch} In the case of conditional
+              branches, update the operation's data flow information. Determine
+              which of the outgoing flow edges are reachable from the
+              corresponding flow graph node by examining the branch's
+              condition(s) and append the respective edges to the
+              \emph{FlowWorkList}.
+    \item[c.] \label{novillo:alg:visit:regular} For regular operations, update
+              the corresponding data flow information by applying its transfer
+              function.
+    \vspace{-1em}
+  \end{enumerate}
+  Whenever the data flow information changes append all outgoing edges of the
+  corresponding SSA-graph node to the \emph{SSAWorkList}.
+  \caption{Visiting an Operation}
+  \label{novillo:alg:visit}
+\end{algorithm}
 
-For efficiency of implementation, the SSA work list is split in
-two separate lists: one to hold all the SSA names with a result
-of \lident{SSA_PROP_VARYING} and another one to hold those with
-\lident{SSA_PROP_INTERESTING} values.  The rationale is that
-the majority of names will not actually yield interesting values,
-so it is more efficient to dispose of the varying values by
-simulating the affected statements as soon as possible.
+In step~\ref{novillo:alg:propagation:flowedge} of the main algorithm, flow edges
+are processed that were encountered to be executable for the first time in the
+course of the analysis. Whenever such a flow edge is processed, all
+$\phi$-operations of its target node need to be reevaluated due to the fact that
+Algorithm~\ref{novillo:alg:visit}a discarded the respective operands of the
+$\phi$-operations so far -- because the flow edge was not yet marked executable.
+Similarly, the operation of the target node has to be evaluated when the target
+node is encountered to be executable for the first time, i.e., the currently
+processed edge is the first of its incoming edges that is marked executable.
+Note that this is only required the \emph{first} time the node is
+encountered to be executable, due to the processing of operations in
+Step~\ref{novillo:alg:propagation:ssaedge}b, which triggers the reevaluation
+automatically when necessary.
 
-\subsection{Keeping track of propagated values}
+Regular operations as well as $\phi$-operations are visited by
+Algorithm~\ref{novillo:alg:visit} whenever the corresponding flow graph node has
+become executable or when the data flow information of one of its predecessors
+in the SSA-graph was updated. $\phi$-operations combine the information from
+multiple flow paths using the usual meet operator, but only considering those
+operands where the associated edge is marked executable. Conditional branches
+are handled by examining its conditions based on the data flow information
+computed so far. Depending on whether those conditions are satisfiable or not,
+flow edges are appended to the \emph{FlowWorkList} in order to ensure that all
+reachable operations are considered during the analysis. Finally, all regular
+operations are processed by applying the relevant transfer function and possibly
+propagating the updated information to all uses by appending the respective
+SSA-graph edges to the \emph{SSAWorkList}.
 
-As discussed earlier, during propagation two user provided
-functions are called: \lident{ssa_prop_visit_stmt} and
-\lident{ssa_prop_visit_phi}.  The propagator itself is only
-interested in the three return values to determine which blocks
-and statements to add in the work lists.  However, the real work
-is in keeping track of propagated values.  Every interesting
-value produced by simulation must be associated to a single SSA
-name $N_i$, but the final values must not be replaced in the IL
-until propagation has finished.  During propagation, names may
-get more than a single value.
+\begin{figure}[t!]
+  \begin{center}
+    \includegraphics{ssa_propagation}
+    \subfigure{\label{novillo:fig:ssa_propagation:a}}
+    \subfigure{\label{novillo:fig:ssa_propagation:b}}
+  \end{center}
+  \vspace{-2em}
+  \caption{Sparse data flow propagation using an SSA-graph.}
+  \label{novillo:fig:ssa_propagation}
+\end{figure}
 
-Once propagation has finished, final values for every SSA name in
-the program are available in the array $PV$, which holds propagated
-values indexed by SSA index.  If name $N_i$ has final value $V$
-then $PV[i] == V$.
+\obacht{Example:}{Do we need a more detailed description of the work lists?}
+As an example, consider the program shown in Figure~\ref{novillo:fig:ssa_graph}
+and the problem of determining the constant values of the variables. First,
+assume that the condition of the \textbf{if} can not be statically evaluated.
+Consequently, all flow edges in the program will eventually be marked
+executable. This will trigger the evaluation of the constant assignments to
+the variables x$_1$,  x$_2$, and y$_1$. The transfer functions immediately yield
+that the variables are all constant holding the value $4$, $5$, and $6$
+respectively. This new information will trigger the reevaluation of the
+$\phi$-operation of variable x$_3$. As both of its operands are reachable the
+combined information yields $3 \bigsqcup 5 = \bot$. Finally, also the assignment
+to variable z$_1$ is reevaluated, but the analysis shows that its value is not a
+constant as depicted by Figure~\ref{novillo:fig:ssa_propagation:a}. If, however,
+the condition of the \textbf{if} is known to be false for all possible program
+executions a more precise result can be computed, as shown in
+Figure~\ref{novillo:fig:ssa_propagation:b}. Neither the flow edge leading to the
+assignment of variable x$_1$ is marked executable nor its outgoing edge leading
+to the $\phi$-operation of variable x$_3$. Consequently, the reevaluation of
+the $\phi$-operation only considers the data flow information of its second
+operand x$_2$, which is known to be constant. This finally enables to analysis
+to show that the assignment to variable z$_1$ is in fact constant as well.
 
+%///////////////////////////////////////////////////////////////////////////////
+\subsection{Discussion}
 
-To summarize, every propagation algorithm should define three
-basic elements:
+\obacht{Content}{Complexity results, Limitations}
 
-\begin{enumerate}
-\item	An array of values $V$ of type \lident{prop_value_t}
-	indexed by SSA index number.
-
-\item	Statement simulation (\lident{ssa_prop_visit_stmt}).
-	Evaluates the expression computed by the statement, if
-	the statement produces an interesting result, it must be
-	in the form of an SSA name $N_i$.  The produced value is
-	stored in $V[i]$ and $N_i$ is returned to the propagator
-	engine so that its def-use edges can be added to the SSA
-	work list.
-
-	If the statement is a conditional jump and it is possible
-	to compute which edge $E$ will be taken, $E$ is returned
-	so that its destination basic block can be added to the
-	CFG work list.  Otherwise, all outgoing edges are added
-	to the list.
-
-\item	$\phi$ node simulation (\lident{ssa_prop_visit_phi}).
-	Similar to \lident{ssa_prop_visit_stmt} but the
-	evaluation is a user-defined merge operation of all the
-	values coming in through executable edges.
-\end{enumerate}
-
-Once an implementation for \lident{ssa_prop_visit_stmt} and
-\lident{ssa_prop_visit_phi} exists, propagation is done with a
-call to \lident{ssa_propagate}.
 
 %---------------------------------------------------------------------------
-
 \section{Constant Propagation}
 \label{novillo:sec:constant-prop}
 

@@ -1,4 +1,4 @@
-PDF=constprop_lattice.pdf contr_flow_graph.pdf
+PDF=constprop_lattice.pdf contr_flow_graph.pdf ssa_graph.pdf ssa_propagation.pdf
 
 all: $(PDF)
 
