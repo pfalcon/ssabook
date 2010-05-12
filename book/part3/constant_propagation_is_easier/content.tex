@@ -26,6 +26,7 @@
 %   stringstyle=\color{black}\ttfamily,
 %   commentstyle=\it,
 %   moredelim=[is][\color{MyDarkGreen}\ttfamily]{|}{|}
+  numbers=left
 }
 
 \section{Overview}
@@ -72,10 +73,9 @@ Section~\ref{novillo:sec:preliminaries}. This will provide the theoretical
 foundation and background for the discussion of the SSA-based propagation
 engine in Section~\ref{novillo:sec:prop-engine}. We then provide examples of
 data flow analyses that can be realized efficiently by the described engine,
-namely constant propagation in Section~\ref{novillo:sec:constant-prop}, copy
-propagation in Section~\ref{novillo:sec:copy-prop}, and value range propagation
-in Section~\ref{novillo:sec:vrp}. We finally conclude and provide links for
-further reading in Section~\ref{novillo:sec:conclusion}
+namely copy propagation in Section~\ref{novillo:sec:copy-prop} and value range
+propagation in Section~\ref{novillo:sec:vrp}. We finally conclude and provide
+links for further reading in Section~\ref{novillo:sec:conclusion}
 \obacht{TODO:}{Mention Dead Code Elimination}
 
 % Several compiler transformations are based on the concept of
@@ -94,7 +94,7 @@ further reading in Section~\ref{novillo:sec:conclusion}
 % $N_i = CST$ is recorded in an internal table indexed by SSA
 % index $i$.  During simulation, uses of $N_i$ are replaced with
 % $CST$, if that yields another constant value, the new constant
-% value is used for further propagation.  The simulation includes
+% value is used for further propagation.  The simulations
 % keeping track of conditional predicates, if they are deemed to
 % have a statically computable value, the predicted branch is
 % simulated, and the others ignored.  Once simulation stops, the
@@ -616,76 +616,57 @@ will also highlight the fact that SSA-form is still helpful in solving
 traditional backward problems such as dead code elimination.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{Constant Propagation}
-\label{novillo:sec:constant-prop}
-
 \section{Copy Propagation}
 \label{novillo:sec:copy-prop}
 
-Copy propagation in SSA form is, in principle, very simple.  Given
-the assignment $x_5 = y_4$, all we need to do is traverse all the
-immediate uses of $x_5$ and replace them with $y_4$.  However,
-such approach will not be able to propagate copies past $\phi$
-nodes, particularly those involved in loops.  Note that it may be
-debatable whether aggressive copy-propagation is desirable, as
-this may have negative effects on passes like register allocation
-(due to increased register pressure), but the current
-implementation sticks to the simplistic metric of maximizing the
-number of propagated copies.
+Copy propagation in SSA-form is, in principle, very simple.  Given the
+assignment \linebreak $x = y$, all we need to do is traverse all the immediate
+uses of $x$ and replace them with $y$, thereby effectively eliminating the
+original copy operation. However, such an approach will not be able to propagate
+copies past $\phi$-operations, particularly those in loops. A more powerful
+approach is to split copy propagation into two phases. First, data flow analysis
+is performed in order to find copy-related variables, followed by a rewrite
+phase that eliminates spurious copies and renames variables.
 
-\subsection{Lattice for copy propagation}
+\begin{figure}[b!]
+  \begin{center}
+    \includegraphics{copy_propagation}
+    \subfigure{\label{novillo:fig:copy_propagation:a}}
+    \subfigure{\label{novillo:fig:copy_propagation:b}}
+  \end{center}
+  \vspace{-1em}
+  \caption{Analysis of copy-related variables.}
+  \label{novillo:fig:copy_propagation}
+\end{figure}
 
-Copy propagation can be described as the problem of propagating
-the \textit{copy-of} value of SSA names.  Given
+The data flow problem for copy propagation can be described as the problem of
+propagating the \textit{copy-of} value of variables.  Given a sequence of
+copies as shown in Figure~\ref{novillo:fig:copy_propagation:a}. We say that
+y$_1$ is a \textit{copy-of} x$_1$ and z$_1$ is a \textit{copy-of} y$_1$.  The
+problem with this representation is that there is no apparent link from z$_1$ to
+x$_1$.  In order to handle transitive copy relations, all transfer functions
+operate on copy-of values instead of the direct source of the copy.  If a
+variable is not found to be a copy of anything else, its copy-of value is the
+variable itself. For the example above, this yields that both, y$_1$ and z$_1$,
+are copies-of x$_1$, which in turn is a copy of itself.
 
-\begin{center}
-  \begin{tabular}{c}
-    \begin{lstlisting}
-$y_4$ = $z_6$;
-$x_5$ = $y_4$;
-    \end{lstlisting}
-  \end{tabular}
-\end{center}
-
-We say that y$_4$ is a \textit{copy-of} z$_6$ and x$_5$ is a
-\textit{copy-of} $y_4$.  The problem with this representation is
-that there is no apparent link from x$_5$ to z$_6$.  So, when
-visiting assignments in \lident{copy_prop_visit_stmt}, we assign
-copy-of values instead of the direct copy.  If a variable is not
-found to be a copy of anything else, its copy-of value is itself.
-So, in this case we would have y$_4$ copy-of z$_6$ and x$_5$
-copy-of z$_6$.  At the end of propagation, uses of x$_5$ and y$_4$
-will be replaced with z$_6$.
-
-
-Propagation must also be able to propagate copies exposed by
-$\phi$ nodes.  For instance,
-
-\begin{center}
-  \begin{tabular}{c}
-    \begin{lstlisting}
-$x_5$ = $y_4$;          $y_4$ = $z_6$;
-         $\ldots$
-    $z_9$ = PHI <$x_5$, $y_4$>
-    \end{lstlisting}
-  \end{tabular}
-\end{center}
-
-Should result in z$_9$ being a copy of z$_6$.  The implementation
-of \lident{ssa_prop_visit_phi} only needs to check the copy-of
-values of every executable $\phi$-argument.  If they all match,
-then the LHS of the $\phi$ node (z$_9$ in this case) can have its
-copy-of value set to the common copy-of value.  Otherwise, the
-value of the $\phi$ node is considered varying and the copy-of
-value of the name on the LHS is itself.  So, when visiting the
-$\phi$ node for z$_9$, the propagator finds x$_5$ copy-of z$_6$
-and y$_4$ copy-of z$_6$, which means that z$_9$ is copy-of z$_6$.
+Similarly, we would like to obtain the result that x$_3$ is a copy of y$_1$ for
+the example depicted in Figure~\ref{novillo:fig:copy_propagation:b}. This is
+accomplished by choosing the meet operator such that a copy relation is
+propagated whenever the copy-of values of all the $\phi$-operation's operands
+match. So, when visiting the $\phi$-operation for x$_3$, the propagator finds
+that x$_1$ and x$_2$ are both copies of y$_1$, which allows to propagate the
+desired result that x$_3$ is a copy of y$_1$.
 
 The following example shows a more complex situation where copy
 relations may be obfuscated by loops.  Note that the actual visit
 ordering depends on the shape of the CFG and immediate uses, the
 ordering used here is meant for illustration only:
 
+\obacht{Flaw??}{The example seems to be flawed, e.g., x$_2$ should be defined
+using a $\phi$ as block 0 has two predecessors, step 1 results in x$_4$ should
+probably be x$_3$, assuming that x$_2$ might receive a value from outside of the
+loop, the result x$_3 \rightarrow $ x$_8$ appears to be false.}
 \begin{center}
 \parbox{2in}{\includegraphics[height=4in]{copy-prop-3}}
 \end{center}
@@ -733,16 +714,16 @@ prevents that.  Moreover, this kind of propagation will only
 iterate over the subset of statements affected, not the whole
 CFG.
 
-\section{Value Range Propagation (VRP)}
+\section{Value Range Propagation}
 \label{novillo:sec:vrp}
 
-This transformation is similar to constant propagation but
-instead of propagating single constant values, it propagates
-known value ranges.  For instance, the code in Figure
-\ref{novillo:fig:vrp-1} is extracted from a typical expansion of
-bound checking code in languages like Java. Notice how the bound
-checking done at line 3 is not really necessary as variable $i$
-is guaranteed to take values in the range [$0$, a->len].
+This transformation is similar to constant propagation, which served as a
+running example throughout this chapter. But instead of propagating single
+constant values, contiguous value ranges for variables are propagated. For
+instance, the code in Figure \ref{novillo:fig:vrp-1} is extracted from a
+typical expansion of bound checking code in languages like Java. Notice how the
+bounds check at line $12$ is not really necessary as variable $i$
+is guaranteed to take values in the range [$0$, a-\textgreater len - 1].
 
 \begin{figure}
   \begin{center}
@@ -767,7 +748,7 @@ doit(array *a)
       \end{lstlisting}
     \end{tabular}
   \end{center}
-  \caption{Bound checking code generated by the compiler.}
+  \caption{Useless array-bound checking code.}
   \label{novillo:fig:vrp-1}
 \end{figure}
 
