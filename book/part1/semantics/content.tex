@@ -1,30 +1,406 @@
 \chapter{Semantics \Author{L. Beringer}}
 \numberofpages{10}
+\newcommand{\pdec}[3]{\ensuremath{\mathtt{proc}\ } {#1}\ \mathtt{(}{#2}\mathtt{)\ =} \ {#3}}
 
-%%%%%%%%%%%%
+\newcommand{\letin}[3]{\ensuremath{\mathtt{let}\ {#1}\ \mathtt{=}\ {#2}\ \mathtt{in}\ {#3}\ \mathtt{end}}}
+\newcommand{\ite}[3]{\ensuremath{\mathtt{if}\ {#1}\ \mathtt{then}\ {#2}\ \mathtt{else}\ {#3}}}
+\newcommand{\letrec}[2]{\ensuremath{\mathtt{fun}\ {#1}\ \mathtt{in}\ {#2}\ \mathtt{end}}}
+\newcommand{\call}[2]{\ensuremath{{#1}\mathtt{(}{#2}\mathtt{)}}}
+\newcommand{\decl}[0]{\ensuremath{\mathit{decl}}}
+\newcommand{\uopsymbol}[0]{\ensuremath{\mathit{unop}}}
+\newcommand{\bopsymbol}[0]{\ensuremath{\mathit{binop}}}
+\newcommand{\uop}[1]{\ensuremath{\uopsymbol\ {#1}}}
+\newcommand{\bop}[2]{\ensuremath{\bopsymbol\ {#1}\ {#2}}}
+\newcommand{\simplejudge}[2]{{#1} \vdash {#2}}
 
-\section{Introduction}
+%\section{Introduction}
+\label{section:Part1:Semantics:Intro}
+\footnote{How can $\phi$-functions have semantics?}  In this chapter
+we discuss models that underpin the SSA discipline and some of the
+concepts associated with SSA, or embed SSA in alternative program
+representations. Besides complementing the intuitive meaning of
+``unimplementable'' $\Phi$-instructions, the models are motivated by
+the aim
+\begin{itemize}
+\item to make syntactic conditions and semantic invariants that are
+  implicit in the definition of SSA more explicit or easier to enforce
+  for a given program. The introduction of SSA itself was motivated by
+  a similar goal: to represent aspects of program structure, namely
+  the def-use relationships, explicitly in syntax, by enforcing a
+  particular naming discipline. In a similar way, semantic models and
+  representations of SSA in other formalisms aim to shed light on
+  aspects of SSA that are crucial for the correct operation but not
+  necessarily enforced by the syntactic SSA format. Simple examples
+  for syntactic conditions that should be satisfied but are
+  occasionally left implicit include ``all $\phi$-functions in a block
+  must be of the same arity'', ``the variables assigned to by the
+  $\phi$-functions in a block must be distinct'', or
+  ``$\phi$-functions are only allowed to occur at the beginning of of
+  a basic block''. Reasoning using semantic models helps us to
+  understand why such conditions are required and to identify
+  opportunities for relaxing them.
+\item to have formal criteria with respect to which SSA-based code
+  transformations may be proven correct. For example, implementations
+  of Glesner's models (see
+  Section~\ref{section:Part1:Semantics:GlesnerSemantics}) in
+  Isabelle/HOL were used to prove the correctness of dead code
+  elimination and code generation transformation, while Chakravarty et
+  al.~\cite{ChakravartyKZ:COCV03} prove the correctness of a
+  functional representation of Wegmann and Zadeck's SSA-based sparse
+  conditional contant propagation
+  algorithm~\cite{WegmannZ:Toplas1991}.
+\item to facilitate the implementation of interpreters operating at
+  SSA level. This enables the compiler developer to experimentally
+  validate SSA-based analyses and transformations at their genuine
+  language level, before out-of-SSA-translation is performed
+\item to provide a formal basis for comparing and integrating variants
+  of SSA (such as the variants discussed later in this book), for
+  translating between these variants, and for translating into and
+  out of SSA
+\item to provide conceptual support for the appeal of SSA by relating
+  core concepts to principles well-understood in other domains of
+  compiler and programming language research
+\end{itemize}
+As the variations on SSA discussed in this book highlights, a compiler
+writer has considerable elbow room even after subscribing to ``the''
+SSA discipline. A cross-cutting goal of the semantic models is to
+provide orientation in this design space.
 
-How can $\phi$-functions have semantics?
+We restrict our attention to three
+approaches.
+\begin{enumerate}
+\item In Section~\ref{section:Part1:Semantics:GlesnerSemantics} we discuss representations of SSA using abstract state machines, term graphs, and partial orders developed
+  by Glesner. Avoiding the explicit use of variable names altogether,
+  programs are represented as an overlay of the control flow structure
+  over the data dependence graph given by the def-use
+  relationships. The execution of each basic block maintains the phase
+  distinction between the evaluation of the $\phi$-nodes and the
+  execution of non-$\phi$-instructions. The latter proceeds in a
+  non-deterministic order governed purely by the availability of
+  operands.
+\item Section~\ref{section:Part1:Semantics:FunctionalLanguages} outlines a correspondence of SSA to restricted functional languages, which was
+  pioneered by O'Donnell, Kelsey, and Appel. Control flow is either
+  represented in continuation-passing-style (CPS) or as sets of
+  mutually tail-recursive first-order functions. Exploiting the
+  conceptual similarity between points of definition of imperative
+  variables and binding of functional names, and between dominance and
+  static scope, the particular appeal of this model lies in the fact
+  that its target formalism is well-known to many programmers,
+  directly supported by interpreters and compilers, and firmly
+  grounded in mathematical logic by being based on the
+  $\lambda$-calculus. These features also make the formalism a natural
+  common representation for integrating compiler front-ends for
+  different languages.
+\item Section~\ref{section:Part1:Semantics:PopSemantics} finally summarizes a denotational model developed by Pop et al.. Motivated in part by recent proposals to require loop-closing $\phi$-nodes~\cite{}, the authors formally relate SSA to imperative code in non-SSA form, complementing the formal relationships between SSA and functional languages. Contrary to Glesner, the authors argue that SSA is in fact a declarative language in its own right rather than the imposition of a particular data flow discipline over the control flow structure. 
+\end{enumerate}
+Similar to the task of implementing one programming language in
+another, each model embeds SSA into a more ``basic'' host
+formalism. Reasoning steps performed in these host formalism are
+considered already understood, without requiring further
+justification.  This is not to say that their notational and sometimes
+conceptual complexity may not itself occasionally be
+considerable. Indeed, for the sake of readability, we gloss over
+numerous technical details in the following sections and refer the
+reader to the literature for more in-depth treatments of the models.
 
 %%%%%%%%%%%%
 
 \section{An Operational Semantics}
+\label{section:Part1:Semantics:GlesnerSemantics}
 
 Existing work by Glesner et al, TU Berlin.
-
-%%%%%%%%%%%%
-
-\section{A Denotational Semantics}
-
-a Sebastian-Pop-style denotational semantics of SSA form (i.e. as
-dataflow/Lucid)
-
 
 
 %%%%%%%%%%%%
 
 \section{Equivalence with Continuation passing style}
+\label{section:Part1:Semantics:FunctionalLanguages}
+
+An alternative understanding of SSA is provided by functional
+programming languages. This interpretation is rooted in the
+observation that the central goal of SSA, namely to provide each use
+of a variable with a unique point of definition, is obtained for free
+from the concepts of binding and lexical scoping. Like the binding of
+a variable in $\lambda$-calculus, a let-binding
+\verb|let x = e in e' end| in a functional language binds the result
+of \verb|e| to name \verb|x| for the duration (scope) \verb|e'|.
+Contrary to assignments to imperative variables, such a binding
+\emph{shadows} earlier bindings of \verb|x| throughout the evaluation
+of \verb|e'|, but does not overwrite them\footnote{In order to avoid
+  confusion, we refer to identifiers in the functional world as
+  \emph{names}, reserving the term \emph{variable} for the imperative
+  regime.}. Indeed, the choice of name \verb|x| is arbitrary and the
+result of \verb|e'| is not altered if we capture-avoidingly replace
+(``$\alpha$-rename'') \verb|x| by some other fresh name \verb|y| that
+does not occur free in \verb|e'|.
+
+O'Donnell~\cite{ODonnellPhD} and Kelsey~\cite{Kelsey95} observed that
+the correspondence between name binding and point of variable
+definition extends to other aspects of program structure. The
+dominance-based control flow structure of SSA corresponds in a precise
+way to \emph{continuation-passing-style} (CPS), a program
+representation going back to van Wijngaarden
+\cite{vanWijngaarden1966} and Landin \cite{Landin1965} that occurs as intermediate code format in
+production-strength compilers for functional languages
+\cite{DBLP:journals/lisp/SussmanS98a,Appel:CWC}.
+
+Programs in CPS explicitly communicate code fragments (``continuation
+terms'') that stipulate where evaluation should continue once the
+execution of the current fragment has terminated. Continuations are
+thus similar to the use of return addresses in procedure calls. Being
+particular higher-order functions, continuations may create, apply,
+and comunicate further continuations, enabling the efficient
+represention of arbitrary control flow.  Intra-procedural 
+merge points correspond to invocations of identical (local)
+continuations, albeit with possibly differing actual arguments.
+Each formal data parameter of such a continuation plays exactly the
+same role as a single $\phi$-function at the beginning of a code
+block: to unify the arguments stemming from various calls sites and
+bind them to a unique name for the duration of the ensuing code
+fragment.
+
+An alternative to the use of anonymous continuation terms is to
+represent a procedure as a set of mutually tail-recursive named
+functions -- a representation occasionally referred to as \emph{direct
+style}~\cite{Reynolds1974}. Usually, the granularity of functions is
+that of basic blocks so that jumps between basic blocks can be modeled
+by function invocations. However, deviations from this discipline are
+possible, for example by inlining functions that have only a single
+invocation site\footnote{cf edge-split/branch normalization -- see
+below\ldots}\footnote{In principle, we could even have one function
+for each primitive operation\ldots}.  The tail-recursiveness of
+functions implies that no invocation stack needs to be maintained for
+such local function calls. In contrast, procedure invocations obay the
+usual frame stack discipline and may be represented as function calls
+that occur in non-tail position.  We discuss this representation
+(``direct style'') in more detail below.
+
+The correspondence to SSA is most pronounced for direct style or CPS
+programs that are in \emph{let-normal-form}: each intermediate result
+must be explicitly named, and function arguments must be variables or
+constants. Syntactically, let-normal-form isolates basic instructions
+in a separate category of primitive terms $a$ and then requires
+let-bindings to be of the form $\verb|let x = | a \verb| in e' end|$.
+In particular, neither conditionals nor let-bindings are primitive. As
+a consequence of these restrictions, the conversion of unrestricted
+code into let-normal form fixes an evaluation order, in a
+similiar way as the linearization of a data- and control
+flow-dependence graph\footnote{are CFG/dependence web/PDG and variants
+discussed at this point?}.  Furthermore, as $a$ cannot contain bindings
+and all uses of $x$ in $e$ are in the scope of the innermost binding
+of $x$, any outer binding of $x$ becomes unreachable. Thus, ANF allows
+us to avoid any stack-based implementation of shadowing - in precise
+correspondence to SSA where variables originating from the same
+original program identifiers \footnote{what's the terminology we use
+for such variables?} not only shadow each other but make each other
+unreachable for the remainder of the code.
+
+Closely related to continuations and direct-style functional representations are
+\emph{monadic} languages such as Benton et al's MIL~\cite{BentonKennedyRussel:ICFP1998} and  Peyton-Jones et al.'s language~\cite{PeytonJonesShieldsLT:POPL1998} partition expressions into a category of \emph{values} and \emph{computations}, similarly to the isolation of primitive terms discussed above (see also~\cite{Reynolds1974,Plotkin75}). This allows to treat side-effects (memory access, IO, exceptions,\ldots) in a uniform way, following Moggi~\cite{Moggi1991}. 
+\emph{Administrative normal form} (A-normal form, ANF~\cite{}) was proposed to enable some CPS-based program transformations applicable in a direct style representation, and is largely synonymous with what we described as let-normal direct style.
+
+Before illustrating the correspondence in more detail we briefly
+discuss the target representation.
+
+
+\subsection{A functional representation}
+The target of our translation is a the
+functional language whose grammar is
+\begin{eqnarray*}
+\uopsymbol & ::= & \ldots\\
+\bopsymbol & ::= & \mathtt{add} \ | \ \mathtt{sub} \ | \ \ldots\\
+a & ::= & x \ | \ c \ | \ \uop x \ | \ \bop x y\\
+e & ::= & a \ | \ \letin x a e \ | \ \ite x e e \\
+      & & | \ \call f {x_1,\ldots,x_n} \ | \ \letrec {\decl_1 \ \mathtt{and}\ \ldots \ \mathtt{and}\ \decl_n} e\\
+\decl & ::= & f(x_1,\ldots,x_n) = e
+\end{eqnarray*}
+Primitive expressions $a$ are built from names and (e.g.~integer)
+constants $c$ using unary and binary operations. Non-restricted
+expressions $e$ extend this by a let-construct, conditionals, function
+calls, and a mechanism for declaring a block of functions
+$f_1,\ldots,f_n$. Each function declaration comes with a list of
+formal parameters and a function body\footnote{Maybe I should use the
+traditional $\mathtt{letrec}$??}. The separation into data names $x$
+and function names $f$ is only for notational convenience - in fact,
+both kinds of names are drawn from a single category of names. A
+procedure is given by a declaration $$\pdec P {x_1,\ldots,x_m} e$$ such
+that all free variables of $e$ are amongst the $x_i$. The set of free
+variables of primitive and non-restricted expressions is given in
+Figure~\ref{}, and enforces the (standard) scoping and visibility
+conditions: binding of names occurs in let-bindings and function
+declaration blocks, and the bodies $e_i$ of functions may refer to 
+the names of the sibling functions $f_1,\ldots,f_n$ declared in the
+same block.
+
+Compared to a CFG-based program representation, the above grammatical
+one stresses the \emph{inductive} nature of programs, where phrases
+are hierarchically built up from subexpressions rather than being
+nodes in a graph. Let-binding and conditional represent the
+control-flow sucessor relationship in a way that enables modular
+reasoning: all constituents necessary for giving the meaning of these
+constructs is locally available. Associated with this organization is
+the proof technique of \emph{structural
+induction}~\cite{McCarthy63abasis,Burstall:1969}, where properties of
+phrases are defined and proven according to the subterm relation.
+
+Unless stated otherwise, programs are treated 
+\emph{up to $\alpha$-equivalence}, which is to say that programs differing only in the choice of bound names are formally considered equal.  We call a
+procedure declaration \emph{well-formed} if  the
+following syntactic conditions are met.
+\begin{itemize}
+\item each list $x_1,\ldots,x_n$ of formal parameters (in the declaration of functions or the declaration of the procedure) consists of distinct elements, i.e.~$x_i \neq x_j$ for all $1 \le i \neq j \le n$.
+\item function names declared in the same block are distinct
+\item any call $f(x_1,\ldots,x_n)$ is of the same arity as the (innermost enclosing) binding of name $f$.
+\item \footnote {explain load/store, forbid ``result'' of store to be used?}
+\end{itemize}
+These conditions are often imposed by functional languages and can be
+enforced by a simple \emph{typing system} - a formal derivation system
+with axioms and proof rules for constructing syntactic artefacts that
+represent some formal justification of certain judgements. For the
+task at hand, one may take judgements to be of the form $\simplejudge
+\Gamma e$ where \emph{context} $\Gamma$ \ldots\footnote{Decide what judgement to use here}
+
+Some proof rules are shown in Figure~\ref{}. From these, we construct
+\emph{derivation trees} that have instantiations of proof rules as
+nodes and a link between two nodes $a$ and $b$ whenever the
+(instantiated) concluding judgement of $a$ is used as a hypothesis of
+node $b$. The resulting trees have a single concluding
+judgement at their root and instances of axioms (proof rules that do
+not have side conditions) as leafs. We interprete the typing rules
+\emph{inductively}, i.e.~define the set of derivable judgements to be
+the \emph{least} set that is closed under the given rules. This
+enables the use of the proof technique
+\emph{induction on derivations} for proving properties of derivable judgements, complementing the above-mentioned structural induction.
+The two proof techniques largely coincide in cases where the derivation
+system is \emph{syntax-directed}, i.e.~each term constructor occurs in
+precisely one proof rule's concluding judgement, and in each rule,
+\emph{hypothetical} judgements (above the line) concern subterms of the phrase in the concluding judgement. \footnote{Omit this sentence?: In particular, the term of the concluding judgement uniquely determines the proof rule that was applied in the last step of the derivation, for deriving such a judgement. }
+Type systems that enjoy this property are hence algorithmically more
+tractable than general type systems, leading to type checking or type
+inference algorithms that traverse the program in a similarly
+instruction-oriented fashion as dataflow algorithms - the choice of
+typeing rule corresponds to the application of the transfer function.
+
+In addition to specifying type systems, formal derivation systems are
+also used for defining various forms of operational or axiomatic
+semantics of languages~\cite{Hoare69,Plotkin1981}. These employ different notions of contexts and
+generally involve judgements over entities other than types
+(e.g. states, environments, assertions), but share the inductive
+nature of type systems by being formulated as collections of proof
+rules and axioms that are often applied in a syntax-directed fashion.
+
+\subsection{Aspects of the correspondence by way of example}
+
+We now illustrate some aspects of the correspondence for
+let-normalized direct-style using the example from Section~\ref{}.
+
+Consider the control flow graph in Figure~\ref{}, which defines a
+procedure $P$ with basic blocks\footnote{replace $n$ by concrete
+number once the program has been fixed.} $b_1,\ldots,b_n$ and
+appropriate control flow edges. 
+
+\begin{tabular}{|c|c|}
+  \hline Functional concept & Imperative/SSA concept\\ \hline \hline
+  name-binding in let & assignment (point of definition)\\
+  name-binding in function prarameter & assignment by $\phi$-function
+  (point of definition)\\ free name & live-in variable (least
+  solution)\\ $\alpha$-renaming & clash-avoiding variable renaming\\
+  unique association of binding occurrence to each use & unique
+  association of defs to uses\\ lexical scope of name & dominance
+  region of variable\\ arity of function $f_i$ & number of
+  $\phi$-functions at beginning of $b_i$\\ distinctness of formal
+  parameters of $f_i$ & distinctness of LHS-variables in the
+  $\phi$-block of $b_i$\\ number of call sites of function $f_i$ &
+  arity of $\phi$-functions in block $b_i$\\ parameter
+  lifting/dropping & addition/removal of $\phi$-function\\ block
+  floating/sinking & reordering according to dominator tree
+  structure\\ potential nesting structure of fully $\lambda$-lifted
+  function definitions & dominator tree\\ nesting level & maximal
+  level index in dominator tree\\ typing context (scope-adaptive) &
+  symbol table (global)\\ type systems & dataflow frameworks\\ typing
+  rules & dataflow (in-)equations/transfer functions\\ typing
+  derivations & solutions to dataflow equations\\ \hline
+\end{tabular}
+
+%%%%%%%%%%%%
+
+\section{A Denotational Semantics}
+\label{section:Part1:Semantics:PopSemantics}
+
+a Sebastian-Pop-style denotational semantics of SSA form (i.e. as
+dataflow/Lucid)
 
 
 %%%%%%%%%%%%
+
+\section{Discussion, pointers to the literature, and future work}
+\label{section:Part1:Semantics:Discussion}
+\footnote{Formal translations between dataflow equations and type
+  systems for functional interpretation}
+
+Mention monadic style (Moggi - incidentally 1991???,
+integrating/encapsulating side effects), and typed alternative
+(Ohori-papers) ``Computational meta-language'' means: host-language in
+which the implemented language is interpreted/embedded.  Briefly point
+to partial evaluation, NBE, and various translations between monads,
+ANF, CPS,\ldots
+
+In addition to the articles by van Wijngaarden and Landin, early uses
+and studies of CPS include \cite{Reynolds:1972,Plotkin75}.
+Reynolds~\cite{Reynolds:LSC1993} and Wadsworth~\cite{Wadsworth00}
+provide recollections and a comprehensive discussion of the history of
+multiple discoveries of CPS. The relative merits of the various
+functional representations remain an active area of research, in
+particular with respect to their integration with program analyses and
+transformations. Recent contributions to this discussion include
+\cite{Kennedy} and \emph{local CPS}~\cite{}. Despite their
+differences, all variations exhibit the basic correspondences from
+Table~\ref{Table:SSAFunctionalCorrespondences}. Sharing the principles
+of functional languages, they also support non-local function calls,
+which - in collaboration with more sophisticated type systems than
+discussed in the present chapter - enables a comparatively smooth
+extension of program analyses from intra- to inter-procedural
+cases. The transfer of analysis techniques between the two language
+domains is an active area of research - for an extensive introduction
+see~\cite{NielsenNielsenHankin}. Modern textbooks on programming
+language semantics and type systems
+include~\cite{Winskel,Pierce,Reynolds}.
+
+
+\subsection{Quarry}
+
+the static scope of \verb|x|.  At the end
+of $e'$, $x$ becomes inaccessible, and any future use of $x$ must be
+surrounded by another binding occurrence. In particular, the choice of
+name \verb|x| is transparent to surrounding code, as the behaviour of
+$e'$ is observably equivalent to that of some code $e''$ that arises
+from replacing all free occurrences of $x$ in $e'$ by some other fresh
+name, say $y$ (``$\alpha$-renaming'').  Thus, each use of a
+name has a unique point of binding, in the same way that each use
+of a variable in SSA has a unique point of definition, and different
+binding points for the same name can can easily be avoided
+and in any case can never be confused. In fact, the concept of
+dominance region is exactly the same as that of static scope.
+
+Given the historic proximity between the introduction of SSA and the
+publication of a major textbook on compilation using functional
+intermediate representation it is not surprising that the close
+relationship between the two formalisms was quickly observed
+\cite{Kelsey95}.
+
+ Nevertheless,
+all variants provide a practical alternative to traditional
+representations of SSA using explicit $\phi$-nodes. All formalisms
+based 
+
+
+ Given the complexity of the host formalisms
+themselves, the judgement as to whether the various models succeed in
+achieving the above goals rests ultimately with the reader, her prior
+exposure to the formalisms, and her specific task at hand.
+
+We close by briefly comparing the approaches and some items for future
+research.
+
+%\bibliographystyle{alpha}
+%\bibliography{chapter}
