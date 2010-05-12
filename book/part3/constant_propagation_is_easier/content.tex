@@ -44,15 +44,6 @@ traditional data flow analysis in this chapter and show that \emph{static single
 assignment} form (SSA) facilitates the design and implementation of equivalent
 analyses, while leveraging properties of programs in SSA-form allows to reduce
 the asymptotic complexity and memory consumption.
-\obacht{Examples}{
-  \begin{itemize}
-    \item Copy Propagation
-    \item Constant Propagation
-    \item Value Range Propagation
-    \item Dead Code Elimination
-    \item Liveness - refer to Chapter
-  \end{itemize}
-}
 
 Traditionally, data flow analysis is performed on a \emph{control flow graph}
 (CFG) representation of the input program, where nodes in the graph represent
@@ -137,7 +128,7 @@ basics of data flow analysis. However, due to space considerations, we can not
 cover this topic in full depth, interested readers are thus advised to consult
 standard text books, such as the one by Nielsen, Nielsen, and
 Hankin~\cite{novillo:bib:NNH99}.
-\obacht{TODO:}{May/Must Information}
+\obacht{TODO:}{May/Must Information?}
 
 As noted before, data flow analysis allows to derive information of certain
 interesting program properties that may help to optimize the program. Typical
@@ -316,14 +307,27 @@ defined by the length of its longest chain. We can ensure termination for
 lattices fulfilling the \emph{ascending chain condition}, which ensures that the
 lattice has finite height. Given a lattice with finite height $h$ and a flow
 graph $G=(V, E)$ it is easy to see that the MFP solution can be computed in
-$O(|E|*h)$ time, or, due to the fact that $|E| \leq |V|^2$, in $O(|V|^2*h)$.
-\obacht{Bounds}{Memory consumption??, post-order traversals, rapid data flow problems}
+$O(|E| \cdot h)$ time, or, due to the fact that $|E| \leq |V|^2$, in $O(|V|^2
+\cdot h)$. Note that the height of the lattice often depends on properties of
+the input program, which might ultimately yield bounds worse than cubic in the
+number of graph nodes.
+\obacht{TODO:}{Talk about Memory consumption?}
 
-Apart from computing the maximal fixed point, data flow equations can also be
-solved using a more powerful approach called the \emph{meet over all paths}
-(MOP) solution. Even though more powerful the MOP solution is often harder to
-compute or even undecidable~\cite{novillo:bib:NNH99}. Consequently, the MFP
-solution is preferred in practice.
+For reducible flow graphs the order in which operations are processed by the
+work list algorithm can be
+optimized~\cite{novillo:bib:HU73,novillo:bib:KU76,novillo:bib:NNH99}, allowing
+to derive tighter complexity bounds. However, relying on reducibility is
+problematic, because flow graphs are often \emph{not} reducible even for proper
+structured languages, e.g., reverse flow graphs of backward problems can be, and
+in fact almost always are, irreducible even for programs with reducible flow
+graphs. Furthermore, experiments have shown that the tighter bounds not
+necessarily lead to improved compilation times~\cite{novillo:bib:CTK06}.
+
+Apart from computing a fixed point, data flow equations can also be solved using
+a more powerful approach called the \emph{meet over all paths} (MOP) solution.
+Even though more powerful, computing the MOP solution is often harder or even
+undecidable~\cite{novillo:bib:NNH99}. Consequently, the MFP solution is
+preferred in practice.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Propagation Engine}
@@ -467,7 +471,7 @@ information as shown by Algorithm~\ref{novillo:alg:visit}. We will highlight
 the most relevant parts of the algorithms in the following paragraphs and
 explain some important aspects of their interaction.
 
-\begin{algorithm}[b!]
+\begin{algorithm}[t!]
   \begin{enumerate}
     \item[a.] \label{novillo:alg:visit:phi} If the operation is a
               $\phi$-operation, combine the data flow information from all its
@@ -551,13 +555,67 @@ the $\phi$-operation only considers the data flow information of its second
 operand x$_2$, which is known to be constant. This finally enables to analysis
 to show that the assignment to variable z$_1$ is in fact constant as well.
 
+\obacht{Complexity results}{\begin{itemize}
+                              \item Relate to bounds of traditional data flow
+                                    analysis,
+                              \item Do we have any numbers that propagation is
+                                    faster under SSA-form?
+                              \item Memory consumption: Point out that we can
+                                    keep data flow information with every
+                                    definition.
+                            \end{itemize}
+}
+During the course of the propagation algorithm every edge of the SSA-graph is
+processed at least once, whenever the operation corresponding to its definition
+is found to be executable. Afterward, an edge can be revisited several times
+depending on the height $h$ of the lattice representing the analysis' property
+space. Reachable edges of the flow graph, on the other hand, are processed at
+most once. This leads to an upper bound in execution time of $O(|E_{SSA}| \cdot
+h + |E_{FG}|)$, where $E_{SSA}$ and $E_{FG}$ represent the edges of the
+SSA-graph and the flow graph respectively -- see~\cite{bib:wegman.ea-91}.
+
 %///////////////////////////////////////////////////////////////////////////////
-\subsection{Discussion}
+\subsection{Limitations}
 
-\obacht{Content}{Complexity results, Limitations}
+Unfortunately, the presented approach also has its drawbacks in terms of
+general applicability. The problem arises from two sources: (1) the exclusive
+propagation of information between data-dependent operations and (2) the
+semantics and placement of $\phi$ operations. The former issue prevents the
+modeling of data flow problems that propagate information to program points that
+are not directly related to either a definition or a use of a variable, while
+the latter is prevents the modeling of backward problems.
 
+Consider, for example, the well known problem of available
+expressions~\cite{novillo:bib:NNH99} that often occurs in the context of
+redundancy elimination. An expression is available at a given program point when
+the expression is computed, and not modified thereafter, on all paths leading to
+the program point. In particular, this might include program points that are
+independent from the expression and its operands, i.e., neither defines nor uses
+any of its operands. However, the SSA-graph does not cover those program points
+as it propagates information directly from definitions to uses without any
+intermediate steps.
 
-%---------------------------------------------------------------------------
+Furthermore, data flow analysis using SSA-graphs is limited to forward problems.
+Due to the structure of the SSA-graph it is not possible to simply reverse the
+edges in the graph as usually done with flow graphs. For one, this would
+invalidate the nice property of having a single source for incoming edges of a
+given variable, as variables typically have more than one use. In addition,
+$\phi$-operations are placed at join points with respect to the \emph{forward}
+control flow and thus do not capture join points in the reversed flow graph.
+SSA-graphs are consequently not suited to model backward problems.
+
+Even though the presented approach has its restrictions, it lead the way to the
+development of advanced sparse data flow techniques, such as the \emph{sparse
+evaluation graph} by Chio~et.al.~\cite{novillo:bib:CCF91} or the \emph{compact
+evaluation graph}~\cite{novillo:bib:R02}. Those graphs can be computed for both,
+backward and forward problems, and allow to propagate information to program
+points independent of definitions and uses of certain variables. Nevertheless,
+data flow analysis based on SSA-graphs is still a useful and effective solution
+for a many interesting problems, as will be shown in the following sections. We
+will also highlight the fact that SSA-form is still helpful in solving
+traditional backward problems such as dead code elimination.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Constant Propagation}
 \label{novillo:sec:constant-prop}
 
@@ -908,6 +966,10 @@ arguments with ranges VR0 and VR1:
 Propagation continues while names change from one state to the
 other.  Once all the basic blocks have been simulated and no
 state transitions occur, simulation stops.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Dead Code elimination}
+\label{novillo:sec:dead_code_elimination}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Conclusion}
