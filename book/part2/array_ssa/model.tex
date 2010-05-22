@@ -1,0 +1,272 @@
+In this section, we describe a unified representation called
+{\em Extended Array SSA} form, which can be used to perform
+sparse dataflow analysis of values through scalars, array
+elements, and object references.  First, we introduce a
+formalism called {\em Heap Arrays} which allows us to represent
+object references with the same representation used to
+represent named arrays~\cite{KnSa98}.   Then, we show how to use the
+Extended Array SSA representation and global value numbering to
+disambiguate pointers with the same framework used to analyze
+array indices.
+
+\subsubsection{Heap Arrays}\label{heaparray}
+\REM{
+In this section, we describe our approach to analyzing accesses to
+object fields and array elements as accesses to elements of
+hypothetical {\it heap arrays}.  
+This modeling is only used for
+intermediate program analysis; the heap arrays are not made manifest
+in the transformed program.  
+}
+The partitioning of memory locations into
+heap arrays is analogous to the partitioning of memory locations using
+type-based alias analysis~\cite{DiwanMM1998}.  The main difference is that
+our approach also performs a flow-sensitive analysis of
+element-level accesses to the heap arrays.
+We model accesses to object fields as follows.
+For each field $x$, we introduce
+a hypothetical one-dimensional
+heap array,  $\HA^x$.
+Heap array $\HA^x$ consolidates all instances of field
+$x$ present in the heap.
+Heap arrays are indexed by object references.
+Thus, a {\sc getfield}\footnote{We use {\sc getfield} and {\sc putfield}
+to denote general
+field access operators that may appear in three-address
+statements, not necessarily in Java bytecode.}
+of $p.x$ is modeled as a read of element $\HA^x[p]$,
+and a {\sc putfield} of $q.x$ is modeled as a write of element $\HA^x[q]$.
+The use of distinct heap arrays for distinct fields leverages the 
+fact that accesses to distinct fields must be directed to 
+distinct memory locations in a strongly typed language.
+Note that field $x$ is considered to be the same field for objects of types
+$C_1$ and $C_2$, if $x$ is
+declared in class $C_1$ and class $C_2$ extends class $C_1$ \ie\ if $C_2$ is
+a subclass of $C_1$.
+
+Recall that 
+arrays in an OO language like Java
+are also allocated in the heap --- both an object reference and an
+integer subscript are necessary for accessing an array element. 
+Therefore, we model such arrays as {\it two-dimensional} heap
+arrays, with one dimension indexed by
+the object reference as in heap arrays for fields, and the second
+dimension indexed by the integer subscript.  
+To avoid confusion, we refer to the array declared in the program 
+as a ``program array'', and its representation in our model as 
+its corresponding heap array.
+
+The notation $\HA^{{\cal{T}}[\;]{\cal{R}}}$ is used
+to denote a heap
+array, where $\cal{R}$ is the rank (dimensionality) of the underlying
+program
+array, and
+$\cal{T}$ is the element type.  
+We
+introduce a distinct heap array for each distinct array type.  
+There are seven possible element
+types for arrays in Java
+--- bytes, chars, integers, longs, floats, doubles and objects.
+Similar types can be introduced for other languages.
+The
+heap arrays for one-dimensional program
+arrays of these element types are
+denoted by $\Hb$, $\Hc$, $\Hi$, $\Hl$, $\Hf$, $\Hd$, and $\HO$
+respectively\footnote{By default, ${\cal{R}} = 1$ in our
+notation \ie\ we assume that the array is one-dimensional if
+$\cal{R}$ is not specified.}.  
+Thus, a read/write of a one-dimensional integer program
+array element {\tt a[i]}
+is modeled as a read/write of heap array element $\Hi[a,i]$.
+In general, heap arrays for $\cal{R}$-dimensional arrays of these
+types are denoted by ${\cal{H}}^{b[\;]{\cal{R}}}$,
+${\cal{H}}^{i[\;]{\cal{R}}}$,
+${\cal{H}}^{l[\;]{\cal{R}}}$,
+${\cal{H}}^{f[\;]{\cal{R}}}$,
+${\cal{H}}^{d[\;]{\cal{R}}}$, and
+${\cal{H}}^{O[\;]{\cal{R}}}$.
+
+Note that we have only one heap array, ${\cal{H}}^{O[\;]{\cal{R}}}$, that
+represents all $\cal{R}$-dimensional arrays of objects. 
+\REM{
+The basic rule that must be obeyed in our approach is that, if 
+there are two Java  $\cal{R}$-dimensional array with element types
+$C_2$ and $C_1$, such that
+class $C_2$ extends class $C_1$,
+then both Java arrays must share the same heap array abstraction.
+The reason for this rule is that we wish to build Array SSA form 
+without relying on any prior flow-sensitive analyses.
+For the presentation in this chapter, we satisfy the
+rule by creating a single heap array, 
+${\cal{H}}^{O[\;]{\cal{R}}}$, to represent {\it all}
+$\cal{R}$-dimensional arrays of objects.
+}
+This approach can be refined by examining
+all the object array types used in the method being compiled,
+and replacing ${\cal{H}}^{O[\;]{\cal{R}}}$
+by a set of heap arrays, one for each LCA (Least
+Common Ancestor) in the class hierarchy of the object array types.
+
+Having modeled object and array references as accesses to
+named arrays, we can rename heap arrays and scalar variables
+to build an extended version of Array SSA form~\cite{KnSa98}.
+First, we rename heap arrays so
+that each renamed heap array
+has a unique static definition.
+This includes renaming of the dummy definition 
+inserted at the start block to capture the unknown initial value
+of the heap array.
+
+We insert three kinds of $\phi$ functions 
+to obtain an {\it extended}
+Array SSA form that we use for data flow analyses\footnote{The extended
+Array SSA form can also be viewed as a
+sparse data flow evaluation graph~\cite{ChCF91} for
+a heap array.}:
+\begin{enumerate}
+\item 
+A {\em control} $\phi$ (denoted simply as $\phi$) corresponds to
+the standard $\phi$ function from scalar SSA form~\cite{CFRWZ91a},
+which represents a  control flow merge of a set of reaching definitions.
+\item
+A {\em definition} $\phi$ ($d\phi$) 
+is used to deal with ``non-killing'' definitions
+of heap arrays.  It merges the result of an element-level store instruction
+(say) with the previously extant value of the heap array.
+$d\phi$ functions were introduced in our past work on Array SSA form~\cite{KnSa98,KnSa98b}.
+\item
+A {\em use} $\phi$ ($u\phi$) function creates
+a new name whenever a statement reads a heap array element.
+$u\phi$ functions were not used in prior work, and represent the extension
+in ``extended'' Array SSA form.
+
+\end{enumerate}
+The main purpose of the $u\phi$ function is to link
+together load instructions for the same heap array in control
+flow order.   Intuitively, the $u\phi$ function creates a new
+SSA variable name, with which a sparse dataflow analysis can
+associate a lattice variable.  We present one dataflow algorithm that 
+uses this information for redundant load identification later in 
+the chapter.  Other algorithms (eg. constant propagation) will not require a 
+new name at each use, in which case the $u\phi$ function can be
+ignored.
+
+The extra $d\phi$ and $u\phi$
+functions in extended Array SSA form do not lead to excessive
+compile-time overhead because there is at most one $d\phi$ function introduced
+for each heap array def and at most one $u\phi$ function introduced
+for each heap array use.
+No heap array operations are
+present at instructions that operate on scalar variables\footnote{Note that local variables (stack elements) cannot be subject to 
+pointer-induced aliasing in a strongly typed language such as Java.}.
+So, the worst-case size of the extended Array SSA form defined
+above is proportional to the size of the scalar SSA form that would be
+obtained if each heap array access is modeled as a def.  Past 
+empirical results
+have shown the size of scalar SSA form to be linearly proportional to
+the size of the input program~\cite{CFRWZ91a}, and the same should be
+true for extended Array SSA form.
+
+\REM{
+First, heap array operations exist only
+at
+instructions that read or write memory; no heap array operations are
+present at instructions that operate on scalar variables\footnote{Note that local variables (stack elements) cannot be subject to 
+pointer-induced aliasing in a strongly typed language such as Java.}.
+Second, the worst-case size of the extended Array SSA form defined
+above is proportional to the size of the scalar SSA form that would be
+obtained if each heap array access is modeled as a def.  Past 
+empirical results
+have shown the size of scalar SSA form to be linearly proportional to
+the size of the input program~\cite{CFRWZ91a}, and the same should be
+true for extended Array SSA form.
+}
+
+\REM{ 
+We conclude this section with a brief discussion of the impact of
+the Java Memory Model (JMM).
+It has been observed that scalar replacement
+can be an illegal
+transformation for multithreaded programs written for a
+memory model, such as the JMM,
+that includes the memory coherence
+assumption~\cite{pugh99}. 
+(This observation does not apply to single-threaded programs, such
+as the benchmark programs used for the experimental results
+in Section~\ref{results}.)
+However, it is likely that the Java memory model will be revised
+in the near future,
+and that the new version will not require memory coherence~\cite{pugh99b}.
+In the rest of this chapter, we assume
+that memory coherence is not a requirement for our scalar replacement
+optimizations\footnote{If necessary, our algorithms can be modified to 
+obey memory coherence by simply treating each $u\phi$ function 
+as a $d\phi$ function \ie\ by treating each array use as an array def.}.
+}
+
+
+\REM{
+\begin{figure}
+{\bf Java source code:}
+\begin{verbatim}
+static int foo(Type1 p, int a[], int i, int j) {
+    Type1 q = new Type1;
+    p.x = 1;
+    q.x = a[i] + j;
+    if ( p.x >= 1 ) a[j] = a[i] + 1;
+    else a[j] = a[i] - 1;
+    return q.x + a[j];
+}
+\end{verbatim}
+
+{\bf Equivalent three-address code (with heap array representations for object
+accesses):}
+\begin{programa}
+static int foo(Type1 p, int a[], int i, int j) \{ \\
+\Ta    int t1, t2, t3, t4, t5, t6, t7, t8, t9, t10; \\
+\Ta    \mbox{\bf // $\HA^x = \bot$ ; $\Hi = \bot$} \\
+\Ta    Type1 q = new Type1; \\
+\Ta    p.x = 1; \Td \mbox{\bf // $\HA^x[p]=1$}\\
+\Ta    t1 = a[i]; \Td \mbox{\bf // $t1 = \HA[a,i]$}\\
+\Ta    t2 = t1 + j;\\
+\Ta    q.x = t2; \Td \mbox{\bf // $\HA^x[q] = t2$}\\
+\Ta    t3 = p.x; \Td \mbox{\bf // $t3 = \HA^x[p]$}\\
+\Ta    if ( t3 >= 1 ) \{ \\
+\Tb        t4 = a[i]; \Td \mbox{\bf // $t4 = \Hi[a,i]$}\\
+\Tb        t5 = t4 + 1; \\
+\Tb        a[j] = t5; \Td \mbox{\bf // $\Hi[a,j] = t5$}\\
+\Ta    \}\\
+\Ta    else \{ \\
+\Tb        t6 = a[i]; \Td \mbox{\bf // $t6 = \Hi[a,i]$}\\
+\Tb        t7 = t6 - 1;\\
+\Tb        a[j] = t7; \Td \mbox{\bf // $\Hi[a,j] = t7$}\\
+\Ta    \}\\
+\Ta    t8 = q.x;\\
+\Ta    t9 = a[j];\\
+\Ta    t10 = t8 + t9;\\
+\Ta    return t10;\\
+\}
+\end{programa}
+\caption{Example Java method, and its three-address code and heap array representation for object accesses}
+\label{fig:java}
+\end{figure}
+
+Figure~\ref{fig:java} contains a simple Java method that we will use
+as a running example throughout this chapter.  For convenience,
+we also show its representation in three-address code~\cite{Much97}, since
+most optimizing compilers for Java convert the input bytecode sequence
+into a three-address code representation.  Each three-address code
+statement that contains an object reference is annotated with the
+equivalent heap-array access (see {\bf //} pseudocomments). 
+For example, the {\sc putfield} statement, {\tt p.x~=~1}, is modeled
+as $\HA^x[p]=1$, and the array element load statement $t1 = a[i]$ is modeled
+as $t1 = \Hi[a,i]$.
+}
+
+\REM{
+The above modeling of object field and array element accesses 
+remains unchanged under composition.  For example, a source-level
+data access of
+the form $b[k].x$ will be expanded as follows:
+
+}

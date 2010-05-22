@@ -1,0 +1,301 @@
+
+In this section, we show how the heap arrays of Extended Array SSA form
+reduce questions of pointer analysis questions regarding array indeces.
+In particular, we show how global value numbering and allocation
+site information can be used to efficiently 
+compute
+{\it definitely-same} ($\DS$) and {\it definitely-different}
+($\DD$) information for 
+heap array indices.
+For simplicity, the
+$\DS$ and $\DD$ analyses described in this section are limited in
+scope to scalar references.
+
+As an example, consider the following Java source
+code fragment annotated with heap array accesses:
+\begin{center}
+\begin{minipage}{3.0in}
+\begin{programa}
+ r = p ;\\
+ q = new Type1 ;\\
+ p.y = $\ldots$ ; \Te // $\H^y[p] := \ldots$\\
+ q.y = $\ldots$ ; \Te // $\H^y[q] := \ldots$\\
+ $\ldots$ = r.y ; \Te // $\ldots := \H^y[r]$ \\
+\end{programa}
+\end{minipage}
+\end{center}
+One analysis goal is to identify the redundant load of {\tt r.y}, enabling
+the compiler to replace it with
+a use of scalar temporary that captures the value stored into {\tt p.y}.
+We need to establish two facts to perform this transformation:
+1) object references $p$ and $r$ are identical (definitely same) in 
+all program executions, and 2)
+object references $q$ and $r$ are distinct (definitely different) in
+all program executions. 
+
+For a program in SSA form, we 
+say that $\DS(a,b) =
+\mbox{\it true}$ if and only if variables
+$a$ and $b$ are known to have exactly
+the same value
+at all points that are
+dominated by the definition of $a$ and dominated by the definition of $b$.
+Analogous to $\DS$, $\DD$ denotes a ``definitely-different'' binary
+relation \ie\ $\DD(a,b) = \mbox{\it true}$ if and only if $a$ and
+$b$ are known to have distinct (non-equal) values
+at all points that are
+dominated by the definition of $a$ and dominated by the definition of $b$.
+
+\REM{
+We now discuss the compile-time
+computation of the $\DS$ and $\DD$ relations for symbolic
+indices. 
+Given scalar variables $I_1$ and $I_2$
+in SSA form, only one of the following three cases
+is possible:
+\begin{center}
+\parbox{3.0in}{
+\begin{programa}
+$\DS$($I_1$, $I_2$) = FALSE; $\DD$($I_1$, $I_2$) = FALSE \\
+$\DS$($I_1$, $I_2$) = TRUE; $\DD$($I_1$, $I_2$) = FALSE \\
+$\DS$($I_1$, $I_2$) = FALSE; $\DD$($I_1$, $I_2$) = TRUE \\
+\end{programa}
+}
+\end{center}
+The first case is the most conservative solution.  In the absence of
+any other knowledge, it is always correct to state that
+$\DS(I_1,I_2) = \mbox{\it false}$ and $\DD(I_1,I_2) = \mbox{\it
+false}$.
+}
+
+The problem of determining if two symbolic index values are the same
+is equivalent to the classical problem of {\it global value
+numbering}~\cite{AlWZ88,Much97,RoWZ88}. 
+We use the notation $\V(i)$ to denote the value number of SSA 
+variable $i$.  Therefore, if $\V(i) = \V(j)$, then 
+$\DS(i,j)$ = {\it true}.  
+\REM{
+As mentioned
+earlier, our approach is to compute the $\DS$ relation only for scalar
+variables as a prepass to the constant propagation and scalar
+replacement analyses.  Since our framework use Array SSA form, it is
+most convenient to use an efficient scalar global value numbering
+algorithm based on SSA form (such as the algorithm in
+\cite{AlWZ88}) for this purpose. 
+}
+For the code fragment above, the  statement, {\tt p~=~r},
+ensures that $p$ and $r$ are given the same value number 
+(\ie\ $\V(p) = \V(r)$), so that $\DS(p,r)$ = {\it true}.
+
+
+\REM{ 
+For the three-address code in figure~\ref{fig:java}, we would obtain the
+following partitioning after global value numbering of scalars:
+$$
+\{ p, r \},
+\{ a \},
+\{ i \},
+\{ j \},
+\{ q \},
+\{ t1 \}, \{ t2 \}, \{ t3 \}, \{ t4 \}, \{ t5 \},
+\{ t1 \}, \{ t2 \}, \{ t3 \}, \{ t4 \}, \{ t5 \},
+\{ t6 \}, \{ t7 \}, \{ t8 \}, \{ t9 \}, \{ t10 \}
+$$
+}
+In general, the problem of
+computing $\DD$ is more complex than value numbering.  Note that $\DD$, unlike $\DS$, is not
+an equivalence relation because $\DD$ is not transitive.  If $\DD(a,
+b)=\mbox{\it true}$ and $\DD(b, c)=\mbox{\it true}$, it does not imply
+that $\DD(a, c)=\mbox{\it true}$. 
+\REM{
+We can leverage past work on data dependence
+analysis~\cite{Wolf89} to efficiently
+identify many simple but common cases for
+which $\DD$ can be evaluated to {\it true} for program array
+subscript expressions.
+For example, it is clear
+that $\DD(i, i+1) = \mbox{\it true}$, and that $\DD(i, 0) = \mbox{\it
+true}$ if $i$ is a loop index variable that is known to be $\geq 1$.
+}
+
+For object references, we use allocation-site information to compute
+the $\DD$ relation.  
+In particular, we rely on two observations:
+\begin{enumerate}
+\item Object references that contain the results of distinct allocation-sites
+must be different.
+\item An object reference containing the result of an allocation-site
+must be different from any object reference 
+that occurs at a program point that dominates the allocation site.
+(As a special case, this implies that the result of an allocation site
+must be distinct from all object references that are method parameters.)
+\end{enumerate}
+
+For example, in the above code fragement,
+the presence of the allocation site in {\tt q~=~new~Type1}
+ensures that $\DD(p,q) = \mbox{\it true}$.
+
+\REM{
+As an example, consider the heap array representation
+for the three-address code for the Java method
+{\tt foo()} introduced in figure~\ref{fig:java}.
+After carefully examining the control and data flow in
+method {\tt foo()}, we can conclude that
+the read access of heap array element 
+$\HA^x[r]$ (\ie\ field {\tt p.r})
+will have a constant value (=~1).
+
+{\it Vivek: problem above. $\HA^x[r]$ (\ie\ field {\tt p.r}) should
+that be r.x???}
+
+{\it Vivek: problem below (and also above). there is no r in the example.}
+
+
+Consider the three statements in figure~\ref{fig:DD-ex-source}
+
+\begin{figure}%[htbp]
+
+\begin{center}
+\parbox{3.0in}{
+\begin{programa}
+\Ta $p.y := 1$ \\
+\Ta $q.y := \ldots$ \\
+\Ta $\ldots := r.y * 2$ \\
+\end{programa}
+}
+\end{center}
+\caption{Java Source Code Motivating \DD and \DS Analysis}
+\label{fig:DD-ex-source}
+\end{figure}
+
+
+We may be able to propagate the value 1 from the assignment in the
+first statement to the use in the third.  But to be able to justify
+this conclusion, we need to establish two facts:
+
+\begin{enumerate}
+\item Object references $p$ and $r$ are identical (definitely same) in 
+all program executions.
+\item Object references $q$ and $r$ are distinct (definitely different) in
+all program executions. 
+\end{enumerate}
+
+
+For a program in SSA form, we 
+say that $\DS(a,b) =
+\mbox{\it true}$ if and only if variables
+$a$ and $b$ are known to have exactly
+the same value
+at all points that are
+dominated by the definition of $a$ and dominated by the definition of $b$.
+If, $a$ and $b$ are
+constants (or discovered to be constants)
+then $\DS(a,b) = \mbox{\it true}$ if and only if $a=b$.
+Analogous to $\DS$, $\DD$ denotes a ``definitely-different'' binary
+relation \ie $\DD(a,b) = \mbox{\it true}$ if and only if $a$ and
+$b$ are known to have distinct (non-equal) values
+at all points that are
+dominated by the definition of $a$ and dominated by the definition of $b$.
+If, $a$ and $b$ are constants then $\DD(a,b) = \mbox{\it
+true}$ if and only if $a\not=b$.
+
+We now discuss the compile-time
+computation of the $\DS$ and $\DD$ relations for symbolic
+indices. 
+Given scalar variables $I_1$ and $I_2$
+in SSA form, only one of the following three cases
+is possible:
+\begin{center}
+\parbox{3.0in}{
+\begin{programa}
+$\DS$($I_1$, $I_2$) = FALSE; $\DD$($I_1$, $I_2$) = FALSE \\
+$\DS$($I_1$, $I_2$) = TRUE; $\DD$($I_1$, $I_2$) = FALSE \\
+$\DS$($I_1$, $I_2$) = FALSE; $\DD$($I_1$, $I_2$) = TRUE \\
+\end{programa}
+}
+\end{center}
+The first case is the most conservative solution.  In the absence of
+any other knowledge, it is always correct to state that
+$\DS(I_1,I_2) = \mbox{\it false}$ and $\DD(I_1,I_2) = \mbox{\it
+false}$.
+
+The problem of determining if two symbolic index values are the same
+is equivalent to the classical problem of {\it global value
+numbering}~\cite{AlWZ88,Much97}. If two indices $i$ and $j$ have the
+same value number, then $\DS(i,j)$ must = {\it true}.  As mentioned
+earlier, our approach is to compute the $\DS$ relation only for scalar
+variables as a prepass to the constant propagation and scalar
+replacement analyses.  Since our framework use Array SSA form, it is
+most convenient to use an efficient scalar global value numbering
+algorithm based on SSA form (such as the algorithm in
+\cite{AlWZ88}) for this purpose. $p$ and $r$ are found to be in the
+same partition as a result of the global value number of scalars on
+the three-address code in figure~\ref{fig:java}.
+
+
+\REM{ 
+For the three-address code in figure~\ref{fig:java}, we would obtain the
+following partitioning after global value numbering of scalars:
+$$
+\{ p, r \},
+\{ a \},
+\{ i \},
+\{ j \},
+\{ q \},
+\{ t1 \}, \{ t2 \}, \{ t3 \}, \{ t4 \}, \{ t5 \},
+\{ t1 \}, \{ t2 \}, \{ t3 \}, \{ t4 \}, \{ t5 \},
+\{ t6 \}, \{ t7 \}, \{ t8 \}, \{ t9 \}, \{ t10 \}
+$$
+}
+The problem of
+computing $\DD$ is more complex.  Note that $\DD$, unlike $\DS$, is not
+an equivalence relation because $\DD$ is not transitive.  If $\DD(A,
+B)=\mbox{\it true}$ and $\DD(B, C)=\mbox{\it true}$, it does not imply
+that $\DD(A, C)=\mbox{\it true}$.  For computing $\DD$ for array
+subscripts, we can leverage past work on data dependence
+analysis~\cite{Wolf89} to identify many simple but common cases for
+which $\DD$ can be evaluated to {\it true}.  For example, it is clear
+that $\DD(i, i+1) = \mbox{\it true}$, and that $\DD(i, 0) = \mbox{\it
+true}$ if $i$ is a loop index variable that is known to be $\geq 1$.
+
+For Java object references, we use allocation-site information to compute
+the $\DD$ relation.  In particular, we rely on two observations:
+\begin{enumerate}
+\item Object references that contain the results of distinct allocation-sites
+must be different.
+\item An object reference containing the result of an allocation-site
+in the method must be distinct from an object reference that's a parameter.
+\end{enumerate}
+These observations can be illustrated in the three-address code in
+Figure~\ref{fig:java}.  Global value numbering can be used to
+determine that $\V(p) = \V(r)$ \ie\ $\DS(p,r) = \True$,
+and the above allocation-site observations can be used to determine
+that $\V(p) \not= \V(q)$ \ie\ $\DD(p,q) = \True$.
+In general, knowing that $\V(p) \not= \V(q)$ allows
+us to conclude that $\DD(a,b) = \True$ whenever 
+$\V(a) = \V(p)$ and $\V(b) = \V(q)$.
+
+
+
+{\it
+TODO (VIVEK): use the idea of ``uniformly-generated'' index expressions to efficiently
+represent $\DD$ information for integer-valued array indices???
+}
+
+}
+
+In the remainder of the chapter, we assume that the index of a heap
+array is (in general) a vector whose size matches the rank of the heap
+array \eg\ an index into a one-dimensional heap array $\HA^x$ will be
+a vector of size 1 (\ie\ a scalar), and an index into a
+two-dimensional heap array $\Hb$ will be a vector of size 2.  (For
+Java programs, heap arrays will have rank $\leq 2$ since all program
+arrays are one-dimensional.)  Given a vector index $\vec{k} = (k_1,
+\ldots)$, we will use the notation $\V(\vec{k})$ to represent a vector
+of value numbers, $(\V(k_1), \ldots)$.  Thus, $\DS(\vec{j}, \vec{k})$
+is {\it true} if and only if vectors $\vec{j}$ and $\vec{k}$ have the
+same size, and their corresponding elements are definitely-same \ie\
+$\DS(j_i,k_i )= \mbox{\it true}$ for all $i$.  Analogously,
+$\DD(\vec{j}, \vec{k})$ is {\it true} if and only if vectors $\vec{j}$
+and $\vec{k}$ have the same size, and at least one pair of elements is
+definitely-different \ie\ $\DD(j_i,k_i )= \mbox{\it true}$ for some~$i$.

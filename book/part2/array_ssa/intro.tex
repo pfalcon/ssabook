@@ -1,0 +1,358 @@
+Static single assignment (SSA) form for scalar variables has been a significant
+advance.  It has simplified the design of some optimizations and has made
+other optimizations more effective.  Some of the earliest applications
+of SSA form were in the design of new algorithms for global constant
+propagation~\cite{WeZa85}  and
+global value numbering~\cite{AlWZ88,RoWZ88}.
+The popularity of SSA form surged
+after an efficient algorithm for computing SSA form was made available~\cite{CFRWZ91a}.  SSA form is now a standard representation used in modern
+optimizing compilers in both industry and academia.
+
+\REM{
+The salient properties of SSA form are as follows:
+\begin{enumerate}
+
+\item Each definition is assigned a unique name.
+
+\item At certain points in the program, new names are generated which
+combine the results from several definitions.
+
+\item Each use refers to exactly one name generated from either
+of the two rules above.
+
+\end{enumerate}
+In the scalar case, combining (rule 2) is via a $\phi$ function which
+determines which of several values to use based on the flow path
+traversed.  
+For example,
+SSA form converts the code in Figure~\ref{scalar-source}
+to that in Figure~\ref{trad-ssa}.  The combining function, $\phi$
+depends on the path taken through the {\tt if} statement. Notice that
+this path is unknown until runtime and may vary with each dynamic execution
+of this code.
+
+
+
+%Standard SSA form 
+%views an array as a single object.
+Given the code in Figure~\ref{triv-array-ssa}, we might consider dealing with
+arrays in a similar way by recognizing this special case
+in which all elements of $X$ are written in either the then branch or the
+else branch.  We could use a combining $\phi$
+function that chooses the first or the second definition of the whole
+array depending on the path taken at runtime. However, the situation
+becomes complicated if the
+nesting of the condition and the loops are reversed as in
+Figure~\ref{fig:array-ssa}. The combining $\phi$ function for this example
+must merge the two definitions on an element-by-element basis based on
+the value of the conditional which is now an array of
+booleans.
+This complication arises for arrays because an assignment to
+an array element does not necessarily kill a previous assignment
+to the same array variable.
+(The same problem arises for pointers and aliases as well.) 
+
+Thus,
+the analysis required to generate a useful SSA form for array variables
+is
+more complex than for scalar variables. 
+In this chapter,
+we introduce an Array SSA form 
+that captures precise element-level data flow information for array variables
+in all cases. It is general and simple, and
+coincides with standard SSA form when applied to scalar variables.  
+It can also be used for structures and other variable types
+that can be modeled as arrays.
+The three rules in standard SSA form also apply to Array SSA form.
+However, combining in Array SSA form
+is via a more powerful $\phi$ function that can
+merge values from distinct definitions on an element by element
+basis. 
+
+\begin{figure}
+\begin{programa}
+\Ta  if $(C)$ then  \\
+\Tb  $S := \ldots$   \\
+\Ta  else     \\
+\Tb  $S := \ldots$  \\
+\Ta  end if 
+\end{programa}
+\caption{Control Flow with Scalar Definitions}
+\label{scalar-source}
+\end{figure}
+
+
+\begin{figure}
+\begin{programa}
+\Ta  if $(C)$ then \\
+\Tb   $S_1 := \ldots$ \\
+\Ta  else  \\
+\Tb   $S_2 := \ldots$ \\
+\Ta  end if \\
+\Ta  $S_3 := \phi (S_1,S_2)$
+\end{programa}
+\caption{Traditional Scalar SSA}
+\label{trad-ssa}
+\end{figure}
+
+
+
+
+\begin{figure}
+\begin{programa}
+\Ta  if $(C)$ then \\
+\Tb  do $i := \ldots$ \\
+\Tc    $X[i] := \dots$ \\
+\Tb   end do  \\
+\Ta  else \\
+\Tb   do $i := \ldots$ \\
+\Tc    $X[i] := \ldots$ \\
+\Tb   end do  \\
+\Ta  end if
+\end{programa}
+\caption{Trivial Array SSA Problem}
+\label{triv-array-ssa}
+\end{figure}
+\begin{figure}
+
+\begin{programa}
+\Ta do $i := \ldots$ \\
+\Tb  if $(C[i])$ then \\
+\Tc  $X[i] := \dots$  \\
+\Tb  else \\
+\Tc  $X[i] := \ldots$  \\
+\Tb  end if \\
+\Ta  end do 
+\end{programa}
+\caption{Not so Trivial Array SSA Problem}
+\label{fig:array-ssa}
+\end{figure}
+
+
+\begin{figure}
+\begin{programa}
+\Ta  $\{X\ initialized\ here.\}$ \\
+\Ta  do $i \ldots$ \\
+\Tb  if $(C[i])$ then \\
+\Tc $X[f(i)] := \ldots$ \\
+\Tb  endif  \\
+\Ta   enddo  \\
+\Tb   $\ldots := X[\ldots]$  
+\end{programa}
+\caption{Loop L with Conditional and Indirection}
+\label{cond-indirect}
+\end{figure}
+
+To further understand the difference between standard SSA and Array SSA
+forms,
+consider loop $L$
+in Figure~\ref{cond-indirect}.  The
+use of an element $X[j]$ after the loop
+may refer to the initial value of $X$ or to the value
+defined inside the loop. If subscript expression $f(i)$ is not a
+permutation, the value of a given element of $X$ may be written
+several times by the same static assignment.  
+The $\phi$
+functions in Array SSA form
+ are capable of handling this complexity effectively.
+}
+
+In this chapter,
+we introduce an Array SSA form 
+that captures precise element-level data flow information for array variables, and
+coincides with standard SSA form when applied to scalar variables.  
+It can also be used for structures, objects and other variable types
+that can be modeled as arrays.
+As we will see, combining in Array SSA form
+is via a more powerful $\phi$ function that can
+merge values from distinct definitions on an element by element
+basis. 
+There are several potential uses for Array SSA form in compiler
+analysis
+and optimization for uniprocessor and multiprocessor systems.
+In this chapter, we will use
+{\it constant propagation} and
+{\it conditional constant propagation} (a combination of
+constant propagation and unreachable code elimination) 
+as exemplars of program analyses that can be extended to array variables
+using Array SSA form, and {\em redundant load elimination} and {\em dead store
+elimination} as exemplars of program optimizations that can be extended to array variables and heap objects using Array SSA form.
+As with many algorithms based on scalar SSA form, the algorithms presented in this chapter are linear in the size of the Array SSA form representation.
+
+One motivation for constant propagation of array variables
+is in optimization of scientific programs in which certain array elements
+can be identified as constant.  For example, 
+the SPEC95fp~\cite{SPEC95} benchmark 107.mgrid contains 
+an array variable {\tt A} that is initialized to four constant-valued
+elements as shown in figure~\ref{fig:mgrid}.  A significant amount of
+the time in this application is spent in the triply nested loop 
+shown at the bottom of figure~\ref{fig:mgrid}.  Since constant
+propagation
+can determine that {\tt A(1)} equals zero in the loop, an effective optimization
+is to eliminate the entire multiplicand of
+{\tt A(1)} in the loop nest.  Doing so eliminates 7 of the 31 floating-point
+operations in the loop nest thus leading to a significant speedup.
+This example is simple because the subscripts
+of all defs and uses of 
+array {\tt A} are immediate constants.  However,
+the algorithm presented
+in this chapter can yield
+the same results if the program had instead been written with variables
+that evaluate to constants for the subscripts of array {\tt A}.
+
+
+\begin{figure}
+{\footnotesize
+\begin{verbatim}
+      ! Initialization of array A
+      REAL*8 A(0:3)
+      . . .
+      A(0) = -8.0D0/3.0D0 
+      A(1) =  0.0D0 
+      A(2) =  1.0D0/6.0D0 
+      A(3) =  1.0D0/12.0D0
+
+      . . .
+
+      ! Computation loop in subroutine RESID()
+
+      do i3 = 2, n-1
+         do i2 = 2, n-1
+            do i1 = 2, n-1
+               R(i1,i2,i3)=V(i1,i2,i3)
+               -A(0)*( U(i1,  i2,  i3  ) )
+               -A(1)*( U(i1-1,i2,  i3  ) + U(i1+1,i2,  i3  )
+                       +  U(i1,  i2-1,i3  ) + U(i1,  i2+1,i3  )
+                       +  U(i1,  i2,  i3-1) + U(i1,  i2,  i3+1) )
+               -A(2)*( U(i1-1,i2-1,i3  ) + U(i1+1,i2-1,i3  )
+                       +  U(i1-1,i2+1,i3  ) + U(i1+1,i2+1,i3  )
+                       +  U(i1,  i2-1,i3-1) + U(i1,  i2+1,i3-1)
+                       +  U(i1,  i2-1,i3+1) + U(i1,  i2+1,i3+1)
+                       +  U(i1-1,i2,  i3-1) + U(i1-1,i2,  i3+1)
+                       +  U(i1+1,i2,  i3-1) + U(i1+1,i2,  i3+1) )
+               -A(3)*( U(i1-1,i2-1,i3-1) + U(i1+1,i2-1,i3-1)
+                       +  U(i1-1,i2+1,i3-1) + U(i1+1,i2+1,i3-1)
+                       +  U(i1-1,i2-1,i3+1) + U(i1+1,i2-1,i3+1)
+                       +  U(i1-1,i2+1,i3+1) + U(i1+1,i2+1,i3+1) )
+            end do
+         end do
+      end do
+\end{verbatim}
+}
+\caption{Code fragments from the SPEC95fp 107.mgrid benchmark}
+\label{fig:mgrid}
+\end{figure}
+
+Another motivation is in analysis and optimization of 
+field accesses of
+structure variables or objects in object-oriented languages
+such as Java and C++.
+A structure can be viewed as a fixed-size array, and
+a read/write operation of a structure field can be viewed as a
+read/write operation of an array element through a subscript that
+is a compile-time constant.
+This approach is more compact than an approach in which each field of
+a structure is modeled as a separate scalar variable.
+This technique for modeling structures as arrays
+directly extends to 
+nested arrays and structures.
+For example, an array of rank $n$ of some
+structure type  can be modeled as an array of rank $n+1$ with an extra dimension for structure/object fields. 
+Therefore, the constant propagation algorithms presented
+in this chapter can be efficiently applied to structure variables
+and to arrays of structures.  
+
+\REM{
+The best known algorithms for sparse constant
+propagation of scalar variables~\cite{WeZa91,ClCo95} are based 
+on static
+single assignment (SSA) form~\cite{CFRWZ91a}. 
+However, traditional SSA form 
+views arrays as monolithic objects, which is an inadequate view
+for analyzing and optimizing programs that contain reads
+and writes of individual array elements.
+}
+
+Though Array SSA form can be made manifest at run-time (\eg\ when enabling parallelization via storage duplication~\cite{KnSa98}), all the algorithms described in this chapter  use Array SSA form as a basis
+for program analysis, 
+which means that the Array SSA form
+structures can be removed after the  program properties
+of interest
+have been discovered \ie\ the renamed arrays and $\phi$ operators
+need not 
+be made manifest at run-time.
+
+\REM{
+
+Array SSA form has two distinct advantages over traditional SSA
+form. First, the $\phi$ operator in traditional SSA form is not a pure
+function and returns different values for the same arguments depending
+on the control flow path that was taken.  In contrast, the
+corresponding $\Phi$ operator in Array SSA form includes {\it @
+variables} as extra arguments to capture the control information
+required \ie\ $x_3 :=
+\phi(x_2, x_1)$ in traditional SSA form
+becomes $x_3 := \Phi(x_2,@x_2, x_1,@x_1)$ in Array SSA form.
+Second,  Array SSA form operates on arrays at the element
+level rather than as
+monolithic objects. In particular, a $\Phi$ operator in 
+Array SSA form,  $A_3 := \Phi(A_2,@A_2, A_1,@A_1)$,
+represents
+an {\it element-level merge} of $A_2$ and $A_1$.
+Both advantages of Array SSA form are significant for static analysis.
+The fact that Array SSA form operates at the element-level facilitates
+transfer of statically derived information across references to array
+elements.  The fact that the $\Phi$ is a known pure function
+facilitates optimization and simplification of the $\Phi$ operations.
+
+The typical dichotomy between control flow and data flow that
+complicates many static analysis algorithms vanishes in our approach because the @
+variables capture the necessary control flow information as
+data. This uniformity can
+simplify the design and implementation
+of static  analysis algorithms.
+For conditional constant propagation,
+we provide a straightforward conversion from
+Array SSA form to a single (combined)
+set of data flow equations for control
+and data flow properties. A solution to these equations can identify
+constants assigned through array
+elements, as well as constants that can only be discovered after elimination
+of unreachable code.
+}
+
+
+
+
+The rest of the chapter is organized as follows.
+Section~\ref{sec:arrayssa} reviews full Array SSA form for run-time
+evaluation as in
+\cite{KnSa98}, and also introduces partial Array SSA form
+for static analysis.  
+Section~\ref{sec:arraylattice} describes how we
+extend the constant
+propagation lattice so that it can efficiently
+record information about array
+elements.                                       
+Section~\ref{sec:sc} presents our extension to the Sparse
+Constant propagation (SC) algorithm from \cite{WeZa91} that enables 
+constant propagation through array elements.
+For simplicity, the algorithm in section~\ref{sec:sc} is restricted
+to cases in which both the subscript and the value of an
+array definition are constant.
+Section~\ref{sec:non-const} generalizes the algorithm from section~\ref{sec:sc} so that it can operate on non-constant (symbolic) array subscripts as well
+\eg\ to propagate a def such as $A[m] := 99$ into a use of $A[m]$ even
+if $m$ is not a constant.
+Next,
+section~\ref{sec:scc} presents our extension to the Sparse Conditional
+Constant propagation (SCC) algorithm from \cite{WeZa91} that enables
+constant propagation through array elements in conjunction with 
+unreachable code elimination.
+Section~\ref{sec:heap} shows how Array SSA form can be extended to support
+analysis and
+optimization of 
+object field and array element accesses in strongly typed languages, 
+that works in the presence of both object references (pointers) and array references.
+Section~\ref{sec:related} discusses related work, and section~\ref{sec:conclusions} contains our conclusions.
+
+

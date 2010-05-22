@@ -1,0 +1,138 @@
+We present experimental results using the \jp\ optimizing compiler~\cite{grande99}.
+\REM{
+\jp\ uses a {\em compile-only} methodology for running Java code; the
+system translates all Java bytecodes to native machine instructions, with
+no interpreter.  A key feature of \jp\ is that the entire virtual
+machine, including the thread scheduler, memory management systems,
+class loader, and compilers, is implemented in Java.  
+}
+The performance results in this section were obtained on an
+IBM F50 Model 7025 system
+with four 166MHz PPC604e processors running AIX v4.3.
+However, the results presented in this section were
+obtained for single-threaded programs.
+The system has 1GB of  main memory. 
+Each processor has split 32KB first-level instruction and data
+caches and a 256KB second-level cache. 
+
+The \jp\ system is continually under development; the results in this
+section use the \jp\ system as of November~8, 1999.  For these experiments,
+the \jp\ optimizing compiler performed a basic set of 
+standard optimizations
+including copy propagation, type propagation, null check elimination, 
+constant folding, devirtualization, local common subexpression elimination,
+load/store elimination, dead code
+elimination, and linear scan register allocation.  Previous work~\cite{grande99} has
+demonstrated that \jp\ performance with these optimizations is roughly
+equivalent to that of the industry-leading IBM product JVM and JIT.
+The runs use \jp`s non-generational copying
+garbage collector with 300MB of heap (which is shared by the application
+and by all components of the \jp\ JVM).
+
+
+Our preliminary implementation has several limitations.  
+Our current implementation does 
+not eliminate the null-pointer and array-bounds checks for redundant loads. 
+We do not use any interprocedural
+summary information, as the \joc\ assumes on ``open-world'' due to
+dynamic class loading.  
+We do not perform
+any loop-invariant code motion or partial redundancy elimination 
+to help eliminate redundant loads in loops.  Most importantly,
+the \joc\ still lacks many classical scalar optimizations, which are
+especially important to eliminate the register copies and reduce register
+pressure introduced by scalar replacement.  For these reasons,
+these experimental results should be considered a lower bound on
+the potential gains due to scalar replacement, and we expect the
+results to improve as \jp\ matures.
+
+\REM{
+Our implementation does not enforce
+the coherence property of the Java Memory model, which does not
+affect correctness of our generated code for single-threaded benchmarks.
+}
+
+Note that since the entire \jp\ JVM is implemented in Java, the optimizing
+compiler compiles not only application code and library code, but also
+VM code.  The results in this section thus reflect the performance
+of the entire body of Java code which runs an application, which includes
+VM code and libraries. Furthermore, the compiler inlines code across
+these boundaries.
+%; for example, the compiler inlines much of the VM 
+%implementation directly into a user code method body.
+
+For our experiments, we use the six serial codes from the 
+SPECjvm98 suite~\cite{specJVM98}, and the Symantec suite of 
+compiler microbenchmarks.  For the SPEC codes, we use the
+medium-size (-s10) inputs.  Note that this methodology does {\em not}
+follow the official SPEC run rules, and these results are not
+comparable with any official SPEC results.  
+The focus of our measurements was on obtaining dynamic counts
+of memory operations.
+When we report timing
+information, we report the best wall-clock time from three runs.
+
+\input{characterTable}
+
+We instrumented the compiled code to count each of the six types of Java memory
+operations eligible for optimization by our scalar replacement
+algorithms: {\tt getfield, putfield, getstatic, putstatic, aload} and 
+{\tt astore}.  Table~\ref{table:character} shows the dynamic count of
+each operation during a sample run of each program.
+
+\input{countTable}
+
+Table~\ref{table:counts} shows the percentage of each type of memory
+operation eliminated by our scalar replacement algorithms.  
+The table shows that
+overall, the algorithms eliminate between 0.7\% and 23.5\% of the
+loads and stores.  The table shows that redundant load elimination
+eliminates many more operations than dead store elimination.  On two
+codes, (mpegaudio and symantec), elimination of loads from arrays play
+a significant role.  On the others, the algorithm eliminates mostly
+getfields.  Interestingly, the algorithms are ineffective at eliminating
+references to static variables; however, table~\ref{table:character} shows
+that these references are relatively infrequent.
+
+\REM{
+Note that surprisingly, some categories in table~\ref{table:counts} are
+slightly negative; ie., the effect of scalar replacement actually
+increased the dynamic count of some memory operations.  Scalar replacement
+did not actually introduce any loads or stores.  This phenomenon can
+be explained by recalling that the entire Jalapeno JVM is written
+in Java, including some non-deterministic systems such as the thread
+scheduler and garbage collector.  The increased counts in the table
+represent small random variations from these systems, 
+and are not statistically significant.
+}
+
+\input{speedupTable}
+
+Table~\ref{table:speedup} shows the improvement in running time due
+to the scalar replacement algorithm.  The results show that the
+scalar replacement transformation has a large impact on execution-time,
+increasing bottom-line performance by speedups of at least
+$1.05\times$ on each of the 
+four codes where we could eliminate over 10\% of the memory accesses.
+{\tt Mpegaudio} shows the greatest improvement with a 
+speedup\footnote{Note that a speedup of $1.23\times$ is equivalent to
+a reduction in execution time of 19\%.} of $1.23\times$.
+
+We conclude this section with a brief discussion of the impact of
+scalar replacement on register allocation.  It has been observed in
+the past that scalar replacement can increase register
+pressure~\cite{CaKe94}.  For example, the scalar replacement
+transformations shown in Figure~\ref{fig:ex2}(a) and
+Figure~\ref{fig:ex2}(b) eliminate load instructions at the expense of
+introducing temporaries with long live ranges.  This extra register
+pressure ought not to pose a problem to a register allocator with
+smart heuristics for live range splitting.  However, the register
+allocation algorithm currently implemented in the \joc\ does not
+perform any live range splitting.  In our initial experiments, we
+observed that scalar replacement caused an excessive number of spills
+for one method in {\tt db} and one method in {\tt mpegaudio}.  For the
+results reported above, we hardwired the compiler to disable scalar
+replacement for these two methods.  In future work, we will either
+implement live range splitting so as to better tolerate the extra
+register pressure created by scalar replacement, or automatically
+disable scalar replacement in pathological cases.

@@ -1,0 +1,197 @@
+In this section, we show how our Array SSA framework can be used to
+identify redundant (dead) stores of array elements.  Dead store
+elimination is related to load elimination, because scalar
+replacement can convert non-redundant stores into redundant stores.
+For example, consider the program in
+Figure~\ref{fig:ex2}(a).  If it contained an additional
+store of {\tt p.x} at the bottom, the first store of {\tt p.x} will
+become redundant after scalar replacement.  The program after scalar
+replacement will then be similar to the program shown in
+Figure~\ref{fig:ex2}(c) as an example of dead
+store elimination.
+
+Our algorithm for dead store elimination is based on a backward
+propagation of $\DEAD$ sets.  As in load elimination,
+the propagation is {\it sparse} \ie\ it goes through $\phi$ nodes in
+the Array SSA form rather than basic blocks in a control flow graph.
+However, $u\phi$ functions are not used in
+dead store elimination, since the ordering of uses is not relevant
+to identifying a dead store.
+Without $u\phi$ functions, it is possible for
+multiple uses to access the same heap array name.
+Hence, we use the notation $\langle A,s \rangle$
+to refer to a specific use of
+heap array $A$ in statement $s$.
+We also
+use the term ``non-$\phi$'' to refer to any def or use that does not
+appear in a (control or definition)
+$\phi$ statement \ie\ a def or use from the original program.
+
+Consider a $\phi$ {\it def} $A_i$, a $\phi$ or non-$\phi$ {\it use} $\langle A_j, s \rangle$, and a real
+(non-$\phi$) def $A_k$ in Array SSA form.  We define the following
+four sets:
+\begin{eqnarray*}
+\DEAD_{def}(A_i) & = & \{\; \V(x) \; | \; 
+\mbox{element $x$ of array $A$ is dead at $\phi$ def $A_i$} \;\} \\
+\DEAD_{use}(\langle A_j,s \rangle) & = & \{\; \V(x) \; | \; 
+\mbox{element $x$ of array $A$ is dead at non-$\phi$ use of $A_j$ in statement $s$ } \;\} \\
+\KILL(A_k) & = & \{\; \V(x) \;|\; \mbox{element $x$ of array $A$ is killed by
+non-$\phi$ def of $A_k$} \;\}\\
+\LIVE(A_i) & = & \{ \; \V(x) \;| \; \exists \; \mbox{a non-$\phi$ use $A_i[x]$ of
+$\phi$ def $A_i$}\;\}
+\end{eqnarray*}
+
+The $\KILL$ and $\LIVE$ sets are local sets \ie\ they can be computed 
+immediately
+without propagation of data flow information.
+If $A_i$ ``escapes'' from the procedure (\ie\ definition
+$A_i$ is exposed on procedure exit), then we must conservatively
+set $\LIVE(A_i) = \U^A_{ind}$, the universal set of index value numbers
+for array $A$.  Note that in Java, every instruction that can potentially
+throw an exception must be treated as a procedure exit, although this
+property can be relaxed with some interprocedural analysis.
+
+\begin{figure}
+\begin{enumerate}
+\item {\bf Propagation from the LHS to the RHS of a control $\phi$:}\\
+Consider a control $\phi$ statement $s$ of the form, $A_2  := \phi(A_1,A_0)$.
+In this case, the 
+uses, $\langle A_1, s \rangle$ and $\langle A_0, s \rangle$, must both come from $\phi$ defs, and 
+the propagation of $\DEAD_{def}(A_2)$ to the RHS is a simple copy
+\ie\
+$\DEAD_{use}(\langle A_1,s \rangle) = \DEAD_{def}(A_2)$ and
+$\DEAD_{use}(\langle A_0,s \rangle) = \DEAD_{def}(A_2)$.
+
+\item {\bf Propagation from the LHS to the RHS of a definition $\phi$:}\\
+Consider a $d\phi$ statement $s$ of the form $A_2 := d\phi(A_1, A_0)$.
+In this case use
+$\langle A_1,s \rangle$ must come from a real (non-$\phi$) definition, and use $\langle A_0,s \rangle$  must
+come from a $\phi$ definition.  The propagation
+of $\DEAD_{def}(A_2)$ and $\KILL(A_1)$ to
+$\DEAD_{use}(\langle A_0,s \rangle)$ is given by the equation,
+$
+\DEAD_{use}(\langle A_0,s \rangle) = \KILL(A_1) \cup \DEAD_{def}(A_2)
+$.
+
+\item {\bf Propagation to the LHS of a $\phi$ statement from uses
+in other statements:}\\
+Consider a definition or control $\phi$ statement of the form $A_i := \phi(\ldots)$.  The value of $\DEAD_{def}(A_i)$ is obtained by intersecting
+the $\DEAD_{use}$
+sets of all uses of
+$A_i$, and subtracting out all value numbers that are not definitely different 
+from every element of $\LIVE(A_i)$. 
+This set is specified by the following equation:
+$$
+\DEAD_{def}(A_i) = \left(\bigcap_{\mbox{$s$ is a $\phi$ use of $A_i$}} \;\; \DEAD_{use}(\langle A_i,s \rangle)
+\right) - \{ v | \exists w \in \LIVE(A_i) s.t. \neg DD(v,w) \}
+$$
+\end{enumerate}
+\caption{Data flow equations for \protect{$\DEAD_{def}$} and 
+\protect{$\DEAD_{use}$} sets}
+\label{fig:dead}
+\end{figure}
+
+
+The data flow equations used to compute the $\DEAD_{def}$ and $\DEAD_{use}$ sets are given in Figure~\ref{fig:dead}.
+The goal of our analysis is to find the maximal $\DEAD_{def}$ and $\DEAD_{use}$ sets that satisfy these
+equations.  Hence our algorithm will initialize each 
+$\DEAD_{def}$ and $\DEAD_{use}$
+set to
+$= \U^A_{ind}$
+(for renamed arrays derived from original array $A$),
+and then iterate on the equations till a fixpoint
+is obtained.
+\REM{
+As in other data flow algorithms, termination is guaranteed by the monotonicity
+of the transfer functions.  
+Also, if the control flow graph for the input program is reducible, then the data flow analysis will iterate through back edges
+of $\phi$ functions at most a constant number of times (assuming that the
+maximum
+loop nesting depth in the input program is constant).
+}
+After $\DEAD$ sets have been computed, we can determine if a real (non-$\phi$)
+definition is redundant quite simply as follows.
+Consider a real definition, $A_1[j] := \ldots$, followed by a definition
+$\phi$ statement, $A_2 := d\phi(A_1,A_0)$.
+Then, if $\V(j) \in \DEAD(A_2)$, then def (store) $A_1$ is redundant and can
+be eliminated.
+
+As in the index propagation analysis in Section~\ref{alg},
+the worst-case execution-time complexity for dead store elimination
+is $O(S \times k^2)$, where $S$ is the size of the input method and
+$k$ is an upper bound on the number of defs and uses for a single
+heap array.
+In practice, $k$ is usually small resulting in linear execution time.
+
+
+\REM{
+An upper bound on
+the size of $\U^A_{ind}$ equals the number of distinct index value numbers
+present in non-$\phi$
+definitions of array $A$ in the program, which will be no
+greater than (and usually much smaller than) the number of non-$\phi$
+definitions of array $A$.
+However, if $\U^A_{ind}$ and the $\DEAD$ sets become prohibitively large
+for some input program, we always have the option of dropping elements
+from $\DEAD$ sets for the sake of efficiency (at the cost
+of precision), while still guaranteeing
+correctness.
+}
+\REM{
+{\it Additional details on the store elimination
+algorithm, including correctness
+and complexity proofs, have been
+suppressed due to space limitations.
+}
+}
+
+\REM{
+{\it Further details of the store elimination algorithm have been omitted
+due to space limitations.}
+
+
+{\it TODO or to remove: We conclude this section with a brief description of how our store elimination
+algorithm will process the example program in figure~\ref{fig:ex2}(c).
+The Array SSA form for this example 
+is shown in figure~\ref{fig:A-SSA-form}
+}
+
+\begin{figure}
+\begin{tabular}[t]{|c|c|c|}
+\hline
+\begin{minipage}{2.0in}
+Partial Array SSA form:
+\begin{programa}
+i := k\\
+j := k + 1 \\
+. . .\\
+$A_1[i] := \ldots $ \\
+$A_2 := d\phi(A_1,A_0)$ \\
+$A_3[j] := \ldots $ \\
+$A_4  := d\phi(A_3,A_2)$ \\
+$A_5[k] := \ldots $ \\
+$A_6  := d\phi(A_5,A_4)$ 
+\end{programa}
+\end{minipage}
+& 
+\begin{minipage}{2.0in}
+Local $\KILL$ sets
+\begin{programa}
+\\
+\\
+\\
+$\KILL(A_1) = \{\; \V(i) \;\}$\\
+\\
+$\KILL(A_3) = \{\; \V(j) \;\}$\\
+\\
+$\KILL(A_5) = \{\; \V(i) \;\}$ {\it shouldn't the be \V(k)?} \\
+
+\end{programa}
+\end{minipage}
+\\
+\hline
+\end{tabular}
+\caption{Trace of store elimination algorithm for program in figure \protect{\ref{fig:ex2}}(c)}
+\label{fig:A-SSA-form}
+\end{figure}
+}

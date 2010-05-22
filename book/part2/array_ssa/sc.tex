@@ -1,0 +1,186 @@
+This section shows how we extend the Sparse
+Constant propagation (SC) algorithm from \cite{WeZa91} so as to enable
+constant propagation through array elements.
+For simplicity, this algorithm is restricted
+to cases in which both the subscript and the value of an
+array definition are constant.  A generalization to non-constant
+subscripts is presented next in section~\ref{sec:non-const}.
+
+
+\begin{figure}
+\begin{center}
+\begin{programa}
+/* INITIALIZATION */ \\
+\\
+\Ta {\bf for each} lattice variable $\L(v)$ {\bf do}\\
+\Tb {\bf if} it is not possible that $\L(v)$ can be recognized as a constant\\
+\Td at compile-time (\eg\ $v$ is a return value from an unknown call)\\
+\Tb {\bf then}\\
+\Tc $\L(v)\  \leftarrow\ \bot $\\
+\Tb {\bf else}\\
+\Tc $\L(v)\  \leftarrow\ \top $\\
+\Tb {\bf end if}\\
+\Ta {\bf end for}\\
+\\
+\Ta Intialize {\it worklist} $\leftarrow$ an empty list\\
+\Ta {\bf for each} equation $E$ {\bf do}\\
+\Tb {\bf if} the RHS of equation $E$ has at least one term that is $\not= \; \top$ \\
+\Td  (\ie\ at least one term that is $\bot$ or contains a constant)\\
+\Tb {\bf then}\\
+\Tc  Insert equation $E$ into the {\it worklist}\\
+\Tb{\bf end if}\\
+\Ta {\bf end for}\\
+ \\
+/* FIXPOINT ITERATION */ \\
+\\
+\Ta {\bf while} {\it worklist} is not empty {\bf do}\\
+\Tb $E \leftarrow$ remove any equation from {\it worklist}\\
+\Tb /* Heuristic: remove an equation that depends on the smallest number\\
+\Tb ~~~of other equations in {\it worklist} */ \\
+\Tb Recompute $\L(v)$, the LHS of equation $E$, based on the values of $E$'s RHS terms\\
+\Tb {\bf if} the LHS of equation $E$ has changed {\bf then}\\
+\Tc {\bf for each} equation $E'$ that uses $\L(v)$ in its RHS {\bf do}\\
+\Td Insert equation $E'$ into {\it worklist}\\
+\Tc {\bf end for}\\
+\Tb {\bf end if}\\
+\Ta {\bf end while} \\
+\\
+/* TERMINATION */\\
+\\
+\Ta For each Array SSA variable $v$ such that $\L(v)$ contains a constant, transform the \\ 
+\Ta program to replace each use of $v$ by a constant, if profitable to do so
+\end{programa}
+\end{center}
+\caption{Algorithm for Sparse Constant propagation (SC) for scalar and array variables}
+\label{fig:sc-alg}
+\end{figure}
+
+Figure~\ref{fig:sc-alg} contains an outline of our sparse constant
+propagation algorithm for scalar and array variables.  It is similar in
+structure to the sparse constant propagation algorithm for scalars
+presented in \cite{WeZa91}.  A major difference is that the data flow
+equations now include the lattice values for array variables, as
+described in section~\ref{sec:arraylattice}.
+In addition, the algorithm in figure~\ref{fig:sc-alg} uses a worklist
+of data flow equations (rather than a worklist of SSA edges as in \cite{WeZa91}), thus enabling future integration with other analysis algorithms that are
+based on data flow equations.
+
+Let us consider how the algorithm in figure~\ref{fig:sc-alg}
+will work on the data flow equations in figure~\ref{fig:sc-ex-df}.
+Recall that the Array SSA form for this example program 
+(see figure~\ref{fig:sc-ex-ssa})
+includes the propagation of array $Y_2$ into two control
+flow two successors, and the propagation into array $D_5$
+from two control flow
+predecessors. 
+
+
+\begin{figure}
+\begin{center}
+\begin{tabular}{r r c l}
+\mbox{S1:} & $\L(Y_1)$ & = & $\langle \; (3,99)\; \rangle$ \\
+\mbox{S2:} & $\L(Y_2)$ & = & $\langle \; (3,99)\; \rangle$ \\
+\mbox{S3:} & $\L(D_1)$ & = & $\langle \; (1,198)\; \rangle$ \\
+\mbox{S4:} & $\L(D_2)$ & = & $\langle \; (1,198)\; \rangle$ \\
+\mbox{S5:} & $\L(D_3)$ & = & $\bot$\\
+\mbox{S6:} & $\L(D_4)$ & = & $\bot$\\
+\mbox{S7:} & $\L(D_5)$ & = & $\bot$\\
+\mbox{S8:} & $\L(Z)$ & =  & $\bot$
+\end{tabular}
+\end{center}
+\caption{Solution to data flow equations from figure \protect{\ref{fig:sc-ex-df}}, assuming $I$ is unknown}
+\label{fig:sc-ex-sol1}
+\end{figure}
+
+\begin{figure}
+\begin{center}
+\begin{tabular}{r r c l}
+\mbox{S1:} & $\L(Y_1)$ & = & $\langle \; (3,99)\; \rangle$ \\
+\mbox{S2:} & $\L(Y_2)$ & = & $\langle \; (3,99)\; \rangle$ \\
+\mbox{S3:} & $\L(D_1)$ & = & $\langle \; (1,198)\; \rangle$ \\
+\mbox{S4:} & $\L(D_2)$ & = & $\langle \; (1,198)\; \rangle$ \\
+\mbox{S5:} & $\L(D_3)$ & = & $\langle \; (1,198)\; \rangle$ \\
+\mbox{S6:} & $\L(D_4)$ & = & $\langle \; (1,198)\; \rangle$ \\
+\mbox{S7:} & $\L(D_5)$ & = & $\langle \; (1,198)\; \rangle$ \\
+\mbox{S8:} & $\L(Z)$ & =  & 198
+\end{tabular}
+\end{center}
+\caption{Solution to data flow equations from figure \protect{\ref{fig:sc-ex-df}}, assuming $I$ is known to be = 3}
+\label{fig:sc-ex-sol2}
+\end{figure}
+
+The initialization step first initializes $\L(Y_0)$
+and $\L(D_0)$ to $\bot$, since they are both considered to be unknown
+variables in this example program.  Next, {\it worklist} is intialized
+to contain equations S1, S2, S3, S4, S5, S6, S8, since they all
+contain some terms that are different from $\top$ \ie\ terms that
+contain a constant or equal $\bot$.
+
+For the fixpoint iteration step, the heuristic in
+figure~\ref{fig:sc-alg} causes the equations in {\it worklist} to be
+processed in their textual order \ie\ S1, S2, S3, $\ldots$.  
+(This heuristic
+is similar to the heuristic of processing basic blocks in 
+a topological order of their positions in the control flow graph.)
+The
+iteration terminates when no LHS lattice variable changes its value,
+thus causing {\it worklist} to become empty.  The final values of
+the lattice variables obtained
+after the fixpoint iteration step has completed are shown in
+figure~\ref{fig:sc-ex-sol1}.
+
+
+The above lattice values were obtained assuming $\L(I) = \bot$.  If, instead,
+variable $I$ is known to equal 3 \ie\ $\L(I) = 3$, then 
+the lattice variables that would be obtained
+after the fixpoint iteration step has completed are shown in
+figure~\ref{fig:sc-ex-sol2}.
+
+In either case ($\L(I) = \bot$ or $\L(I) = 3$), the resulting constants
+revealed by the algorithm can be used in whatever analyses or
+transformations the compiler considers to 
+be profitable to perform.  This is the job
+of the termination
+step in figure~\ref{fig:sc-alg}.
+
+\REM{
+Equations S1 and S2 are evaluated first because they are
+associated with the entry block. Element 3 of $Y_2$ is known to have the
+value 99 at this stage. As a result of the modification of $Y_2$ both S3
+and S5 are inserted into the worklist (they reference the lattice
+value of $Y_2$). S3 uses the propagated constant 99 to compute and
+propagate the constant 198 to element 1 of $D_1$ and then, after
+evaluation of S4, to element 1 of $D_2$.  Any subsequent references to D
+in the {\tt then} block of the source become references $D_2$ in the
+Array SSA form and are known to have a constant value at element 1.
+Depending on the order of computations via the worklist, we may then
+compute either $D_3$ and then $D_4$ or, because $D_2$ has been modified, we may
+compute $D_5$. If we compute $D_5$ at this point, it appears to have a
+constant value. Subsequent evaluations $D_3$ and $D_4$ cause $D_5$ to be
+reevaluated and lowered from constant value to $\bot$ because the
+value along one path is not constant.
+
+
+
+
+
+
+
+Notice that in this case, the reevaluation of $D_5$ could have been
+avoided by choosing an optimal ordering of processing.  Processing of
+programs with cyclic control flow is no more complex but may involve
+recomputation that can not be removed by optimal reordering. In
+particular, the loop entry is a control flow merge point since control
+may enter from the top or come from the loop body. It will contain a
+$\phi$ which combines the value entering from the top with that
+returning after the loop. The lattice values for such a node may
+require multiple evaluations.
+
+Also notice that in this example, if $I$ in S5 is known to have the
+value 3, it will be recoded as a constant element. Upon evaluation of S7, the
+intersection of the sets associated with $D_2$ and $D_4$ will not be empty
+and element 1 of $D_5$ will be recorded as a constant.
+
+
+
+}

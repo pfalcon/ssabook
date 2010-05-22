@@ -1,0 +1,132 @@
+Static single assignment (SSA) form for scalar variables has been a significant
+advance.  It has simplified the design of some optimizations and has made
+other optimizations more effective.  
+The popularity of SSA form surged
+after an efficient algorithm for computing SSA form was made available~\cite{CFRWZ91a}.  SSA form is now a standard representation used in modern
+optimizing compilers in both industry and academia.
+
+However, it has been widely recognized that SSA form is much less
+effective for array variables than for scalar variables.
+The approach recommended in \cite{CFRWZ91a} is to treat an
+entire array like a single scalar variable in SSA form.
+\REM{
+For example, in this approach an assignment to a single array element
+$A[j] := v$ gets translated to an operation on the
+entire array $A := Update(A, j, v)$ which after SSA renaming would
+become $A_2 := Update(A_1, j, v)$.
+}
+The most serious limitation of this approach is that it lacks precise
+data flow information on a per-element basis.
+Array SSA form addresses this limitation by providing $\Phi$
+functions that can combine array values on a per-element basis.
+The constant propagation algorithm described in this
+chapter can  propagate lattice values through $\Phi$ functions 
+in Array SSA form,
+just
+like any other operation/function in the input program.
+
+The problem of conditional constant propagation for 
+scalar variables 
+%(with an interaction
+%between constant propagation and unreachable code motion) 
+has been
+studied for several years.  Wegbreit~\cite{Wegb75} provided a general
+algorithm for solving data flow equations; his algorithm
+can be used to perform conditional constant propagation and
+more general combinations of program analyses.
+However, his algorithm was too slow to be practical for use on 
+large programs.
+Wegman and Zadeck~\cite{WeZa91} introduced a Sparse Conditional
+Constant (SCC) propagation algorithm that is as precise as the conditional
+constant propagation obtained by Wegbreit's algorithm, but runs faster
+than Wegbreit's algorithm by a speedup factor that is at least $O(V)$,
+where $V$ is the number of variables in the program.  
+The improved efficiency of the SCC algorithm made it practical to
+perform conditional constant propagation on large programs, even in the
+context of industry-strength product compilers.  The main limitation
+of the SCC algorithm is a conceptual one --- the algorithm operates
+on two ``worklists''
+(one containing edges in the SSA graph and another
+containing edges from the control flow graph)
+rather than on data flow equations.  The lack of
+data flow equations
+makes it hard to combine the algorithm in \cite{WeZa91}
+with other program analyses.
+The problem  of combining different program analyses based on
+scalar SSA form has been addressed by Click and
+Cooper in \cite{ClCo95}, where they present a framework for 
+combining constant propagation, unreachable-code elimination,
+and value numbering that explicitly uses data flow equations.
+
+Of the conditional constant propagation algorithms mentioned above,
+our work is most closely related to that of \cite{ClCo95} with two 
+significant differences.
+First, our algorithm performs conditional constant propagation through
+both scalar and array references, while the algorithm in \cite{ClCo95}
+is limited only to scalar variables.
+Second,  the framework in \cite{ClCo95}
+uses control flow predicates instead of execution flags.
+It wasn't clear from the description in \cite{ClCo95} how their framework
+deals with predicates that are logical combinations of multiple branch
+conditions; it appears that
+they must either allow the possibility of
+an arbitrary size predicate expression
+appearing in a data flow equation (which would increase the worst-case
+execution time complexity of their algorithm) or they must sacrifice
+precision by working with an approximation of the predicate expression.
+
+
+The analysis framework based on heap arrays reported in this chapter 
+can be viewed as a flow-sensitive extension of
+{\it type-based alias analysis} as in \cite{DiwanMM1998}.
+Three different versions of type-based alias analysis were reported in
+\cite{DiwanMM1998} --- {\it TypeDecl} (based on declared types of object
+references), {\it FieldTypeDecl} (based on type declarations of
+fields) and {\it SMTypeRefs} (based on an inspection of assignment
+statements in the entire program).  All three versions are
+flow-insensitive.  The disambiguation provided by heap arrays in our
+approach is comparable to the disambiguation provided by {\it
+FieldTypeDecl} analysis.  However, the use of value numbering and
+Array SSA form in our approach results in flow-sensitive analyses of
+array and object references that are more general than the three
+versions of type-based alias analysis in \cite{DiwanMM1998}.  For
+example, none of the three versions would disambiguate references {\tt
+p.x} and {\tt q.x} in the example discussed earlier in
+Figure~\ref{fig:ex2}(a).
+
+Early algorithms for scalar replacement (\eg\
+\cite{CaCK90}) were based on data dependence analysis and limited
+their attention to loops with restricted control flow.
+More recent algorithms for scalar replacement (\eg\
+\cite{CaKe94,BoGu95}) use analyses based on PRE (partial redundancy
+elimination) as an extension to data dependence analysis.  However,
+all these past algorithms focused on accesses to elements of named
+arrays, as in Fortran, and did not consider the possibility of
+pointer-induced aliasing of arrays.  Hence, these algorithms are not
+applicable to programming languages (such as C and Java) where arrays
+might themselves be aliased.
+
+Analysis and optimization of pointer references
+in weakly typed languages such as C is a
+major challenge because the underlying language semantics forces the
+default assumptions to be highly conservative.  It is usually
+necessary to perform a complex points-to analysis before pointer
+references can be classified as {\it stack}-directed or {\it
+heap-directed} and any effective optimization can be
+performed~\cite{ghiya-hendren-98}.
+To address this challenge,
+there has been a large body of research on flow-sensitive
+pointer-induced alias analysis in weakly typed languages \eg\
+\cite{LaHi88,ChWZ90,HendrenHN1992,LandiRZ1993,ChBC93}.  
+However,  these algorithms are too complex for use in efficient 
+analysis of strongly typed languages, compared to the algorithms
+presented in this chapter.
+Specifically, our algorithms
+analyze object references in the same SSA framework that has been
+used in the past for efficient scalar analysis.  The fact that our
+approach uses global value numbering in SSA form (rather than pointer
+tracking) to determine if two pointers are the same or different leads
+to significant improvements in time and space efficiency, because a
+single value partition is used to supply information for all program
+points rather than building different connection graphs at different
+program points.

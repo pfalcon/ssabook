@@ -1,0 +1,287 @@
+
+
+
+In this section we address constant propagation
+through {\it non-constant array subscripts}, as a generalization
+of the algorithm
+for constant subscripts described in section~\ref{sec:sc}.
+The constant propagation algorithm from section~\ref{sec:sc} 
+propagates
+constant values through constant subscripts.  Of course, neither
+the values nor the subscripts need to be written as constants in the
+source program; instead, they can be discovered to be constant by
+the propagation algorithm described in section~\ref{sec:sc}.
+However, as mentioned earlier,
+the algorithm in section~\ref{sec:sc} does not
+propagate constant values through non-constant subscripts.
+
+
+\begin{figure}[h]
+\begin{center}
+\parbox{3.0in}{
+\begin{programa}
+\Ta $k$ := 2 \\
+\Ta do $i$ := $\ldots$ \\
+\Tb  $\ldots$ \\
+\Tb  $a[i] := k * 5$ \\
+\Tb  $\ldots := a[i]$ \\
+\Ta enddo \\
+\end{programa}
+}
+\end{center}
+\caption{Example of Constant Propagation through Non-constant Index}
+\label{fig:non-const-ex-source}
+\end{figure}
+
+As an example, consider the program fragment in
+figure~\ref{fig:non-const-ex-source}.  In the loop in
+figure~\ref{fig:non-const-ex-source}, we see that the read access of
+$a[i]$ will have a constant value ($=k*5=10$), even though the
+index/subscript value $i$ is not a constant.  We would like to extend
+the framework from sections~\ref{sec:arraylattice} and \ref{sec:sc} to be
+able to recognize the read of $a[i]$ as constant in such programs.
+
+Recall that the binary relations $\DS$ ({\it definitely-same})
+and $\DD$ ({\it definitely-different}) were used to define
+lattice operations for array values
+in section~\ref{sec:arraylattice}.
+$\DS$ and $\DD$ are binary relations on subscript values.
+These binary relations are easy to compute
+when the subscript values of interest are constant (as in section~\ref{sec:sc}); we can tell if two subscript values are same or different just by
+examining the constants.
+However, there are two key extensions that need to be considered
+for non-constant (symbolic) subscript values:
+\begin{itemize}
+
+\item  For constants, $C_1$ and $C_2$, $\DS$($C_1$, $C_2$) $\neq$ 
+$\DD$($C_1$, $C_2$). However, for two symbols,  $S_1$ and $S_2$,
+it is possible that both $\DS$($S_1$, $S_2$) and $\DD$($S_1$,
+$S_2$) are FALSE, that is, we don't know if they are the same or different.
+
+\item For constants, $C_1$ and $C_2$, the values for $\DS$($C_1$, $C_2$) and 
+$\DD$($C_1$, $C_2$) can be computed by inspection. For symbolic
+indices, however, some program analysis is necessary
+to compute the $\DS$ and $\DD$ relations.
+\end{itemize} 
+
+We now discuss the compile-time
+computation of $\DS$ and $\DD$ for symbolic
+indices. 
+Observe that,
+given index values $I_1$ and $I_2$, only one of the following three cases
+is possible:
+\begin{center}
+\parbox{3.0in}{
+\begin{programa}
+$\DS$($I_1$, $I_2$) = FALSE; $\DD$($I_1$, $I_2$) = FALSE \\
+$\DS$($I_1$, $I_2$) = TRUE; $\DD$($I_1$, $I_2$) = FALSE \\
+$\DS$($I_1$, $I_2$) = FALSE; $\DD$($I_1$, $I_2$) = TRUE \\
+\end{programa}
+}
+\end{center}
+The first case is the most conservative solution.  In the absence of
+any other knowledge, it is always correct to state that
+$\DS(I_1,I_2) = \mbox{\it false}$ and $\DD(I_1,I_2) = \mbox{\it
+false}$.
+
+The problem of determining
+if two symbolic index values are the same is equivalent to the
+classical problem of {\it global value numbering}~\cite{AlWZ88,Much97}. If two indices $i$
+and $j$ have the same value number, then $\DS(i,j)$ must = {\it true}.
+For simplicity, we assume that global value numbering is performed on
+all scalars prior to the constant propagation algorithm for scalars
+and arrays introduced in this chapter.  Since our algorithms use SSA
+form, it would be most convenient to use a scalar global value
+numbering algorithm based on SSA form (such as the algorithm in
+\cite{AlWZ88}) as a pre-pass to our constant propagation algorithm.
+In the future, we will consider integrating the value numbering
+algorithm with our constant propagation algorithm rather than
+performing it as a pre-pass.
+However,
+we expect a global value numbering pre-pass based on SSA form
+to yield reasonable results for
+$\DS$, with reasonable efficiency. 
+
+The problem of computing
+$\DD$ is more complex. Note that $\DD$, unlike $\DS$, is not an
+equivalence relation because $\DD$ is not transitive.
+If $\DD(A, B)=\mbox{\it true}$
+and $\DD(B, C)=\mbox{\it true}$, it does
+not imply that $\DD(A, C)=\mbox{\it true}$.  
+\REM{
+Consider another type of
+partitioning. Since for two indices, $I_1$ and $I_2$, if $\DS$($I_1$, $I_2$) then $I_1$ and $I_2$ are in the same value numbering
+partition, we might attempt to partition the space of indices so that
+if two indices are in different partitions they are $\DD$. However, given two indices known to be different (e.g., i and
+i+1) in distinct partitions, there is no legal partition in which to
+place j about which nothing is known.
+}
+However, we can leverage past work on data dependence analysis~\cite{Wolf89}
+to identify many simple but common cases for which $\DD$ can be
+evaluated to {\it true}.  For example, it is clear that $\DD(i,
+i+1) = \mbox{\it true}$,
+and that $\DD(i, 0) = \mbox{\it true}$ if $i$ is a loop index variable
+that is known to be $\geq 1$.
+Given the high cost of performing data dependence analysis globally for all pairs of subscripts, we recommend that the $\DD$ relation be computed on demand
+with memoization \eg\ as in \cite{MaAL93}.
+We expect that computing $\DD$ on demand will help
+mitigate the large overhead of global data dependence analysis.
+However, dependence analysis has historically been most effective for comparing index values in the same loop nest, and less effective
+for global comparisons of index values.
+For future work, we are developing a new algorithm for computing
+$\DD$ that is analogous to global value numbering,
+and hence more efficient and global in scope compared to classical
+data dependence
+analysis.
+
+Let us consider how the $\DS$ and $\DD$ relations for 
+symbolic index values
+are used by our constant
+propagation algorithms.  Note that the specification of how $\DS$ and $\DD$
+are used is a separate issue from how accurate/conservative
+the $\DS$ and $\DD$ values are.
+We now describe how 
+the lattice and the lattice operations presented in
+section~\ref{sec:arraylattice} are extended
+to deal with non-constant subscripts.
+
+First consider the lattice itself. 
+The 
+$\top$ and $\bot$ lattice elements retain
+the same meaning as in section~\ref{sec:arraylattice}
+\viz\ $\Set(\top) = \{\;\}$ and 
+$\Set(\bot) =  \U^A_{ind} \times \U^A_{elem}$.
+Recall that
+the other lattice elements in section~\ref{sec:arraylattice}
+have the form of a list of index-value pairs
+where both the index and the value were required to be constants. 
+For
+symbolic indices, we use a similar lattice.  Each element in the lattice is a list
+of index-value pairs where the value is still required to
+be constant but the index may be symbolic --- the index is
+represented by its value number.
+
+The lattice ordering, $\sqsupset$,
+is still determined by the subset relationship on the underlying sets. For example, consider two lattice elements $\L_1 =
+\langle(V_1,100), (V_2,101)\rangle$ and $\L_2 =
+\langle(V_2,101)\rangle$ where $V_1$ and $V_2$ are value numbers.  
+Therefore, $\L_1 \sqsupset \L_2$ \ie\ $\L_1$ is above $\L_2$ in the
+lattice.
+
+The join operator, $\sqcap$, for two lattice elements, $\L_1$ and
+$\L_2$, for array variables is still as defined in
+figure~\ref{fig:join} where $\L_1 \cap \L_2$ denotes an intersection
+of lists $\L_1$ and $\L_2$.  For example,
+\begin{eqnarray*}
+\L(A) & =  &\langle(V_1,100), (V_2,101)\rangle \\
+\L(B) & =  &\langle(V_1,100), (V_2,78), (V_3,101)\rangle \\
+\L(A) \cap \L(B) & =  & \langle (V_1,100) \rangle
+\end{eqnarray*}
+The restriction of the size of the list of pairs  to be $\leq Z$ 
+also remains unchanged as in the constant case.
+
+We now revisit the processing of an array element read of $A_1$[$k$] and
+the processing of an array element write of $A_1$[$k$]. These
+operations were presented in section~\ref{sec:arraylattice}
+(figures~\ref{fig:aref} and \ref{fig:adef})
+for constant indices. The versions for
+non-constant indices appear in figure~\ref{fig:symb-aref} and
+figure~\ref{fig:symb-adef}.
+For the read operation in figure~\ref{fig:symb-aref}, if there exists a pair ($i_j$,$e_j$) such that
+$\DS$($i_j$,$\Valnum(k)$) = {\it true} (\ie\ $i_j$ and $k$ have the
+same value number), then the
+result is $e_j$.  Otherwise, the result is $\top$ or $\bot$ as specified
+in figure~\ref{fig:symb-aref}.
+For the write operation in figure~\ref{fig:symb-adef}, if the value of the right-hand-side, $i$, is a constant, the result is the singleton list
+$\langle(\Valnum(k),\L(i))\rangle$.  Otherwise, the result is $\top$ or $\bot$ as specified
+in figure~\ref{fig:symb-adef}.
+
+\begin{figure}%[h]
+\begin{center}
+\begin{tabular}{|l||c|c|c|}
+\hline
+$\L(A_1[k])$ & $\L(k) = \top$ & $\L(k) = \Valnum(k)$ & $\L(k) = \bot$ \\
+\hline \hline
+$\L(A_1) = \top$ & $\top$ & $\top$ & $\bot$ \\
+\hline
+$\L(A_1) = \langle (i_1,e_1), \ldots \rangle$ & $\top$ & $e_j$, 
+if $\exists$
+$(i_j,e_j) \in \L(A_1)$ with &\\
+& & $\DS(i_j, \Valnum(k)) = \mbox{\it true}$ & $\bot$\\
+& & $\bot$, otherwise & \\
+\hline
+$\L(A_1) = \bot$ & $\bot$ & $\bot$ & $\bot$ \\
+\hline
+\end{tabular}
+\end{center}
+\caption{Lattice computation for \protect{$\L(A_1[k]) = \L_{[\:]}(\L(A_1), \L(k))$},
+where $A_1[k]$ is an 
+array element read operator. If $\L(k)=\Valnum(k)$, the lattice value of index $k$ is a value number that represents a constant or a symbolic value.}
+\label{fig:symb-aref}
+\end{figure}
+
+\begin{figure}%[h]
+\begin{center}
+\begin{tabular}{|l||c|c|c|}
+\hline
+$\L(A_1)$ & $\L(i) = \top$ & $\L(i) = Constant$ & $\L(i) = \bot$ \\
+\hline \hline
+$\L(k) = \top$ & $\top$ & $\top$ & $\bot$ \\
+\hline
+$\L(k) = \Valnum(k)$ & $\top$ & $\langle(\Valnum(k),\L(i))\rangle$ & $\bot$ \\
+\hline
+$\L(k) = \bot$ & $\bot$ & $\bot$ & $\bot$ \\
+\hline
+\end{tabular}
+\end{center}
+\caption{Lattice computation for \protect{$\L(A_1) = \L_{d[\:]}(\L(k), \L(i))$},
+where \protect{$A_1[k] := i$} is an 
+array element write operator. If \protect{$\L(k)=\Valnum(k)$}, the lattice value of index \protect{$k$} is a value number that represents a constant or a symbolic value.}
+\label{fig:symb-adef}
+\end{figure}
+
+
+
+
+
+Let us now consider
+the propagation of lattice values through $\phi$
+operators.
+For control $\phi$'s the propagation is as before:
+$\L(A_2) = \L_{\phi}(A_1,A_0) = \L(A_1) \sqcap
+\L(A_0)$ \ie\ the result is a join of the lattice values $\L(A_1)$ and
+$\L(A_0)$, where the join operation is a simple intersection of
+lists as before.
+For definition $\phi$'s the propagation defined in figure~\ref{fig:dphi}
+for constant indices can also be
+used for symbolic indices.  The only extension required is that
+the $\DD$ relation used in performing
+the \Update\ operation should be able to determine when
+$\DD(i',i_j)=\mbox{\it true}$ if $i'$ and $i_j$ are symbolic
+value numbers rather
+than constants.  (If no symbolic information is available for $i'$
+and $i_j$, then it is always safe
+to return $\DD(i',i_j)=\mbox{\it false}$.)
+
+Note that the $\Update$ operation (section~\ref{sec:arraylattice},
+page~\pageref{def:update}) always returns a non-empty list,
+even if it uses the most conservative $\DD = false$ approach.
+Further, the list will always 
+contain the pair $(i',e')$, so long as the heuristic
+for dropping a pair to obey the $\leq Z$ size limit chooses
+a pair other than $(i',e')$ to drop.
+This is sufficient to handle
+the propagation of the constant through the symbolic index in the
+example in figure~\ref{fig:non-const-ex-source}.
+More precise computations of the $\DD$ relation will lead to 
+more precise (longer) lists, and hence lead to discovery of
+more
+constants  for more complicated programs with symbolic subscripts.
+
+
+
+
+
+
+
+
