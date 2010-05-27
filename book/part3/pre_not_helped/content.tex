@@ -1,27 +1,679 @@
 \chapter{PRE \Author{F. Chow, J. Knoop and O. R\"uthing}}
 \numberofpages{17}
-\chapterauthor{J. Knoop and O. R\"uthing}
+\graphicspath{{img/}{pre_not_helped/img/}{part3/pre_not_helped/img/}}
+\chapterauthor{F. Chow, J. Knoop and O. R\"uthing}
 
 \section{Introduction}
-{\bf 3 pages}
-\begin{itemize} 
-\item Introduction to partial redundancy elimination.
-\item A brief overview on related work and history.
-\item Sketch of the Lazy Code Motion (LCM) algorithm.
+
+Redundancy elimination is an 
+important category of optimizations performed by modern optimizing compilers.
+In the course of program execution, certain computations may be repeated
+multiple times that yield the same values.  Such redundant
+computations can be eliminated by saving the results of the earlier 
+computations for reuse later.  
+
+There are two types of redundancies: \emph{full} redundancy and 
+\emph{partial} redundancy.  A computation is fully redundant if the 
+computation has occurred earlier regardless of the flow of control.
+The elimination of full redundancy is also called common subexpression
+elimination, and if applied at the global scope, it is called global common
+subexpression.  A computation is partially redundant if the computation has
+occurred earlier only on some paths of execution, and where there is at
+least one control flow path where that computation has not occurred earlier.
+
+There are two different methods to identify whether two computations are the 
+same: the \emph{syntactic} method and the \emph{semantic} method.  The 
+syntactic method applies to computations that are syntactically identical.
+Under the \emph{syntactic} method, two computations are the same if they
+are written the same way using variables and/or constants, like 
+{\tt a+3}.  In this case,
+redundancy applies only if the variables' values have not changed.
+The semantic method applies to computations based on operands that are
+not necessarily identical by name, but known to have the same values.
+For example, {\tt a+b} and {\tt a+c} will compute to the same result
+if {\tt b} and {\tt c} are known to hold the same value.
+In this chapter, we are mostly dealing with syntactically identical
+computations.  Section~\ref{section:Part3:Pre_not_helped:SemanticPRE} will
+address what can be done for semantically identical computations. 
+
+The concept of partial redundancy was originally introduced by Morel and 
+Renvoise \cite{MR79}.  Before the technique of partial redundancy 
+elimination was developed, optimizing compilers have been performing
+global common subexpression elimination and loop invariant code motion in
+separate global optimization phases.  Morel and Renvoise showed that
+global common subexpressions and loop-invariant computations are special
+cases of partial redundancies, and can be subsumed by partial redundancy
+elimination (PRE).  Morel and Renvoise formulated PRE as a code placement
+optimization problem, in which additional computations will be inserted at
+certain points in the program.  Such insertions make the original
+partially redundant computation become fully redundant, and so can be
+trivially deleted.  The PRE algorithm developed by Morel and Renvoise
+involves bi-directional data flow analysis, which incurs more overhead
+than uni-directional data flow analysis.  In addition, their algorithm
+does not yield optimal results in certain situations.
+
+An alternative placement strategy, called lazy code motion (LCM), was later 
+developed by Knoop {\it et al.} \cite{Knoop92}\cite{Knoop94}.  It improves on
+Morel and Renvoise's results by avoiding unnecessary code movements and by
+removing the bi-directional nature of the original PRE data flow equations.
+The results of lazy code motion is optimal: the number of computations cannot
+be further reduced by \emph{safe} code motion \cite{Kennedy72}, and the
+lifetimes of the temporaries introduced for storing the computed values
+are minimized.
+
+The above approaches to PRE are all based on a bit-vector formulation of the
+problem and on the iterative solution of data flow equations.
+The use of SSA to solve PRE was proposed by Chow {\it et al.} 
+\cite{Chow97}\cite{Kennedy99}.  Their SSAPRE algorithm is an adaptation of LCM
+to SSA.  It represents the first use of SSA to solve data flow problems
+related to expressions in the program.  The SSAPRE algorithm brings all
+the desirable characteristics of SSA to PRE, and represents a further
+refinement to solving PRE.  SSAPRE does not involve traditional iterative
+data flow analysis in its solution.  It takes advantage of the \emph{sparse}
+representation of SSA, where information associated with an object is
+represented only at places where it changes, or at its actual occurrences
+in the program.  Sparse representations incur less representation
+overhead by avoiding needless duplication of data.  Information can be
+propagated through a sparse representation in a smaller number of steps
+than through a dense structure, speeding up the algorithms.  By giving up
+the use of bit vectors, it sacrifices the parallel solution of bit vectors
+in which all program expressions are operated on simultaneously.  But working
+on each expression separately has its own advantage in being able to
+customize the optimization application on an individual basis.
+
+Another advantage of using SSA is that we do not have to implement the local
+and global versions of the optimization separately.  Within a basic block,
+the absence of branches guarantees that only full redundancy can be present.
+PRE via traditional bit-vector-based data flow analysis only covers global
+redundancies.  A separate algorithm needs to be implemented to recognize
+local common subexpressions.  In contrast, the SSAPRE algorithm uniformly
+covers both local and global redundancies.
+
+SSAPRE exploits the use-def information built into the SSA form.  It saves
+the overhead of having to scan the contents of each basic block in the
+program to initialize the bit vectors.  A program transformation that
+destroys SSA would require a post-pass to fix the SSA form.  In contrast,
+SSAPRE maintains the entire program in valid SSA form throughout,
+thus saving the overhead of having to run any SSA fix-up pass.
+
+The rest of this chapter is organized as follows.  Section 2 describes
+the basics of PRE and explains why PRE and SSA are related.
+Section 3 describes the basic SSAPRE altorithm.
+Section 4 discusses thr practical implementation issues of SSAPRE.
+Section 5 discusses adding speculation of SSAPRE.
+Section 6 describes applying PRE to perform register promotion.
+Finally, Section 7 discusses redundancy under the semantic approach.
+
+\section{Why PRE and SSA are related}
+\label{section:Part3:Pre_not_helped:PRErelatedtoSSA}
+
+A partially redundant computation is a computation that is redundant in
+some path of execution.  In Figure~\ref{fig: pre-examples}(a), the
+computation {\tt a+b} is redundant when the right path is taken.
+In Figure~\ref{fig: pre-examples}(b), the {\tt a+b} is redundant whenever
+the branch-back edge of the loop is taken.
+Partial redundancy elimination can be thought of as a two-step process.
+The first step involves deciding where to insert the computation so as to
+render the partially redundant computation fully redundant.  The second
+step then delete the fully redundant computation.  Since the second step is
+trivial and well understood, the main challenge lies in the first step
+for coming up with the best set of insertion points.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.45]{fig-pre-examples.pdf}
+\caption{Two basic examples of partial redundancy elimination.}
+\label{fig: pre-examples}
+\end{figure}
+
+Since there has to be insertion in order to eliminate each partial
+redundancy, we can visualize the impact on redundancies of a computation
+in the control flow graph.  As illustriated in
+Figure~\ref{fig: ssapre-motive}, in the region that is dominated by the 
+computation, any further occurrence of the same computation is fully 
+redundant.  Once we are past the dominance frontiers, any occurrence is
+partially redundant.  In constructing SSA form, dominance frontiers are where
+$\phi$'s are inserted.  And since $\phi$ is the key ingredient of SSA, we
+can see that PRE is in fact related to SSA, in the sense that finding where
+to do insertion in PRE is analogous to finding where to insert $\phi$'s in
+constructing SSA form.
+
+We use the term \emph{placement} to refer to the set of points in the 
+optimized program where a particular computation occurs.
+As we mentioned earlier, SSAPRE works on one computation at a time.
+Given a lexically idential expression, e.g. {\tt a+b}), SSAPRE will find
+a placement that satisfy the following three requirements in this order:
+\begin{enumerate}
+\item All inserted computations are \emph{safe}.  This means that no new 
+computation will be introduced to any path in the program that did not 
+origianlly contain the computation.  This requirement prevents incorrect 
+behavior of the optimized program in the presence of computations that may 
+cause exceptions.
+\item The placement is \emph{computationally optimal}.  This means that no
+other safe placement can result in fewer occurrences of the computation
+along any path from entry to exit in the program.
+\item The temporaries introduced to store the computations for re-use in the
+computationally optimal placement are life-time optimal.  This means that
+for the purpose of allocating the temporaries to registers, it will not
+induce more register pressure than needed.
+\end{enumerate}
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.35]{fig-ssapre-motive.pdf}
+\caption{Dominance frontiers are boundaries between fully and partially redundant regions.}
+\label{fig: ssapre-motive}
+\end{figure}
+
+Since avoiding redundant computation requires saving the values of 
+computations into temporaries and re-using their values later, this is
+analogous to modeling the flow of data values in variables using SSA form.
+The PRE problem can be viewed as determing the best way to store and
+re-use a given computation.  Thus, we can visualize this problem using
+the temporary that will be used for that purpose.  This is a superset of
+the problem of constructing SSA form for a program variable, because,
+in addition of putting the temporary into SSA form, 
+we determine new placements for the computation and also determine
+which occurrences are defs and which occurrences are uses.  In fact, the
+SSAPRE algorithm can be regarded as a not-so-trivial extension of the SSA 
+construction algorithm, as we'll see in the next section.
+
+\section{The SSAPRE Algorithm}
+
+We assume the input program is already in SSA form.  We also assume 
+the dominator tree and iterated dominance frontiers with
+respect to the control flow graph of the program are also available, since
+they must have been computed for putting the program into SSA form.
+To make the algorithm simpler, we also assume that all \emph{critical edges}
+in the control flow graph have been removed by inserting empty basic blocks
+at such edges\footnote{A critical edge is one whose tail block has multiple
+successors and whose head block has multiple predecessors.}\cite{Rosen88}.
+This allows us to model insertions as edge placements, even though we only
+insert at the ends of the predecessor blocks.
+
+We also make the following two simplifying assumptions about the input SSA
+form:
+\begin{enumerate}
+\item Each $\phi$ assignment has the property that its left-hand-side and
+all of its operands are versions of the same variable; and
+\item The live ranges of different versions of the same variable do not
+overlap.
+\end{enumerate}
+
+In the algorithm description, we assume we are working on an expression like
+{\tt a+b} whose computed values are going to be stored in the hypothetical
+temporary $h$.  Since the SSA construction for $h$ is on top of the program
+that is already in SSA form, we use upper case $\Phi$ in $h$'s SSA form to 
+contrast it with the $\phi$'s that are in the original program.
+
+SSAPRE consists of six separate steps: (1) $\Phi$-Insertion, (2) Rename,
+(3) DownSafety, (4) WillBeAvail, (5) Finalize and (b) CodeMotion.
+$\Phi$-Insertion and Rename are the SSA construction steps for $h$.  They
+correspond to the two steps in the SSA construction algorithm, with 
+extensions to deal with situations that apply only to expressions.  After
+the Rename step, occurrences of {\tt a+b} that are assigned the same version
+of $h$ must compute the same value.  At this stage, the points of defs and
+uses of $h$ have not yet been determined.  Many $\Phi$'s inserted for $h$
+are also unnecessary.  Later steps in SSAPRE will fix them up.  Some $\Phi$
+operands can be determined to be undefined ($\bot$) after Rename because 
+there is no available computation of {\tt a+b}.  These $\bot$-valued
+$\Phi$ operands will play a key role in the later steps of SSAPRE because
+insertions are performed only because of them.  We call the SSA graph for
+$h$ after Rename the \emph{dense SSA graph} because it contains more $\Phi$'s
+than in the minimal SSA form.
+
+The sparse computation of global data flow attributes for {\tt a+b} will be
+performed on the dense SSA graph for $h$ in the DownSafety and WillBeAvail
+steps.  These analyses only need to focus on the $\Phi$'s, because they
+are the only candidates for inserting the expression.
+The DownSafety step performs backward propagation to determine 
+the $\Phi$'s whose results are not fully anticipated with respect to 
+{\tt a+b}.  The WillBeAvail step performs forward propagation to determine
+the $\Phi$'s where the computation of {\tt a+b} will be available assuming
+PRE insertions have been performed at the appropriate incoming edges of the
+$\Phi$'s.  At this point, using the results of the data flow analysis, we
+are ready to finalize the effects of PRE.  The Finalize step inserts
+computation of {\tt a+b} at the incoming edges of $\Phi$ to ensure that the
+computation is available at the merge point.  For each occurrence of 
+{\tt a+b}, it determines if it is a def or use of $h$.  It also links the
+uses of $h$ to their defs to form its \emph{precise SSA graph}.
+Extraneous $\Phi$'s are removed so that $h$ is in minimal SSA form.
+
+The last CodeMotion step updates the program to effect the code motion for
+{\tt a+b} as determined by SSAPRE.  It introduces the real variable {\tt t}
+to eliminate any redundant computations of {\tt a+b}.  The $\Phi$'s for $h$
+are translated into $\phi$'s for {\tt t} in the native SSA form of the
+program.
+
+We now describes the six steps of SSAPRE in more detail.
+
+\subsection{Step 1: $\Phi$-Insertion}
+
+A $\Phi$ for an expression is needed whenever different values of the
+expression reach a common point in the program.  There are two different
+situations for this to occur:
+
+First, when an expression appears, we insert a $\Phi$ at its iterated
+dominance frontiers, because the occurrence may corespond to a def of $h$.
+This is the situation in Figure~\ref{fig: phi-insertion}(a).
+
+The second situation that causes insertion of $\Phi$'s is when there is a
+$\phi$ for a variable contained in the expression, because such a $\phi$
+indicates that an alteration of the expression reaches the merge point.
+In Figure~\ref{fig: phi-insertion}(b), the $\Phi$ at block 3 is caused by
+the $\phi$ for $a$ in the same block, which in turns reflects the
+assignment to $a$ in block 2.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{fig-phi-insertion.pdf}
+\caption{Examples of $\Phi$ insertion}
+\label{fig: phi-insertion}
+\end{figure}
+
+\subsection{Step 2: Rename}
+
+The Rename step assigns SSA versions to $h$ in its SSA form.  The version 
+numbering produced for $h$ differs from the eventual SSA form for the 
+temporary {\tt t}, but has the following two important properties.  First,
+occurrences that have idential $h$-versions have identical values.  Second,
+any control flow path that includes two different $h$-versions must cross an
+assignment to an operand of the expression of a $\Phi$ for $h$.
+
+We conduct a preorder traversal of the dominator tree similar to the renaming
+step in SSA construction for variables, but with the following modification.
+In addition to a renaming stack for each variable, we
+maintain a renaming stack for the expression. Entries on the expression
+stack are popped as our dominator tree traversal backtracks past the
+blocks that contain them.  Maintaining the variable and expression stacks
+together allows us to decide efficiently whether two occurrences of an
+expression should be given the same $h$-version.
+
+There are three kinds of occurrences of expressions in the program:
+(1) the occurrences in the original program, which we call \emph{real}
+occurrences; (2) the $\Phi$'s inserted in the $\Phi$-Insertion step; and
+(3) $\Phi$ operands, which are regarded as occurring at the ends of the
+predecessor blocks of the corresponding edges.  The Rename algorithm
+performs the following steps upon encountering an occurrence $q$ of the
+expression.  If $q$ is a $\Phi$, it is given a new $h$-version.  Otherwise,
+we check the current version of every variable in the expression (i.e. the
+version on the top of each variable's rename stack) against the version of
+the corresponding variable in the occurrence on the top of the expression's
+rename stack.  If all the variable versions match, we assign $q$ the same
+$h$-version as the top of the expression's rename stack.  If any of the 
+variable versions does not match, we have two cases: (a) if $q$ is a real
+occurrence, we assign $q$ a new $h$-version; (b) if $q$ is a $\Phi$ operand,
+we assign the special class $\bot$ to that $\Phi$ operand to denote that
+the value of the expression is unavailable at that point.  These two
+situations are illustrated in Figure~\ref{fig: rename}.  Finally, we push
+$q$ on the expression stack and proceed.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{fig-rename.pdf}
+\caption{Examples of expression renaming}
+\label{fig: rename}
+\end{figure}
+
+\subsection{Step 3: DownSafety}
+
+The purpose of the DownSafety step is to satisfy the first requirement
+that we discussed in 
+Section~\ref{section:Part3:Pre_not_helped:PRErelatedtoSSA}
+that any inserted computation must be safe.  This means that a computation
+can only be inserted at a $\Phi$ where the computation is down-safe (or
+anticipated).  Using the SSA graph, down-safety can be sparesely computed
+by backward propagation along the use-def edges.
+
+A $\Phi$ is not down-safe if there is a control flow path from that $\Phi$
+along which the expression is not evaluated before program exit or before 
+being altered by redefinition of one of its variables.  Except for loops with
+no exit, this can happen only due to one of the following cases: (a) there
+is a path to exit along which the $\Phi$ result version is not used; or (b)
+there is a path to exit along which the only use of the $\Phi$ result
+version is as an operand of a $\Phi$ that is not down-safe.  Case (a)
+represents the initialization for our backward propagation of down-safety;
+all other $\Phi$'s are initially marked \emph{downsafe}.  Down-safety
+propagation is based on case (b).  Since a real occurrence of the
+expression blocks the case (b) propagation, the algorithm marks each
+$\Phi$ operand with a flag \emph{has\_real\_use} when the path to the $\Phi$
+operand crosses a real occurrence of the same version of the expression.
+Figure~\ref{fig: downsafety} gives the DownSafety propagation algorithm.
+
+\begin{figure}[!ht]
+{\bf procedure} Reset\_downsafe($X$) 
+\{
+\begin{code}
+\x1 {\bf if} ($has\_real\_use(X)$ {\bf or} $def(X)$ is not a $\Phi$)
+\x2   {\bf return}
+\x1 $f \leftarrow def(X)$
+\x1 {\bf if} ({\bf not} $downsafe(f)$)
+\x2   {\bf return}
+\x1 $downsafe(f) \leftarrow$ false
+\x1 {\bf for} each operand $\omega$ of $f$ {\bf do}
+\x2   Reset\_downsafe($\omega$)
+\end{code}
+\}
+
+{\bf procedure} DownSafety
+\{
+\begin{code}
+\x1 {\bf for} each $f \in$ \{$\Phi$'s in the program\} {\bf do}
+\x2   {\bf if} ({\bf not} downsafe($f$))
+\x3     {\bf for} each operand $\omega$ of $f$ {\bf do}
+\x4	  Reset\_downsafe($\omega$)
+\end{code}
+\}
+\caption{Algorithm for DownSafety}
+\label{fig: downsafety}
+\end{figure}
+
+\subsection{Step 4: WillBeAvail}
+
+The WillBeAvail step has the task of predicting whether the expression
+will be available at each $\Phi$ result following insertions for PRE.
+In the Finalize step, insertions will be performed at incoming edges
+corresponding to $\Phi$ operands at which the expression will not be
+available (without that insertion), but the $\Phi$'s \emph{will\_be\_avail} 
+predicate is true.
+
+The WillBeAvail step consists of two forward propagation passes performed
+sequentially.  The purpose of the first forward propagation pass is to 
+satisfy the second requirement that we discussed in 
+Section~\ref{section:Part3:Pre_not_helped:PRErelatedtoSSA}
+that the placements be computationally optimal.   This is done by computing
+the \emph{can\_be\_avail} predicate, which gives possible points for
+insertion for computational optimality  This predicate is first initialized
+to true for all $\Phi$'s.  It then begins with the "boundary" set of $\Phi$'s
+at which the expression cannot be made available by any downsafe set of
+insertions.  These are $\Phi$'s that do not satisfy the \emph{downsafe}
+predicate and have at least one $\bot$-valued operand.  The 
+\emph{can\_be\_avail} predicate is set to false and the false value is
+propagated from such nodes to others that are not downsafe and that are
+reachable along def-use arcs in the SSA graph, excluding arcs at which
+\emph{has\_real\_use} is true.  $\Phi$ operands defined by $\Phi$'s that
+are not \emph{can\_be\_avail} are set to $\bot$ along the way.  After this
+propagation step, \emph{can\_be\_avail} is false for a $\Phi$ if and only if
+no downsafe placement of computations can make the expression available.
+Figure~\ref{fig: canbeavail} gives the propagation algorithm for
+\emph{can\_be\_avail}.
+
+\begin{figure}[!ht]
+{\bf procedure} Reset\_can\_be\_avail($g$) 
+\{
+\begin{code}
+\x1 $can\_be\_avail(g) \leftarrow$ false
+\x1 {\bf for} each $f \in$ \{$\Phi$'s with operand $\omega$ where $def(\omega) = g$\} {\bf do}
+\x2   {\bf if} ({\bf not} $has\_real\_use(\omega)$)
+\x3     {\bf if} ({\bf not} $downsafe(f)$ {\bf and} $can\_be\_avail(f)$)
+\x4       Reset\_can\_be\_avail($f$)
+\end{code}
+\}
+
+{\bf procedure} Compute\_can\_be\_avail
+\{
+\begin{code}
+\x1 {\bf for} each $f \in$ \{$\Phi$'s in the program\} {\bf do}
+\x2   $can\_be\_avail(f) \leftarrow$ true
+\x1 {\bf for} each $f \in$ \{$\Phi$'s in the program\} {\bf do}
+\x2   {\bf if} ({\bf not} $downsafe(f)$ {\bf and}
+\x3       $can\_be\_avail(f)$ {\bf and}
+\x3       $\exists$ an operand of $f$ that is $\bot$)
+\x4	Reset\_can\_be\_avail($f$)
+\end{code}
+\}
+\caption{Algorithm for \emph{can\_be\_avail}}
+\label{fig: canbeavail}
+\end{figure}
+
+The purpose of the second forward propagation pass is to 
+satisfy the third requirement that we discussed in 
+Section~\ref{section:Part3:Pre_not_helped:PRErelatedtoSSA}
+that the temporaries introduced to store the computation for re-use be 
+lifetime optimal. The second pass works within the region computed by the
+first pass to determine the \emph{later} attribute. 
+A true value for this \emph{later} attribute means that the insertion
+can be postponed.  This
+is analogous to the computation of the predicate LATERIN
+in Drechsler and Stade\cite{DS93}.  The \emph{later}
+predicate is initialized to true wherever \emph{can\_be\_avail} is
+true.  It then begins with the $\Phi$ operands corresponding to real
+occurrences of the expressions in the program, and propagates the false value
+for \emph{later} forward to those $\Phi$'s beyond which insertions cannot be
+postponed (moved downward) without introducing unnecessary new 
+redundancy\footnote{The result is that those $\Phi$'s satisfying \emph{later}
+are exactly those that are \emph{can\_be\_avail} but not reachable from
+any real occurrence along any forward arcs in the SSA graph.}
+\emph{can\_be\_avail} $\Phi$'s marked not-\emph{later} are then the $\Phi$'s
+where insertion should be performed for lifetime optimality in the introduced
+temporary.   Thus, at the end of this second pass, \emph{will\_be\_avail}
+for a $\Phi$ is given by $$will\_be\_avail = can\_be\_avail\ \wedge\ \urcorner later.$$
+Figure~\ref{fig: later} gives the propagation algorithm for \emph{later}.
+
+\begin{figure}[!ht]
+{\bf procedure} Reset\_later($g$) 
+\{
+\begin{code}
+\x1 $later(g) \leftarrow$ false
+\x1 {\bf for} each $f \in$ \{$\Phi$'s with operand $\omega$ where $def(\omega) = g$\} {\bf do}
+\x2   {\bf if} ($later(f)$)
+\x3       Reset\_later($f$)
+\end{code}
+\}
+
+{\bf procedure} Compute\_later
+\{
+\begin{code}
+\x1 {\bf for} each $f \in$ \{$\Phi$'s in the program\} {\bf do}
+\x2   $later(f) \leftarrow can\_be\_avail(f)$
+\x1 {\bf for} each $f \in$ \{$\Phi$'s in the program\} {\bf do}
+\x2   {\bf if} ($later(f)$ {\bf and}
+\x3       $\exists$ an operand $\omega$ of $f$ such that ($def(\omega) \neq \bot$ {\bf and} $has\_real\_use(\omega)$))
+\x4	Reset\_later($f$)
+\end{code}
+\}
+\caption{Algorithm for \emph{later}}
+\label{fig: later}
+\end{figure}
+
+We define the predicate \emph{insert} to indicate those $\Phi$ operands
+where we will perform insertions.  \emph{insert} holds for a $\Phi$ operand
+if and only if the following hold:
+
+\begin{itemize}
+\item the $\Phi$ satisfies \emph{will\_be\_avail}; and
+\item the operand is $\bot$; or \emph{has\_real\_use} is false for the
+operand and the operand is defined by a $\Phi$ that does not satisfy
+\em{will\_be\_avail}.
 \end{itemize}
 
-\section*{The Basic Algorithm - SSAPRE}
-{\bf 5 pages} \\
-Present Kennedy et al.'s the  SSA-adaption  of LCM. 
+\subsection{Step 5: Finalize}
 
-\section*{Register Promotion via PRE}
-{\bf 2 pages} \\
-Present register promotion as an application that can be 
-can be treated by techniques dual to PRE. Discuss its 
-relationship to Partial Dead Code Elimination. This section 
-will be mainly based on the algorithm of Lo, Chow et al. 
+The SSA graph built for the expression is mainly data flow analysis purpose.
+At this point, the placement problem has been solved, and it is time to
+transform the program.
+The Finalize step plays the role of transforming the SSA graph for the
+hypothetical temporary $h$ to the valid SSA form that reflects insertions 
+and in which no $\Phi$ operand is $\bot$.  The Finalize step consists of
+two parts, Finalize\_1 and Finalize\_2.  Finalize\_1 performs the
+following tasks:
+
+\begin{itemize}
+\item For each real occurrence of the expression, it marks it with a $reload$
+flag to indicate whether it should be computed on the spot or reloaded
+from the temporary.
+\item For $\Phi$'s where \emph{will\_be\_avail} is true, insertions are
+performed at the incoming edges that correspond to $\Phi$ operands at which
+the expression is not available.
+\item $\Phi$'s whose \emph{will\_be\_avail} predicate is true may become
+$\phi$'s for $t$.  $\Phi$'s that are not \emph{will\_be\_avail} will not
+be part of the SSA form for $t$, and arcs from \emph{will\_be\_avail} 
+$\Phi$'s that reference them are fixed up to refer to other (real or 
+inserted) occurrences.
+\item The SSA graph is updated to reflect the factored use-def relation
+for the expression temporary.  This restructuring is accomplished by
+resetting the $def$ field of each operand of a $\Phi$ satisfying
+\emph{will\_be\_avail} and each real occurrence that will be reloaded so
+that these $def$ fields refer to the expression occurrences that will be
+their definitions in the final SSA form of the temporary.
+\end{itemize}
+
+Finalize\_2 performs the following two tasks:
+
+\begin{itemize}
+\item For each real occurrence that is not reloaded, it marks it with a
+$save$ flag to indicate whether the computed value should be saved to the 
+temporary.
+\item Extraneous $\Phi$'s are removed.
+\end{itemize}
+
+Finalize\_1 is performed via a preorder traversal of the dominator tree
+of the program control flow graph.  Though modeled after the rename step
+in SSA construction, Finalize\_1 does not require any renaming stack for
+its operation, because SSA versions have already been assigned.  Instead,
+it sets up a table $Avail\_def$ (for \emph{available definitions}) to do its
+job, which incurs less overhead than the stack operation, with the indices
+into the table being the $h$-version number.  $Avail\_def$[x] will point
+to the expression occurrence that defines that $h$-version, with the
+defining occurrence being either (a) a real occurrence or (b) a $\Phi$ for
+which \emph{will\_be\_avail} is true.  The algorithm for Finalize\_1 is
+given in Figure~\ref{fig: finalize1}.
+
+\begin{figure}[!ht]
+{\bf procedure} Finalize\_1
+\{
+\begin{code}
+\x1 $Avail\_def[] \leftarrow \bot$
+\x1 {\bf for} each occurrence $X$ in preorder dominator tree traversal order {\bf do} \{
+\x2   $x \leftarrow h\_version(X)$
+\x2   {\bf if} ($X$ is a $\Phi$ occurrence) \{
+\x3	{\bf if} ($will\_be\_avail(f)$)
+\x4	  $Avail\_def[x] \leftarrow f$
+\x2   \}
+\x2   {\bf else if} ($X$ is a real occurrence) \{
+\x3	{\bf if} ($Avail\_def[x]$ is $\bot$ {\bf or} $Avail\_def[x]$ does not dominate $X$) \{
+\x4	  $reload(X) \leftarrow$ false
+\x4	  $Avail\_def[x] \leftarrow X$
+\x3	\}
+\x3	{\bf else} \{
+\x4	  $reload(X) \leftarrow$ true
+\x4	  $def(X) \leftarrow Avail\_def[x]$
+\x3	\}
+\x2   \}
+\x2   {\bf else} \{ /* $X$ is a $\Phi$ operand occurrence */
+\x3     let $f$ be the $\Phi$ in the successor block of this operand
+\x3	{\bf if} ($will\_be\_avail(f)$)
+\x4	  {\bf if} ($X$ satisfies $insert$) \{
+\x5	    insert the current expression at the end of the block containing $X$
+\x5	    $def(X) \leftarrow$ inserted occurrence
+\x4	  \}
+\x4	  {\bf else}
+\x5	    $def(X) \leftarrow Avail\_def[x]$
+\x2   \}
+\x1 \}
+\end{code}
+\}
+\caption{Algorithm for Finalize\_1}
+\label{fig: finalize1}
+\end{figure}
+
+To determine those real occurrences that must be saved to the temporary,
+Finalize\_2 performs a backward search over the SSA graph.  The search
+begins at the set of real occurrences that are marked $reload$ and progresses
+backward along upward arcs using the $def$ field for each reloaded real
+occurrence as set by Finalize\_1.  Every real occurrence that defines a
+$\Phi$ operand or real occurrence encountered in the search will have its
+$save$ flag set.
+
+$\Phi$'s can be determined to be extraneous by SSA minimization modeled
+after the $\phi$ insertion step in SSA construction. We initially mark
+all the $\Phi$'s as being extraneous.  Base on the iterated dominance
+frontier of the set of real occurrences with the $save$ flag set plus
+the inserted computations, we can find and mark the $\Phi$'s that are not
+extraneous.
+Removing an extraneous $\Phi$ requires changing the occurrences assigned
+the $h$-version of the extraneous $\Phi$ to a different one.  The replacing
+$h$-version can be found by tracing up the $\Phi$ operands  This process
+is integrated into the Finalize\_2 pass given in Figure~\ref{fig: finalize2}.
+
+\begin{figure}[!ht]
+{\bf procedure} Set\_save($X$) 
+\{
+\begin{code}
+\x1 {\bf if} ($X$ is a real occurrence)
+\x2   $save(X) \leftarrow$ true
+\x1 {\bf else if} ($X$ is a $\Phi$ occurrence)
+\x2   {\bf for} each operand $\omega$ of $X$ {\bf do}
+\x3	{\bf if} ({\bf not} $processed(\omega)$)
+\x4       Set\_save($def(\omega)$)
+\x1 {\bf if} ($X$ is real or inserted)
+\x2   {\bf for} each $f \in F$ marked $will\_be\_avail$ appearing in $DF^+(X)$ {\bf do}
+\x3       $extraneous(f) \leftarrow$ false
+\end{code}
+\}
+
+{\bf procedure} Set\_replacement($g$, $replacing\_def$)
+\{
+\begin{code}
+\x1 {\bf for} each $will\_be\_avail f \in F$ with $j$th operand defined by $g$\} {\bf do}
+\x2   {\bf if} ($extraneous(f)$)
+\x3	Set\_replacement($f$,$replacing\_def$)
+\x2   {\bf else}
+\x3	replace $j$th operand of $f$ by $replacing\_def$
+\x1 {\bf for} each real occurrence $X$ satisfying $reload$ with $def(X) = g$ {\bf do}
+\x2   $def(X) \leftarrow replacing\_def$
+\x1 $F \leftarrow F - \{g\}$
+\end{code}
+\}
+
+{\bf procedure} Finalize\_2
+\{
+\begin{code}
+\x1 $F \leftarrow$ \{$\Phi$'s in the program\}
+\x1 {\bf for} each $f \in F$ satisfying $will\_be\_avail$ {\bf do}
+\x2   $extraneous(f) \leftarrow$ true
+\x1 {\bf for} each real occurrence $X$ {\bf do}
+\x2   $save(X) \leftarrow$ false
+\x1 {\bf for} each $f \in F$ {\bf do}
+\x2   {\bf for} each operand $\omega$ of $f$ {\bf do} 
+\x3     $processed(\omega) \leftarrow$ false
+\x1 {\bf for} each real occurrence $X$ satisfying $reload$ {\bf do}
+\x2   Set\_save($def(X)$)
+\x1 {\bf for} each $f \in F$ {\bf do}
+\x2   {\bf if} $f$ satisfies $will\_be\_avail$ \{
+\x3	{\bf if} ($extraneous(f)$)
+\x4	  {\bf for} each operand $\omega$ of $f$ {\bf do}
+\x5	    {\bf if} (($def(\omega)$ is a $\Phi$ {\bf and not} $extraneous(def(\omega))$) {\bf or}
+\x6	      ($def(\omega)$ is real) {\bf or}
+\x6	      ($def(\omega)$ is inserted))
+\x7		Set\_replacement($f$,$def(\omega)$)
+\x2   \}
+\x2   {\bf else}
+\x3	$F \leftarrow F - \{f\}$
+\end{code}
+\}
+\caption{Algorithm for Finalize\_2}
+\label{fig: finalize2}
+\end{figure}
+
+\subsection{Step 6: CodeMotion}
+
+Once the hypothetical temporary $h$ has been put into valid SSA form, the
+only remaining task is to update the native SSA program representation to
+reflect the results of PRE.  This involves introducing the expression
+temporary $t$.
+
+The CodeMotion step walks over the SSA graph of $h$ in dominator-tree 
+preorder.  At a real occurrence, if $save$ is true, it generates a save
+of the result of the computation into a new version of $t$.  For $\Phi$
+operand occurrences and real occurrences with the $reload$ flag set, it
+replaces the computation by a use of $t$.  At an inserted occurrence, it
+saves the value of the inserted computation into a new version of $t$.
+At a $\Phi$ of $h$, it generates a corresponding $\phi$ for $t$.
+
+\section{Practical Implementation of SSAPRE}
  
-\section*{Speculative  PRE}
+\section{Speculative PRE}
 {\bf 3 pages} \\
 Discuss  extensions of SSAPRE incorporating speculative code 
 motion. This requires to weaken the notion of down-safety. 
@@ -29,16 +681,17 @@ Present Xu and Cai's algorithm for speculative PRE based on
 edge profiles,  and  Murphy et al.'s algorithm for code motion 
 of fault-safe instructions. 
 
-\section*{Semantic PRE}
+\section{Register Promotion via PRE}
+Present register promotion as an application that can be 
+can be treated by techniques dual to PRE. Discuss its 
+relationship to Partial Dead Code Elimination. This section 
+will be mainly based on the algorithm of Lo, Chow et al. 
+
+\section{Redundancy via the Semantic Approach}
+\label{section:Part3:Pre_not_helped:SemanticPRE}
 {\bf 4 pages} \\
 Present some approaches to PRE incorporating information from global 
 value numbering. In particular, discuss the  algorithm of Rosen, Wegman and 
  Zadeck and the algorithm of Click and Cooper. 
-
-
-
-
-
-%\TODO{as a counter example}
 
 
