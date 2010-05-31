@@ -152,7 +152,7 @@ cause exceptions.
 \item The placement is \emph{computationally optimal}.  This means that no
 other safe placement can result in fewer occurrences of the computation
 along any path from entry to exit in the program.
-\item The temporaries introduced to store the computations for re-use in the
+\item The temporaries introduced to store the computations for reuse in the
 computationally optimal placement are life-time optimal.  This means that
 for the purpose of allocating the temporaries to registers, it will not
 induce more register pressure than needed.
@@ -169,7 +169,7 @@ Since avoiding redundant computation requires saving the values of
 computations into temporaries and re-using their values later, this is
 analogous to modeling the flow of data values in variables using SSA form.
 The PRE problem can be viewed as determing the best way to store and
-re-use a given computation.  Thus, we can visualize this problem using
+reuse a given computation.  Thus, we can visualize this problem using
 the temporary that will be used for that purpose.  This is a superset of
 the problem of constructing SSA form for a program variable, because,
 in addition of putting the temporary into SSA form, 
@@ -429,7 +429,7 @@ Figure~\ref{fig: canbeavail} gives the propagation algorithm for
 The purpose of the second forward propagation pass is to 
 satisfy the third requirement that we discussed in 
 Section~\ref{section:Part3:Pre_not_helped:PRErelatedtoSSA}
-that the temporaries introduced to store the computation for re-use be 
+that the temporaries introduced to store the computation for reuse be 
 lifetime optimal. The second pass works within the region computed by the
 first pass to determine the \emph{later} attribute. 
 A true value for this \emph{later} attribute means that the insertion
@@ -724,8 +724,9 @@ occurrence nodes in this sorted order.  We precompute the
 we can determine whether $x$ dominates $y$ using the formula
 $$Dominate(x,y) \equiv dfn(x) \leq dfn(y) \leq dfn(x) + des(x).$$
 When we walk through the sequence of basic blocks in dominator-tree preorder,
-$Dominate(x,y) = true$ indicates that we are descending the DT.
-$Dominate(x,y) = false$ alerts us to the need to take appropriate action due
+a true value for $Dominate(x,y)$ indicates that we are descending the DT.
+A false value for
+$Dominate(x,y)$ alerts us to the need to take appropriate action due
 to the fact that we are backtracking up the DT; in the case of Rename, it is
 necessary to pop the renaming stack until the version at the top of the stack
 is defined at a block that dominates $y$.  These observations allow us to walk
@@ -794,18 +795,279 @@ strategy of dealing with compound expressions.
 \end{figure}
  
 \section{Speculative PRE}
-{\bf 3 pages} \\
-Discuss  extensions of SSAPRE incorporating speculative code 
-motion. This requires to weaken the notion of down-safety. 
-Present Xu and Cai's algorithm for speculative PRE based on 
-edge profiles,  and  Murphy et al.'s algorithm for code motion 
-of fault-safe instructions. 
+
+Speculative code motion ignores that safety requirement of PRE that we
+discussed in Section~\ref{section:Part3:Pre_not_helped:PRErelatedtoSSA}.
+In the absence of systems support, speculation is only applicable to 
+expressions that will not cause runtime exceptions or faults, since such
+exceptions or faults will after the external behavior of the program.  
+For example, indirect loads from unknown pointer values cannot be speculated
+unless the systems would mask out the effect of loading from invalid addresses.
+Speculative code motion suppresses
+redundancy in some path at the expense of another path where the computation 
+is added but result is unused.  As long as the path that is burdened with
+more computations is executed less frequently than the path where the
+redundant computations are avoided, a net gain in program performance can be
+achieved.  Thus, speculative code motion should only be performed when there
+are clues about the relative execution frequencies of the paths involved.
+
+In SSAPRE, speculation corresponds to inserting computations at $\Phi$'s where
+the computation is not downsafe.  This effect can be accomplished by 
+marking those $\Phi$'s as downsafe in the DownSafety step.
+
+Without profile data, speculative PRE can be conservatively performed by
+restricting it to loop-invariant computations.  Figure~\ref{fig: spec-pre} shows
+a loop-invariant computation $a+b$ that occurs in a branch inside the loop.
+This loop-invariant code motion is speculative because, depending on the
+branch condition inside the loop, it may be executed zero time, while moving it
+to the loop header causes it to execute one time. This speculative 
+loop-invariant code motion is generally profitable because the benefit of
+suppressing its computation inside the loop outweighs the cost of computing it
+once at the loop header.  Marking $\Phi$'s located at the start of loop bodies
+downsafe will effect speculative loop invariant code motion\cite{Lo98}. 
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{fig-spec-pre.pdf}
+\caption{Speculative loop-invariant code motion}
+\label{fig: spec-pre}
+\end{figure}
+
+To enable more code motion of usually unsafe operations, Murphy {\it et al.} 
+modify SSAPRE to use the fault safety property.   They define $dangerous$
+computations as operations that may fault but will otherwise have no observable
+side effects.  Such computations include indirect loads and divides.  Such
+dangerous computations are sometimes protected by tests (or guards) placed in
+the code by the programmers.  Compilers for languages like Java also insert 
+runtime checks to ensure faults never occur. When such a test occur in the
+program, the dangerous computation is said to be \emph{safety-dependent} on
+the control flow point that establishes its safety.  A dangerous instruction
+is \emph{fault-safe} at any point in the program where its safety dependence
+is satisfied.
+
+Murphy {\it et al.} represents safety dependences as value dependences in the
+form of the abstract \emph{tau values} described in \cite{Menon06}.  Each check
+that succeeds will define a tau value on its fall-through path.  During SSAPRE,
+dangerous computations will have additional \emph{tau} operands attached to 
+them.  The tau
+operands are also variables in SSA form, so their definitions can
+be found by following the use-def edges.  The compiler inserts the definitions
+of the taus also with abstract right-hand-side values, like {\bf tauedge}.
+Because they are abstract, they
+are omitted in the generated code after the SSAPRE phase.  A dangerous
+computation can be defined to have more than one tau operands, depending on
+its semantics.  When all its tau operands have definitions, 
+it means the computation is fault-safe; otherwise, it is unsafe.  
+By including the tau operands into consideration, speculative PRE automatically
+honors the fault-safety of dangerous computations when it performs speculative
+code motion.
+
+As an example, if we replace the expression $a+b$ in Figure~\ref{fig: spec-pre}
+by $a/b$, the speculative code motion cannot be performed because if $b$ is 0,
+the speculative insertion of $a/b$ at the loop header will cause a run-time
+divide-by-zero fault.  In Figure~\ref{fig: spec-div}, the program contains a 
+non-zero test for $b$.  We define a tau operand for $a/b$ in SSAPRE to
+provide the information whether a non-zero test for b is available.  The
+presense of the non-zero test for $b$ causes the compiler to insert the
+definition of $tau1$ with the abstract right-hand-side value {\bf tauedge}.
+Since the divide inside the loop $a_1/b_1,tau_1$ has a tau operand whose
+definition is visible, speculative SSAPRE will force the $\Phi$ at the head
+of the loop body to be downsafe.  When $a_1/b_1,tau_1$ is hoisted out of the
+loop, it automatically stops at the definition of $tau_1$ because PRE obeys
+value dependence.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{fig-spec-div.pdf}
+\caption{Speculative and fault-safe loop-invariant code motion}
+\label{fig: spec-div}
+\end{figure}
+
+When execution profile data are available, it is possible to tailor the use
+of speculation to maximize run-time performance for executions of the program
+that match the profile.  An algorithm for profile-driven speculative SSAPRE
+is described in \cite{Lo98}.  Xue and Cai present a computationally optimal
+and lifetime optimal algorithm
+for speculative PRE based on edge profile in \cite{Xue06}.  Their algorithm
+uses the bit-vector-based data flow analysis.
 
 \section{Register Promotion via PRE}
-Present register promotion as an application that can be 
-can be treated by techniques dual to PRE. Discuss its 
-relationship to Partial Dead Code Elimination. This section 
-will be mainly based on the algorithm of Lo, Chow et al. 
+
+Register promotion refers to the important task in an optimizing compiler
+of identifying the data items that are candidates for register allocation 
+in the program.  To represent register allocation candidates, compilers
+commonly use an unlimited number of \emph{pseudo-registers}.  Pseudo-registers
+are also called symbolic registers or virtual registers, to distinguish them
+from real or physical registers.  Pseudo-registers have no alias, and the
+process of assigning them to real registers involves only renaming them.
+
+\subsection{Register Promotion as Placement Optimization}
+
+Under PRE, the temporaries generated to hold the values of redundant 
+computations are pseudo-registers.  Local variables determined by the compiler
+to have no alias can be trivially renamed to pseudo-registers.   All remaining
+register allocation candidates have to be assigned pseudo-registers through 
+the process of register promotion.  Register promotion is also responsible
+for generating the most efficient code to set up the data objects in
+pseudo-registers.  Targets for register promotion include scalar variables,
+indirectly accessd memory locations and program constants.  
+Load operations are needed to put them into pseudo-registers before
+they are used\footnote{Depending on the ISA, some constants may not need to be
+put in registers, and they should be excluded from register promotion.}, and
+when there is an assignment, a store operation is needed.  Since the goal of
+register promotion is to obtain the most efficient placements for the loads and
+stores, register promotion can be modeled as two separate problems: PRE of 
+loads, followed by PRE of stores.
+
+From the point of view of redundancy, loads are like expressions because the
+later occurrences are the ones to be deleted.  For stores, the reverse is true:
+the earlier stores are the ones to be deleted, as is evident in the examples
+of Figure~\ref{fig: load-store-dual}(a) and (b).  The PRE of stores problem,
+also called \emph{partial dead code elimination}, can thus be treated as the
+dual of the PRE of loads problem.  Performing PRE of stores thus has the effects
+of moving stores forward while inserting them as early as possible.  
+Combining the effects of the PRE of loads and stores results in optimal
+placements of loads and stores while minimizing the live ranges of the
+pseudo-registers, by virtue of the computational and lifetime optimalities
+of our PRE algorithm.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{fig-load-store-dual.pdf}
+\caption{Duality between load and store redundancies}
+\label{fig: load-store-dual}
+\end{figure}
+
+\subsection{Load Placement Optimization}
+
+PRE applies to any computation including loads from memory locations and
+loads of constants.  In program representations, loads can either be indirect 
+through a pointer or direct.  Direct loads  and constants constitutes the leaves
+in expression trees.  The bottom-up application of SSAPRE to an expression
+tree will then start with the leaf nodes before the simple expressions.
+
+When we apply SSAPRE to direct loads, since the hypothetical temporary $h$ can
+be regarded as the candidate variable itself, the $\Phi$-insertion step and
+Rename step can be streamlined.  In other words, the $\Phi$'s are the variable's
+$\phi$'s, and the $h$-versions are the variable's SSA version.
+
+When working on the PRE of memory loads, it is important to also take into
+account the stores, which we call \emph{l-value} occurrences.  A store of the 
+form $x \leftarrow \texttt{<expr>}$ can be regarded as being made up of the
+sequence:
+\begin{tabbing}
+XX:\= while \= while \= while \= while \= while \= \kill
+
+\> \> $r \leftarrow \texttt{<expr>}$ \\
+\> \> $x \leftarrow r$ \\
+\end{tabbing}
+Because the pseudo-register $r$ contains the current value of $x$, any
+subsequent occurrences of the load $x$ can reuse the value from $r$, and
+thus can be regarded as redundant.   Figure~\ref{fig: lval-occur} gives examples
+of loads made redundant by stores.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{fig-lval-occur}
+\caption{Redundant loads after stores}
+\label{fig: lval-occur}
+\end{figure}
+
+When we perform the PRE of loads, we thus include the l-value occurrences into
+consideration.  The $\Phi$-insertion step will insert $\Phi$'s at the iterated
+dominance frontiers of l-value occurrences.  In the Rename step, an l-value
+occurrence is always given a new $h$-version, because a store is a definition.
+Any subsequent load renamed to the same $h$-version is redundant with respect
+to the store.
+
+In the CodeMotion step, if an l-value occurrence is marked $save$, the
+store statement $x \leftarrow \texttt{<expr>}$ will be split into two 
+statements:
+\begin{tabbing}
+XX:\= while \= while \= while \= while \= while \= \kill
+
+\> \> $t_1 \leftarrow \texttt{<expr>}$ \\
+\> \> $x \leftarrow t_1$ \\
+\end{tabbing}
+The placement of the new store $x \leftarrow t_1$ will be optimized by the PRE
+of stores performed later.
+
+We apply the PRE of loads
+first, followed by the PRE of stores.  This ordering is based on the fact that
+the PRE of loads is not affected by the results of the PRE of stores, but the
+PRE of loads creates more opportunities for the PRE of stores by deleting
+loads that would otherwise have blocked the movement of stores.  In addition,
+speculation is required for the PRE of loads and stores in order for register
+promotion to do a decent job in loops.  
+
+The example in Figure~\ref{fig: promotion-example} illustrates what we discuss
+in this section.  During the PRE of loads (LPRE), $a =$ is regarded as an
+l-value occurrence.  The hoisting of the load of $a$ to the loop header does
+not involve speculation. The occurrence of $a =$ causes $r$ to be updated
+by splitting the store into the two statements $r =$ followed by $a = r$.  In 
+the PRE of stores (SPRE), speculation is needed to sink $a =$ to outside the
+loop because the store occurs in a branch inside the loop.  Without performing 
+LPRE first, the load of $a$ inside the loop would
+have blocked the sinking of $a =$.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{fig-promotion-example.pdf}
+\caption{Register promotion via load PRE followed by store PRE}
+\label{fig: promotion-example}
+\end{figure}
+
+\subsection{Store Placement Optimization}
+
+As mentioned earlier, the problem of SPRE is the dual of the problem of LPRE.
+In the presence of store redundancies, the earlier occurrences are redundant.
+Code motion in SPRE will have the effect of moving stores forward with respect 
+to the control flow graph.  Presence of (aliased) loads have the effect of
+blocking the movement of stores or rendering the earlier stores non-redundant.
+
+To apply the dual of the SSAPRE algorithm, it is necessary to compute a program
+representation that is the dual of the SSA form, and we call this the 
+\emph{static single use} form.  In SSU, use-def edges are factored at
+divergence points in the control flow graph.  We call this factoring operator
+$\Lambda$.  Each use of a variable establishes a new version (we say the load 
+\emph{uses} the version), and every store reaches exactly one load.   The
+$\Lambda$ is regarded as a use of a new version of the variable.  The use
+post-dominates all the stores of its version.  The left-hand-side of the
+$\Lambda$ is the multiple definitions, each of which is post-dominated by their
+single uses.
+
+We call our store PRE algorithm SSUPRE, which is composed of the six steps
+corresponding to SSAPRE.  The first two steps, $\Lambda$-Insertion and
+SSU-Rename, create the SSU form for the variable.  The third step, UpSafety,
+is just the reverse of DownSafety.  The fourth step, WillBeAnt, also corresponds
+to WillBeAvail in reverse.  Though store elimination itself does not require
+the introduction of temporaries, lifetime optimality still needs to be
+considered for the temporaries introduced in the LPRE phase which hold the 
+values to the point where the stores are placed.  Thus, it is desirable not 
+to sink the stores too far down.  
+The fifth and sixth step, Finalize and CodeMotion, is also simpler than 
+SSAPRE because no temporary is introduced that needs to be put in SSA form.
+However, for an inserted store, the variable will require a new SSA version,
+and the later uses have to be updated to refer to the new store.
+We add a post-pass to SSUPRE which is essentially the renaming step in SSA
+construction to fix-up the use-defs due to the newly inserted stores.
+
+Figure~\ref{fig: ssupre} gives an example program with (b) being the SSU 
+representation (a).  (c) shows the result of applying SSUPRE to the code.
+The store can be sunk to outside the loop only if it is also inserted in
+the branch inside the loop that contains the load.  The optimized code no
+longer exhibits any store redundancy.
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.55]{fig-ssupre.pdf}
+\caption{Example of program in SSU form and the result of applying SSUPRE}
+\label{fig: ssupre}
+\end{figure}
+
+A limitation of the above SSUPRE algorithm is that it does not apply to 
+indirect stores.  We think it is possible to extend the algorithm to make it
+work on indirect stores as well.
 
 \section{Redundancy via the Semantic Approach}
 \label{section:Part3:Pre_not_helped:SemanticPRE}
