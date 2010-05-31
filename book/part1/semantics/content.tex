@@ -15,6 +15,8 @@
 \newcommand{\uop}[1]{\ensuremath{\uopsymbol\ {#1}}}
 \newcommand{\bop}[2]{\ensuremath{\bopsymbol\ {#1}\ {#2}}}
 \newcommand{\simplejudge}[2]{{#1} \vdash {#2}}
+\newcommand{\closenode}[3]{\mathtt{close}_{{#1}}({#2},{#3})}
+\newcommand{\loopnode}[3]{\mathtt{loop}_{{#1}}({#2},{#3})}
 
 %\section{Introduction}
 \label{section:Part1:Semantics:Intro}
@@ -640,10 +642,169 @@ to insert a forward-reference here?}.
 
 \section{A Denotational Semantics}
 \label{section:Part1:Semantics:PopSemantics}
+%\footnote{Sebastian-Pop-style denotational semantics of SSA form (i.e. as
+%dataflow/Lucid}
+Both, the model of Glesner and functional representations, retain a
+model of the control flow structure of SSA programs: Glesner's
+programs are CFG's where the nodes are dataflow graphs; function
+definitions in the latter representation are comprised of variable
+bindings that are nested according to the local control flow successor
+relation, terminate with invocations to the functions representing the
+succeeding basic blocks, and may be nested according to the (control
+flow) dominance structure.
 
-a Sebastian-Pop-style denotational semantics of SSA form (i.e. as
-dataflow/Lucid)
+The model introduced by Pop et al.~\cite{PopCJS2006} departs from this
+discipline, eliminating the control flow structure rather than making
+it explicit.  Instead, programs are represented as collections of
+defining equations,
+\begin{eqnarray*}
+x_1 & = & e_1\\
+& : &\\
+x_n & = & e_n
+\end{eqnarray*}
+one for each variable $x_i$. Instead of referring to \emph{control
+flow succeessors}, the right-hand sides $e_i$ of these equations may
+refer to \emph{data flow predecessors}, i.e. the variables that
+provide the operands necessary for updating $x_i$. As a
+consequence, the order in which equations are presented is irrelevant,
+and execution proceeds completely data-driven.
 
+In order to transform a sequence of assignments into this form we may
+apply the approach for converting a basic block into SSA: we introduce
+a new variable for each assignment, and substitute these variables in
+the right-hand sides of the instructions according to the data
+flow. The order of assignments may be permuted arbitrarily, so a
+sequence like $x := 5;\ y:=x+z;\ x:=y*3$ may, for example, be
+represented by the equations
+\begin{eqnarray*}
+x_2 & = & y_2 + 3\\
+y_1 & = & x_1 + z_1\\
+x_1 & = & 5
+\end{eqnarray*}
+(variable $z$ is live-in here).
+
+In order to transform loops, the category of right-hand side
+expressions $e$ is extended by two novel operations, $\loopnode
+\ell e {e'}$ and $\closenode \ell e {e'}$.
+Both operations resemble $\phi$-instructions, but their arity is
+independent of any control flow structure: $e$ and $e'$ are
+expressions and $\ell$ is an index from $\{1,\ldots,N\}$ where $N$ is
+the number of while-statements in the original program.  An equation
+\begin{eqnarray*}
+x & = & \loopnode \ell {e} {e'}
+\end{eqnarray*}
+roughly corresponds to the occurrence of a $\phi$-node for $x$ at the
+beginning of a loop in SSA, assigning $e$ to $x$ during the first
+iteration of loop $\ell$ and assigning $e'$ to $x$ in later
+iterations.
+An equation 
+\begin{eqnarray*}
+x & = & \closenode \ell {e} {e'}
+\end{eqnarray*}
+corresponds roughly to a loop-closing $\phi$-node for the loop
+$\ell$. Expression $e$ represents the boolean loop condition, and $e'$
+represents the value that will be assigned to $x$ when the loop is
+left, i.e. when $e$ evaluates for the first time to $\mathtt{false}$.
+
+For example, the representation of
+$\mathtt{i=7;\ j=0;\ while\ (j<10)\ \{j=j+i\}}$
+(taken from~\cite{PopCJS2006}) contains the five equations
+$$
+\begin{array}{rclcrcl}
+i_1 & = & 7 & \qquad & j_2 & = & \loopnode 1 {j_1} {j_3}\\
+j_1 & = & 0 & & j_4 & = & \closenode 1 {j_2 < 10} {j_2}\\
+j_3 & = & j_2 + i_1
+\end{array} 
+$$ 
+where $1$ is the (trivial) index for the single while-command
+ocurring in the program.  In effect, $j_4$ is assigned the value held
+in $j_2$ in that iteration for which $j_2 < 10$ is falsified for the
+first time, i.e.~$14$.
+
+In order to formally define concepts such as \emph{for the first
+time}, the representation is equipped with a semantics that employs
+so-called
+\emph{iteration space vectors}: for a program with $N$ loops, such
+a vector consists of an $N$-tuple of values, with the value at
+position $\ell$ representing the number of iterations of loop $\ell$.
+Given such a vector $k$, the meaning of a right-hand-side expression
+$e$ is given recursively as follows:
+
+\begin{itemize} 
+
+\item 
+constant expressions and arithmetic operators have their standard
+(iteration space vector independent) meaning.
+
+\item a variable $x$ is interpreted by evaluating its defining
+equation at the iteration space vector $k$.
+
+\item an expression $\loopnode \ell {e_1} {e_2}$ evaluates to the value of
+$e_1$ at $k$ if $k$ at index $\ell$ is zero. Otherwise, $\loopnode
+\ell {e_1} {e_2}$ evaluates to the result of evaluating $e_2$ at $k'$,
+where $k'$ is obtained by decrementing index $\ell$ of $k$ by one.
+
+\item an expression $\closenode \ell {e_1} {e_2}$ evaluates to the value
+of $e_2$ at the iteration space vector $k'$ that arises by updating
+$k$ by the least value $x$ such that $e_1$ for $k'$ is
+$\mathtt{false}$.
+
+\end{itemize}
+
+The semantics for the entire program is then given in denotational
+style, by a mapping that associates each variable to the
+interpretation of its right-hand side, i.e. to the function that given
+an iteration space vector evaluates the expression on that vector.
+
+Due to the decrementing of the iteration index in the interpretation
+of $\loopnode \ell {e_1} {e_2}$ expressions, an evaluation of this
+expression for a particular $k$ only requires further evaluations at
+vectors that are smaller with respect to the component-wise ordering
+on tuples, with least element $(0,\ldots,0)$. In contrast, the minima
+mentioned in the interpretation of $\closenode
+\ell {e_1} {e_2}$ do not necessarily exist. In each such case, the interpretation
+of the equation in question, and thus the corrresponding variable, is
+set to $\bot$, in accordance with the standard treatment of
+non-termination in denotational semantics~\cite{winskel_93_formal}.
+
+In contrast to $\phi$-instructions in SSA, the semantics of the
+equation-based representation thus does not require control-flow
+information to be maintained, as the choice as to which argument of
+$\loopnode \ell {e} {e'}$ is evaluated is encoded in the dependency on
+the entry at the appropriate position in the iteration space vector.
+
+The article~\cite{PopCJS2006} and Pop's
+dissertation~\cite{PopDissertation} contain formal details about the
+representation, its interpretation, and its formal relationship to a
+non-SSA language. In particular, these sources explain how a
+conventionial program of assignments and loops may be compositionally
+converted into a set of equations, in a semantics-preserving
+way. Source program expressions are uniquely labeled, so that globally
+unique variable names can be generated by differentiating the original
+program variables according to the (naturally distinct) labels for
+assignments.  Contrary to the unstructured labels used
+in~\cite{NielsonNielsonHanking:POPA}, the authors use a class of
+labels ("Dewey-like numbers") that is 
+\begin{description}
+\item[extensible] This feature
+is used for generating fresh target variables for the two kinds
+of $\phi$-operations
+\item[hierarchically structured according to the subterm relation]
+   This admits  a structure-directed translation into
+the equation-based representation
+\item [compatible with the control flow successor relationship:] 
+  This feature -- in combination
+with the iteration space vectors -- is employed to define a compositional
+(denotational) semantics of the source language. 
+\end{description}
+In addition to proving a suitable theorem asserting that the
+translation is semantics-preserving, the authors also give a reading
+of this result in terms of classical models of computations in that it
+amounts to a syntactic embedding of the RAM model into recursive
+partial functions.  In addition, Pop's
+dissertation~\cite{PopDissertation} describes how a number of program
+analyses may be phrased in terms of the equational language, including
+induction variable analysis and other loop optimizations.
 
 %%%%%%%%%%%%
 
@@ -685,141 +846,6 @@ systems.
 
 Modern textbooks on programming language semantics and type systems
 include~\cite{winskel_93_formal,GunterBook,PierceTAPL}.
-
-
-
-\subsection{Quarry}
-
-the static scope of \verb|x|.  At the end
-of $e'$, $x$ becomes inaccessible, and any future use of $x$ must be
-surrounded by another binding occurrence. In particular, the choice of
-name \verb|x| is transparent to surrounding code, as the behaviour of
-$e'$ is observably equivalent to that of some code $e''$ that arises
-from replacing all free occurrences of $x$ in $e'$ by some other fresh
-name, say $y$ (``$\alpha$-renaming'').  Thus, each use of a
-name has a unique point of binding, in the same way that each use
-of a variable in SSA has a unique point of definition, and different
-binding points for the same name can can easily be avoided
-and in any case can never be confused. In fact, the concept of
-dominance region is exactly the same as that of static scope.
-
-Given the historic proximity between the introduction of SSA and the
-publication of a major textbook on compilation using functional
-intermediate representation it is not surprising that the close
-relationship between the two formalisms was quickly observed
-\cite{Kelsey95}.
-
- Nevertheless,
-all variants provide a practical alternative to traditional
-representations of SSA using explicit $\phi$-nodes. All formalisms
-based 
-
-
- Given the complexity of the host formalisms
-themselves, the judgement as to whether the various models succeed in
-achieving the above goals rests ultimately with the reader, her prior
-exposure to the formalisms, and her specific task at hand.
-
-Despite their
-differences, all variations exhibit the basic correspondences from
-Table~\ref{Table:SSAFunctionalCorrespondences}. Sharing the principles
-of functional languages, they also support non-local function calls,
-which - in collaboration with more sophisticated type systems than
-discussed in the present chapter - enables a comparatively smooth
-extension of program analyses from intra- to inter-procedural
-cases. The transfer of analysis techniques between the two language
-domains is an active area of research - for an extensive introduction
-see~\cite{NielsenNielsenHankin}.
-
-We close by briefly comparing the approaches and some items for future
-research.
-
-\subsubsection{A functional representation}
-The target of our translation is a the
-functional language whose grammar is
-\begin{eqnarray*}
-\uopsymbol & ::= & \ldots\\
-\bopsymbol & ::= & \mathtt{add} \ | \ \mathtt{sub} \ | \ \ldots\\
-a & ::= & x \ | \ c \ | \ \uop x \ | \ \bop x y\\
-e & ::= & a \ | \ \letin x a e \ | \ \ite x e e \\
-      & & | \ \call f {x_1,\ldots,x_n} \ | \ \letrec {\decl_1 \ \mathtt{and}\ \ldots \ \mathtt{and}\ \decl_n} e\\
-\decl & ::= & f(x_1,\ldots,x_n) = e
-\end{eqnarray*}
-Primitive expressions $a$ are built from names and (e.g.~integer)
-constants $c$ using unary and binary operations. Non-restricted
-expressions $e$ extend this by a let-construct, conditionals, function
-calls, and a mechanism for declaring a block of functions
-$f_1,\ldots,f_n$. Each function declaration comes with a list of
-formal parameters and a function body\footnote{Maybe I should use the
-traditional $\mathtt{letrec}$??}. The separation into data names $x$
-and function names $f$ is only for notational convenience - in fact,
-both kinds of names are drawn from a single category of names. A
-procedure is given by a declaration $$\pdec P {x_1,\ldots,x_m} e$$ such
-that all free variables of $e$ are amongst the $x_i$. The set of free
-variables of primitive and non-restricted expressions is given in
-Figure~\ref{}, and enforces the (standard) scoping and visibility
-conditions: binding of names occurs in let-bindings and function
-declaration blocks, and the bodies $e_i$ of functions may refer to 
-the names of the sibling functions $f_1,\ldots,f_n$ declared in the
-same block.
-
-Compared to a CFG-based program representation, the above grammatical
-one stresses the \emph{inductive} nature of programs, where phrases
-are hierarchically built up from subexpressions rather than being
-nodes in a graph. Let-binding and conditional represent the
-control-flow sucessor relationship in a way that enables modular
-reasoning: all constituents necessary for giving the meaning of these
-constructs is locally available. Associated with this organization is
-the proof technique of \emph{structural
-induction}~\cite{McCarthy63abasis,Burstall:1969}, where properties of
-phrases are defined and proven according to the subterm relation.
-
-Unless stated otherwise, programs are treated 
-\emph{up to $\alpha$-equivalence}, which is to say that programs differing only in the choice of bound names are formally considered equal.  We call a
-procedure declaration \emph{well-formed} if  the
-following syntactic conditions are met.
-\begin{itemize}
-\item each list $x_1,\ldots,x_n$ of formal parameters (in the declaration of functions or the declaration of the procedure) consists of distinct elements, i.e.~$x_i \neq x_j$ for all $1 \le i \neq j \le n$.
-\item function names declared in the same block are distinct
-\item any call $f(x_1,\ldots,x_n)$ is of the same arity as the (innermost enclosing) binding of name $f$.
-\item \footnote {explain load/store, forbid ``result'' of store to be used?}
-\end{itemize}
-These conditions are often imposed by functional languages and can be
-enforced by a simple \emph{typing system} - a formal derivation system
-with axioms and proof rules for constructing syntactic artefacts that
-represent some formal justification of certain judgements. For the
-task at hand, one may take judgements to be of the form $\simplejudge
-\Gamma e$ where \emph{context} $\Gamma$ \ldots\footnote{Decide what judgement to use here}
-
-Some proof rules are shown in Figure~\ref{}. From these, we construct
-\emph{derivation trees} that have instantiations of proof rules as
-nodes and a link between two nodes $a$ and $b$ whenever the
-(instantiated) concluding judgement of $a$ is used as a hypothesis of
-node $b$. The resulting trees have a single concluding
-judgement at their root and instances of axioms (proof rules that do
-not have side conditions) as leafs. We interprete the typing rules
-\emph{inductively}, i.e.~define the set of derivable judgements to be
-the \emph{least} set that is closed under the given rules. This
-enables the use of the proof technique
-\emph{induction on derivations} for proving properties of derivable judgements, complementing the above-mentioned structural induction.
-The two proof techniques largely coincide in cases where the
-derivation system is \emph{syntax-directed}, i.e.~each term
-constructor occurs in precisely one proof rule's concluding judgement,
-and in each rule,
-\emph{hypothetical} judgements (above the line) concern subterms of the phrase in the concluding judgement. \footnote{Omit this sentence?: In particular, the term of the concluding judgement uniquely determines the proof rule that was applied in the last step of the derivation, for deriving such a judgement. }
-Type systems that enjoy this property are hence algorithmically more
-tractable than general type systems, leading to type checking or type
-inference algorithms that traverse the program in a similarly
-instruction-oriented fashion as dataflow algorithms - the choice of
-typeing rule corresponds to the application of the transfer function.
-
-In addition to specifying type systems, formal derivation systems are
-also used for defining various forms of operational or axiomatic
-semantics of languages~\cite{Hoare69,Plotkin1981}. These employ different notions of contexts and
-generally involve judgements over entities other than types
-(e.g. states, environments, assertions), but share the inductive
-nature of type systems by being formulated as collections of proof
-rules and axioms that are often applied in a syntax-directed fashion.
 
 %\bibliographystyle{alpha}
 %\bibliography{chapter}
