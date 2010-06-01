@@ -408,6 +408,7 @@ in order to obtain the best possible results.
   \label{novillo:alg:propagation}
 \end{algorithm}
 
+\obacht{TODO:}{How is data flow information associated with the SSA nodes.}
 Similar to monotone frameworks for traditional data flow analysis, frameworks
 for \emph{sparse data flow propagation} under SSA form can be defined. As
 before, such a framework consist of: (1) a complete lattice, (2) a set of
@@ -522,7 +523,7 @@ to show that the assignment to variable z$_1$ is in fact constant as well.
 
 \obacht{Complexity results}{\begin{itemize}
                               \item Relate to bounds of traditional data flow
-                                    analysis,
+                                    analysis, (O($|V|^2 \cdot h$)??)
                               \item Do we have any numbers that propagation is
                                     faster under SSA form?
                               \item Memory consumption: Point out that we can
@@ -685,236 +686,91 @@ of executable operations has been discovered.
 \section{Value Range Propagation}
 \label{novillo:sec:vrp}
 
-This transformation is similar to constant propagation, which served as a
-running example throughout this chapter. But instead of propagating single
-constant values, contiguous value ranges for variables are propagated. For
-instance, the code in Figure \ref{novillo:fig:vrp-1} is extracted from a
-typical expansion of bound checking code in languages like Java. Notice how the
-bounds check at line $12$ is not really necessary as variable $i$
-is guaranteed to take values in the range [$0$, a-\textgreater len - 1].
-
-\begin{figure}
+\begin{figure}[b!]
   \begin{center}
     \begin{tabular}{c}
       \begin{lstlisting}
-struct array
-{
+struct array {
   const int len;
   int *data;
 };
 
 void
-doit(array *a)
-{
-  for (int i = 0; i < a->len; ++i)
-    {
-      if (i < 0 || (i) >= (a->len))
-        throw 5;
-      call (a->data[i]);
-    }
+doit(array *a) {
+  for (int i = 0; i < a->len; ++i) {
+    if (i < 0 || (i) >= (a->len))
+      throw 5;
+    call (a->data[i]);
+  }
 }
       \end{lstlisting}
     \end{tabular}
   \end{center}
-  \caption{Useless array-bound checking code.}
+  \caption{Useless array bound checking code.}
   \label{novillo:fig:vrp-1}
 \end{figure}
 
-Value range propagation works in two main phases:
+Value range propagation is similar to constant propagation, which served as a
+running example throughout this chapter. But instead of propagating single
+constant values, contiguous value ranges are propagated for all variables. For
+instance, the code in Figure \ref{novillo:fig:vrp-1} is extracted from a
+typical expansion of bound checking code in languages like Java. Notice how the
+bounds check at line $12$ is redundant as variable $i$ is guaranteed to take
+values in the range [$0$, a-\textgreater len - 1]. An important source for range
+information are the conditions of branch operations, e.g., the condition
+associated with the \textbf{for} loop in the example.
 
-\begin{enumerate}
-\item  Range Assertions.  Some expressions like predicates in
-       conditional jumps, pointer dereferences or taking the
-       absolute value of a variable imply something about the
-       range of values that their result may take.  For
-       instance, the expression \lcode{if (a_5 > 10) ...}
-       implies that every use of a$_5$ inside the if will be
-       guaranteed to use values in the range [$11$, +INF].
+Regular SSA graphs do not allow to take advantage of these conditions, because
+the range information only applies to the code region that is guarded by the
+respective branch. Furthermore, certain operations allow to derive range
+information as a side effect. Typical examples are arithmetic operations with
+implicit conditions such as the \emph{minimum}, \emph{maximum}, or the
+\emph{absolute} operations. Trapping operations also provide information in case
+the execution succeeds, e.g., a pointer is known not to be \texttt{NULL} when a
+memory access succeeds. However, not all program points where this additional
+range information is available are captured by SSA graphs, which capture
+variable definitions, their uses, and $phi$-operations only.
 
-       For every expression in this category, the compiler
-       generates a new expression code (\lcode{ASSERT_EXPR})
-       that describes the guaranteed range of values taken by
-       the associated name.
+The graph is thus preprocessed in order to split the live ranges of variables
+at appropriate program points whenever range information can be derived. The
+splitting can be accomplished by inserting artificial \emph{assert} operations
+into the SSA graph that take an input variable and a condition as operands and
+return a copy of the input variable's value. Note that this \emph{ad hoc} form
+of live range splitting could be generalized, e.g., by program representations
+such as \emph{static single information} form
+(SSI)~\cite{novillo:bib:A99,novillo:bib:S05} -- also see Chapter~\ref{} of this
+book. \obacht{Reference}{Missing reference to live range splitting chapter.}
 
-\item  Range Propagation.  Once \lcode{ASSERT_EXPR} instructions
-       have been inserted, the SSA propagation engine is used to
-       evaluate the program.  After propagation, every SSA name
-       created by the program will have a range of values
-       associated with it.  Those ranges are then used to
-       eliminate conditional jumps made superfluous by the new
-       range information.
-\end{enumerate}
+Following this live range splitting, a data flow problem is solved in order to
+propagate the available range information available through the conditions of
+the assert expressions to the respective uses. The lattice representing the
+range information is more complex in structure than the previous examples. The
+lattice elements are divided into two classes, \emph{regular} ranges and
+\emph{anti} ranges, and consist of a lower and upper bound, where the bounds can
+be arbitrary symbolic expressions. Regular ranges specify that the actual values
+of a variable lie within the lower and upper bound, while for anti ranges the
+opposite is true. The meet operator is defined by combining the bounds such that
+the resulting range covers both its arguments, i.e., in the case of regular
+ranges combining the information of $r_1 = [l_1, u_1]$ and $r_2 = [l_2, u_2]$
+yields the range $[min(l_1, l_2), max(u_1, u_2)]$.
 
-\subsection{Inserting range assertions}
+However, a naive formulation of the lattice quickly leads to long or even
+infinite chains. The lattice thus needs to be restricted in order to guarantee
+termination of the analysis. As an example, consider a loop with an
+unconditional increment of a counter variable. This could lead to an infinite
+feedback look where the value range associated with the counter grows infinitely
+on every iteration. In practice, infinite chains are prevented by choosing the
+transfer functions such that growth is restricted. For example, the popular open
+source compiler GCC, restricts the transfer functions of many operations, such
+as addition or subtraction, to constant singleton ranges only, i.e., ranges that
+consist of a single element that is known to be constant. Other compiler allow
+the range to grow within certain limits.
 
-Certain expressions found in the code give us information about
-the range of values that may be taken by the operands involved in
-the expression.  For instance, consider the code fragment in
-Figure \ref{novillo:fig:assert-expr-before}.
-
-\begin{figure*}
-  \centering
-  \begin{tabular}{cc}
-      \begin{minipage}[b]{0.45\textwidth}
-        \begin{lstlisting}[showlines=true]
-
-$p_4$ = $p_3$ + 1;
-
-if ($p_4$ == 0)
-  return 0;
-
-$x_{10}$ = *$p_4$;
-
-if ($p_4$ == 0)
-  return 0;
-
-if ($a_5$ == 10)
-  return $a_5$ + $x_{10}$;
-
-return $a_5$ - $x_{10}$;
-
-        \end{lstlisting}
-        \subfigure[Before inserting assertions.]{
-          \hspace{0.8\textwidth}
-          \label{novillo:fig:assert-expr-before}
-        }
-      \end{minipage}
-      &
-      \begin{minipage}[b]{0.53\textwidth}
-        \begin{lstlisting}
-$p_4$ = $p_3$ + 1;
-
-if ($p_4$ == 0)
-  return 0;
-
-$x_{10}$ = *$p_4$;
-$p_5$ = ASSERT_EXPR<$p_4$, $p_4$ != 0>;
-
-if ($p_5$ == 0)
-  return 0;
-
-if ($a_5$ == 10)
-  $a_6$ = ASSERT_EXPR<$a_5$, $a_5$ == 10>;
-  return $a_6$ + $x_{10}$;
-
-return $a_5$ - $x_{10}$;
-      \end{lstlisting}
-        \subfigure[After inserting assertions.]{
-          \hspace{0.8\textwidth}
-          \label{novillo:fig:assert-expr-after}
-        }
-      \end{minipage}
-
-  \end{tabular}
-  \caption{Preparing the program for Value Range Propagation.}
-\end{figure*}
-
-Since pointer p$_4$ is dereferenced at line $6$, we know that the
-NULL test at line $8$ must always fail.  Similarly, the use of
-a$_5$ at line $12$ is guaranteed to always use the constant value
-$10$.  However, we cannot guarantee that \textbf{all} uses of
-p$_4$ and a$_5$ will always have a known value.  For instance,
-we have no way of knowing at compile time whether the NULL test
-for p$_4$ at line $3$ will succeed or not.  Similarly, the use of
-a$_5$ at line $14$ does not use a known value.
-
-The technique used by VRP to overcome this problem is to create
-new SSA names to which we can pin the range information that we
-want to propagate.  The compiler generates a new expression called
-\lcode{ASSERT_EXPR} that captures this information and stores it
-into a new SSA name.  When the compiler finds an expression that
-contains interesting range information for name $N_i$, it
-builds a predicate P describing that range and generates
-the assignment \lcode{N_j = ASSERT_EXPR <N_i, P>}.  This
-expression means that variable $N_j$ has the same value as $N_i$
-\textbf{and} that value is guaranteed to make predicate P
-evaluate to \textit{true}.
-
-Therefore, for the code in Figure
-\ref{novillo:fig:assert-expr-before}, the compiler inserts the
-assertions found in Figure \ref{novillo:fig:assert-expr-after}.
-The pointer dereference in line $6$ produces the assertion
-p$_5$ = \lcode{ASSERT_EXPR <}p$_4$, p$_4$ != $0$\lcode{>}.  With
-this conversion, all uses of p$_5$ are guaranteed to be uses of a
-non-NULL pointer.  Similarly, uses of a$_6$ are guaranteed to use
-the constant value $10$.
-
-\subsection{Incremental updates of the SSA form}
-
-Since range assertion expressions are inserted once the program
-is in SSA form, it must be updated before ranges are propagated.
-Each expression $N_i$ = \lcode{ASSERT_EXPR <}$N_j$, P\lcode{>}
-creates a mapping from the existing name $N_j$ to the new name
-$N_i$.
-
-As assertions are inserted in the IL, a replacement mapping is
-built.  In the example code of Figure
-\ref{novillo:fig:assert-expr-after}, the compiler will build two
-mappings, namely p$_5 \rightarrow$ p$_4$ and a$_6 \rightarrow$
-a$_5$.  Once all the assertions have been inserted, the SSA form
-can be incrementally updated by applying all the name mappings.
-
-The mechanics of the updating process are a little more
-elaborate than this, but in essence all it does is search and
-replace inside the sub-regions of the CFG affected by the
-existing names and their replacements.
-
-\subsection{Propagating ranges}
-
-\begin{figure}
-    \centering
-    \parbox{2in}{\includegraphics[height=2in]{vrp-4}}
-    \caption{Lattice values used for range propagation.}
-    \label{novillo:fig:vrp-lattice}
-\end{figure}
-
-The range propagation lattice has 4 values as shown in Figure
-\ref{novillo:fig:vrp-lattice}.  As is the case with other
-propagation problems, the only valid transitions are those that
-move downward in the lattice.  If we were to allow transitions in
-different directions, we would risk infinite loops during
-propagation.
-
-Lattice values \textsc{RANGE} and \textsc{ANTI-RANGE} are exactly
-the same in terms of propagation, they both represent known
-range values for the associated SSA names.  The key difference is
-in the semantics of the actual value when evaluating expressions.
-
-Two types of statements are considered interesting by the
-propagator:
-
-\begin{enumerate}
-\item	Assignments of the form $N_i$ = EXPR, where EXPR is of
-	an integral or pointer type.  The expression is evaluated
-	and if it results in a useful range, its value is
-	associated to $N_i$.
-
-	Naturally, the more common sources of useful range
-	information are \lcode{ASSERT_EXPR}s, but other
-	expressions may also provide useful ranges.  For
-	instance, if EXPR is $42$, then we can set the range of
-	$N_i$ to $[42, 42]$.  Similarly, expressions involving
-	names with known ranges may yield useful information.
-
-\item	Conditional branches are also evaluated.  If the
-	controlling predicate includes names with known ranges,
-	only the taken edges are added to the CFG work list.
-\end{enumerate}
-
-Evaluation of $\phi$ nodes uses the usual shortcut of ignoring
-arguments coming through non-executable edges.  Given two
-arguments with ranges VR0 and VR1:
-
-\begin{enumerate}
-\item	If VR0 and VR1 have an empty intersection the resulting
-	range is set to VARYING.
-
-\item	Otherwise, the resulting range is VR0 $\bigcup$ VR1.
-\end{enumerate}
-
-Propagation continues while names change from one state to the
-other.  Once all the basic blocks have been simulated and no
-state transitions occur, simulation stops.
+The final result of the analysis is used in order to eliminate array bounds
+checks, conditional branches, or unreachable code. Furthermore, range
+information is valuable during the optimization of data representations, e.g.,
+to reduce the number of bits for certain computations without loss of precision.
+\obacht{TODO:}{Add citations here??}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Dead Code elimination}
