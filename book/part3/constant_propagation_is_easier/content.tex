@@ -699,8 +699,8 @@ void
 doit(array *a) {
   for (int i = 0; i < a->len; ++i) {
     if (i < 0 || (i) >= (a->len))
-      throw 5;
-    call (a->data[i]);
+      throw;
+    x += a->data[i];
   }
 }
       \end{lstlisting}
@@ -710,12 +710,25 @@ doit(array *a) {
   \label{novillo:fig:vrp-1}
 \end{figure}
 
+\begin{figure}[t!]
+  \vspace{-1em}
+  \begin{center}
+    \includegraphics{value_range_propagation}
+  \end{center}
+  \vspace{-2em}
+  \caption{Splitting live ranges using additional \emph{assert} expressions
+           allows to derive more precise value ranges.}
+  \subfigure{\label{novillo:fig:vrp-2:a}}
+  \subfigure{\label{novillo:fig:vrp-2:b}}
+  \label{novillo:fig:vrp-2}
+\end{figure}
+
 Value range propagation is similar to constant propagation, which served as a
 running example throughout this chapter. But instead of propagating single
 constant values, contiguous value ranges are propagated for all variables. For
-instance, the code in Figure \ref{novillo:fig:vrp-1} is extracted from a
+instance, the code in Figure~\ref{novillo:fig:vrp-1} is extracted from a
 typical expansion of bound checking code in languages like Java. Notice how the
-bounds check at line $12$ is redundant as variable $i$ is guaranteed to take
+bounds check at line $9$ is redundant as variable $i$ is guaranteed to take
 values in the range [$0$, a-\textgreater len - 1]. An important source for range
 information are the conditions of branch operations, e.g., the condition
 associated with the \textbf{for} loop in the example.
@@ -766,8 +779,64 @@ as addition or subtraction, to constant singleton ranges only, i.e., ranges that
 consist of a single element that is known to be constant. Other compiler allow
 the range to grow within certain limits.
 
+The augmented CFG of the original program from Figure~\ref{novillo:fig:vrp-1} is
+shown in Figure~\ref{novillo:fig:vrp-2:a}. Two additional \emph{assert}
+expressions were inserted. The first, immediately following the conditional
+branch of the \textbf{for} loop, while the other is placed after the bounds
+check. For this example we are only interested in the value range of the counter
+variable i -- and the corresponding variables in SSA form.
+Figure~\ref{novillo:fig:vrp-2:b} thus only shows a subset of the complete SSA
+graph that is relevant for the counter variable. In the following the major
+steps of the data flow analysis are discussed:
+\begin{enumerate}
+\item \label{novillo:vrp:ex:i_1} The algorithm starts with the data flow
+      information $\top$ assigned to all variables and by processing the
+      operation labeled 1. The analysis derives the range $[0,0]$ for variable
+      i$_1$, which causes the $\phi$-operations and the branch labeled $7$-$9$
+      to be evaluated.
+\item Since the flow edge $e7$ is not yet known to be executable the analysis
+      derives the same range, $[0, 0]$, for variable i$_2$ of $\phi$-operation
+      $7$.
+\item Analyzing the condition of the branch operation $9$ yields that both
+      outgoing edges are executable, which triggers the analysis of the
+      operations within the loop.
+\item At first, however, examining the conditions of the \emph{assert}
+      expressions does not provide interesting ranges. The analysis merely
+      retains the range $[0, 0]$ for both variables i$_3$ and i$_4$.
+\item \label{novillo:vrp:ex:i_5} The analysis eventually reaches the increment
+      of the counter variable labeled $6$. As mentioned before, the transfer
+      function for such increments has a huge impact on the quality of the
+      analysis results and worst case complexity. For the sake of simplicity,
+      assume that the increment is handled conservatively. The transfer function
+      yields the range $[0, \infty]$ for variable i$_5$.\footnote{Note that
+      actual compilers have to assume a potential overflow of the counter
+      variable, which further complicates the task of finding a proper transfer
+      function.}
+\item Due to the updated range information of i$_5$ and the fact that the flow
+      edge $e7$ is now known to be executable, the $\phi$-operation of i$_2$ has
+      to be reevaluated. Combining the range information computed in
+      step~\ref{novillo:vrp:ex:i_1} and \ref{novillo:vrp:ex:i_5} yields a new
+      range $[0, \infty]$.
+\item Note that at this point all edges have been marked executable, the
+      following processing steps operate on the sparse SSA graph representation
+      only and thus bypass unrelated computations.
+\item \label{novillo:vrp:ex:i_3} First, the \emph{assert} expression for
+      variable i$_3$ is reevaluated. This time the expression's condition allows
+      to clip the range of the input variable i$_2$ since the value of a-$>$len
+      is known to be smaller than $\infty$. The new range for i$_3$ is thus
+      $[$0, a-$>$len$ - 1]$, which triggers the reevaluation of all its uses,
+      in particular the array bounds check labeled with the number $3$.
+\item The second \emph{assert} expression is handled similarly and yields the
+      same range, $[$0, a-$>$len$ - 1]$, for variable i$_4$. Again all of its
+      uses are reevaluated.
+\item Finally, the counter increment is reevaluated, however, the range for its
+      variable i$_5$ does not change and the analysis terminates.
+\end{enumerate}
+
 The final result of the analysis is used in order to eliminate array bounds
-checks, conditional branches, or unreachable code. Furthermore, range
+checks, conditional branches, or unreachable code. For example, the analysis
+result computed at Step~\ref{novillo:vrp:ex:i_3} for the previous example,
+allows to safely eliminate the array bounds check. Furthermore, range
 information is valuable during the optimization of data representations, e.g.,
 to reduce the number of bits for certain computations without loss of precision.
 \obacht{TODO:}{Add citations here??}
