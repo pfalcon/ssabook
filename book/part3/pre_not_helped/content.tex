@@ -25,16 +25,16 @@ There are two different methods to identify whether two computations are the
 same: the \emph{lexical} method and the \emph{semantic} method.  The 
 lexical method applies to expressions that are lexically identified.
 Under the lexical method, two computations are the same if they
-are written the same way using variables and/or constants, like 
-$a+3$.  In this case,
-redundancy applies only if the variables' values have not changed.
+are written the same way using variables and/or constants before conerting
+to SSA, like $a+3$.  In this case, redundancy can come up only if the 
+variables' values have not changed between two occurrences.
 The semantic method applies to computations based on operands that are
 not necessarily identical by name, but known to have the same values.
 For example, $a+b$ and $a+c$ will compute to the same result
 if $b$ and $c$ are known to hold the same value.
 In this chapter, we are mostly dealing with lexically identified
 expressions.  Section~\ref{section:Part3:Pre_not_helped:SemanticPRE} will
-address what can be done for semantically identical computations. 
+address redundancy elimination among computations that yield the same value.
 
 The concept of partial redundancy was originally introduced by Morel and 
 Renvoise \cite{MR79}.  Before the technique of partial redundancy 
@@ -98,9 +98,10 @@ thus saving the overhead of having to run any SSA fix-up pass.
 
 The rest of this chapter is organized as follows.  Section 2 describes
 the basics of PRE and explains why PRE and SSA are related.
-Section 3 describes the basic SSAPRE altorithm.
-Section 4 discusses thr practical implementation issues of SSAPRE.
-Section 5 discusses adding speculation of SSAPRE.
+Section 3 describes the SSAPRE altorithm.
+Section 4 discusses some issues related to the practical implementation 
+of SSAPRE.
+Section 5 discusses how SSAPRE can be made to perform speculation.
 Section 6 describes applying PRE to perform register promotion.
 Finally, Section 7 discusses redundancy under the semantic approach.
 
@@ -772,6 +773,13 @@ processes $t-c$.  If the expression $(a+b)-c$ does not yield $t-c$ when $a+b$
 is processed, $(a+b)-c$ will remain a compound expression and will never need
 to be processed by SSAPRE.
 
+\begin{figure}
+\centering
+\includegraphics[scale=0.45]{fig-ssapre-flow.pdf}
+\caption{SSAPRE processing flow chart}
+\label{fig: ssapre-flow}
+\end{figure}
+
 In the absence of redundancy, SSAPRE terminates quickly because it can skip
 the processing of all compound expressions.  In the presence of redundancies,
 the approach has the secondary effect of converting the evaluation of compound
@@ -786,13 +794,6 @@ instructions, so the triplet form poses no obstacle for most target
 architectures.  Figure~\ref{fig: ssapre-flow} shows the flow chart of an
 implementation of SSAPRE based on worklists that incorporates the above
 strategy of dealing with compound expressions.
-
-\begin{figure}
-\centering
-\includegraphics[scale=0.45]{fig-ssapre-flow.pdf}
-\caption{SSAPRE processing flow chart}
-\label{fig: ssapre-flow}
-\end{figure}
  
 \section{Speculative PRE}
 
@@ -1052,12 +1053,6 @@ and the later uses have to be updated to refer to the new store.
 We add a post-pass to SSUPRE which is essentially the renaming step in SSA
 construction to fix-up the use-defs due to the newly inserted stores.
 
-Figure~\ref{fig: ssupre} gives an example program with (b) being the SSU 
-representation (a).  (c) shows the result of applying SSUPRE to the code.
-The store can be sunk to outside the loop only if it is also inserted in
-the branch inside the loop that contains the load.  The optimized code no
-longer exhibits any store redundancy.
-
 \begin{figure}
 \centering
 \includegraphics[scale=0.55]{fig-ssupre.pdf}
@@ -1065,15 +1060,182 @@ longer exhibits any store redundancy.
 \label{fig: ssupre}
 \end{figure}
 
+Figure~\ref{fig: ssupre} gives an example program with (b) being the SSU 
+representation (a).  (c) shows the result of applying SSUPRE to the code.
+The store can be sunk to outside the loop only if it is also inserted in
+the branch inside the loop that contains the load.  The optimized code no
+longer exhibits any store redundancy.
+
 A limitation of the above SSUPRE algorithm is that it does not apply to 
 indirect stores.  We think it is possible to extend the algorithm to make it
 work on indirect stores as well.
 
 \section{Redundancy via the Semantic Approach}
 \label{section:Part3:Pre_not_helped:SemanticPRE}
-{\bf 4 pages} \\
-Present some approaches to PRE incorporating information from global 
-value numbering. In particular, discuss the  algorithm of Rosen, Wegman and 
- Zadeck and the algorithm of Click and Cooper. 
 
+The redundant computations stored into a temporary introduced by PRE may
+be of different values because the same lexically identified expressions may
+yield different results at different points in the program.
+Since PRE applies only to lexically identified expressions, it is not capable
+of recognizing redundant computations among lexically different expressions
+based on their semantics.  On the other hand, under the semantic approach, 
+redundant computations can be recognized among computations that are 
+semantically determined to yield the same values.
 
+Computations are determined to yield the same value using \emph{value numbering}
+analysis techniques.  The term \emph{value number} originated from the 
+hash-based method developed by Cocke and Schwartz for recognizing when two
+expressions evaluate to the same value within a basic block \cite{CS70}.  
+The value number of an expression tree can be regarded as the index of its
+hashed entry in the hash table.  
+An expression tree is hashed bottom up starting with the leaf nodes.  
+Each internal node is hashed based on its operator and the value numbers of 
+its operands.  Two expressions with the same
+value number \emph{must} evaluate to the same value at run-time.
+
+When the program has been put into SSA form, value number can be extended to the
+global scope by assigning a unique value number to each variable version by
+virtue of the single definition property \cite{Rosen88}.  Additional 
+refinements to hash-based global value numbering algorithms have been proposed
+by Briggs {\it et al.} \cite{Briggs97}.
+
+There is a second approach for determining whether two expressions compute the
+same value that uses the partitioning method instead of hashing. 
+First developed by
+Alpern {\it et al.} \cite{AWZ88}, the algorithe partitions all the expressions
+in the program into congruence classes.  Values in the same congruence class 
+are considered equivalent.  The algorithm is optimistic because it
+starts by putting all expressions based on the same operator into the same
+congruence class.  As the algorithm iterates, it subdivides the congruence
+classes into smaller ones, continuously increasing the number of congruence
+classes.  The algorithm terminates when no more change occurs,
+at which point an enumeration of the resultant congruence classes can be
+used as value numbers.  This algorithm is shown in 
+Figure~\ref{fig: partition-alg}. In the last {\bf for} loop, if $s$ is not in
+the worklist (i.e. processed already), the partitioning was already stable 
+with respect to $s$, and
+we can add either $n$ or the shrunk $s$ to the worklist to re-stabilize with
+respect to that split of $s$.  Choosing the smaller one results in less
+overhead.
+
+\begin{figure}[t]
+\begin{center}
+\fbox{ \parbox[t]{6.0in} {
+\begin{tabbing}
+XX:\= op \= op \= op \= op \= op \= \kill
+Place all values computed by the same opcode in the same congruence class\\
+$worklist \leftarrow$ set of all congruence classes\\
+{\bf while} $worklist \neq \phi$ \\
+\> Select and delete an arbitrary congruence class $c$ from $worklist$\\
+\> {\bf for} each operand position $p$ of a use of $x \in c$\\
+\>  \> $touched \leftarrow \phi$\\
+\>  \> {\bf for} each $x \in c$\\
+\>  \>  \> Add all uses of $x$ in position $p$ to $touched$\\
+\>  \> {\bf for} each class $s$ such that $\phi \subset (s \cap touched) \subset s$\\
+\>  \>  \> Create a new class $n \leftarrow s \cap tourhced$\\
+\>  \>  \> $s \leftarrow s - n$\\
+\>  \>  \> {\bf if} $s \in worklist$ \\
+\>  \>  \>  \> Add $n$ to $worklist$ \\
+\>  \>  \> {\bf else}\\
+\>  \>  \>  \> Add smaller of $n$ and $s$ to $worklist$\\
+\end{tabbing}}}
+\caption{The partitioning algorithm}
+\label{fig: partition-alg}
+\end{center}
+\end{figure}
+
+There are also refinements to the partitioning technique described in
+\cite{Briggs97}.  The partition-based algorithm does not supercede, but 
+instead complements the hash-based algorithms.
+The most powerful value numbering algorithms seem to be based on
+a combination of the two approaches.
+
+So far, we have only talked about finding computations that compute the
+same value, but have not addressed how to use the results of such analysis 
+to optimize the program.  Two computations that compute the same value do
+not necessarily exhibit redundancy if they are not situated on the same
+execution path.  Thus, it is logical to consider performing PRE separately
+to each value number.  
+
+If we consider the temporary $t$ that will be introduced to store the redundant
+computations under value-number-based PRE, we can see that its value will
+stay the same throughout its lifetime.  If there are $\phi$'s introduced for
+the temporary, they will be merging identical values, and we know from
+experience that such $\phi$'s are rare.  A subset of such $\phi$'s is expected 
+to come from PRE's insertions, and that implies that insertions
+introduced by value-number-based PRE are also rare.
+
+Value-number-based PRE also has to deal with the additional issue of \emph{how}
+to generate an insertion.  Because the same value can come from different forms
+of expressions at different points in the program, it is necessary to determine
+which form to use at an insertion point.  If the insertion point is outside 
+the live range of any variable version that can compute that value, then the
+insertion point has to be disqualified.  Due to this complexity, and the
+expectation that \emph{truly partial} redundancy is rare among computations
+that yield the same value, we focus only on eliminating full redundancies
+among computations that have the same value number\footnote{This assumes
+PRE for lexically identified expressions have been applied, which would have
+removed the redundancies among lexically identified expressions that also
+have the same value number.}.
+
+Since full redundancy elimination (FRE) is a subset of PRE, we can adapt the
+SSAPRE algorithm to work on value-number-identified expressions and remove
+full redundancies among them.  We call this adapted algorithm VNFRE.
+
+In VNFRE, the $\Phi$-Insertion step only needs to consider the iterated
+dominance frontiers.  It is not necessary to consider the variable operands,
+because as long as the value number is the same, we do not have to consider
+when any variable operand's value is changed. The Renaming step is also simpler
+because we also ignore the variable operands.  In fact, the only situations 
+where new $h$-versions are introduced are at program entry (when the renaming 
+stack is empty) and when encountering $\Phi$'s.
+
+The only data flow propagation needed under VNFRE is for the \emph{full 
+availability}
+attribute, which is the reverse of downsafety.  We initialize the $fully\_avail$
+flag for each node in the SSA graph to $true$, except it is set to $false$ for
+$\Phi$'s that have one or more $\bot$ operands.  The propagation step
+propagates the $false$ value of $fully\_avail$ forward in the SSA graph.
+We can reuse the algorithm of the Finalize step of SSAPRE after replacing 
+$will\_be\_avail$ by $fully\_avail$, and setting $insert$ and
+$later$ to $false$ for all nodes.
+
+In practice, with copy propagation, constant folding and SSAPRE having been 
+performed earlier, there are not much optimization opportunities left 
+for VNFRE to cater to.  One useful application of VNFRE is in induction
+variable collescing.  Code like the following, with multiple induction
+variables, could be the result of
+earlier optimizations like strength reduction:
+{\tt
+\begin{verbatim}
+        i = 0;
+        j = 0;
+        while <cond> {
+          i = i + 4;
+          j = j + 4;
+        }
+\end{verbatim}
+}
+
+Value numbering will determine that at different points in the code, {\tt i}
+and {\tt j} always have the same value number.  Performing VNFRE can yield the
+net effect of getting rid of the extra induction variables.
+
+\section{Conclusion}
+
+The close relationsihp between PRE and SSA arises because 
+partial redundancies can be exposed by factoring at control flow merge points.
+The SSAPRE algorithm capitalizes on prior techniques developed for computing 
+and manipulating SSA form.  The SSAPRE framework also shows that the 
+concept and techniques of SSA can be made to apply to any program constructs, 
+not just variables.  The constructed SSA graphs can then be used to 
+efficiently perform sparse data flow propagation.
+
+There are additional optimizations that can be implemented using the SSAPRE
+framework that we have not covered.  They include code hoisting, register 
+shrink-wrapping \cite{Chow88} and live range shrinking.  Moreover, PRE has 
+traditionally provided the context for integrating additional optimizations 
+into its framework.  They include operator strength reduction \cite{Knoop93} 
+and linear function test replacement \cite{Kennedy98}.  As a result, PRE 
+has become the most powerful and encompassing optimization framework in modern 
+optimizing compilers.
