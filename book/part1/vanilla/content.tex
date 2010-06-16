@@ -63,7 +63,7 @@ This is a definition, or assignment, of $x$.
 
 
 The seminal paper on SSA 
-\cite{cytron91toplas}
+\cite{cytron91efficiently}
 gives an informal prose
 definition as follows:
 
@@ -158,64 +158,97 @@ z  := x2 + 1;
 % including examples
 
 
-Given a simple pseudo-code language, show examples of programs in SSA.
-(Should I show before/after SSA transformation, or just programs
-in SSA form already? Fabrice suggests before/after... plus
-one or two sentences commentary on each.)
+In the previous section, we saw how straightline sequences of code
+can be transformed to SSA by simple renaming of variable definitions.
+The \textit{target} of the definition is the variable being defined, on the
+left-hand side of the assignment statement.
+In SSA, each definition target must be a unique variable name.
+On the other hand, variable names can be used multiple times
+on the right-hand side of any assignment statements, as 
+\textit{source} variables for definitions.
+Throughout this book, renaming is generally performed by 
+adding integer subscripts to original variable names;
+however in general this is an unimportant implementation feature.
 
-example 1. Straightline code. (sequence)
+% Given a simple pseudo-code language, show examples of programs in SSA.
+% (Should I show before/after SSA transformation, or just programs
+% in SSA form already? Fabrice suggests before/after... plus
+% one or two sentences commentary on each.)
 
-\begin{verbatim}
-x = 1;
-y = 2;
-x = x+y;
-\end{verbatim}
-
-example 2. if/then/else conditional.  (selection)
-
-\begin{verbatim}
-x = input();
-if (x == 42)
-  y = 1;
-else
-  y = x*2;
-print(y)
-\end{verbatim}
-
-(Explain carefully how $\phi$-functions work.) 
-A $\phi$-function is a special statement, known as a
-\textit{pseudo-assignment}.
-Appel \cite{appelbook} refers to it as a `notational fiction.'
+The \textit{$\phi$-function} is the most important SSA concept to grasp.
+%% (Explain carefully how $\phi$-functions work.) 
+It is a special statement, known as a
+\textit{pseudo-assignment} function.
+Appel \cite{appel97modern} calls it as a `notational fiction.'
 The purpose of a $\phi$-function is to merge
-incoming values from different control flow predecessors.
-At the start of a basic block of code, the $\phi$-function has
-$n$ parameters if there are $n$ incoming control flow edges to this block.
-When the $\phi$-function is evaluated, it selects the value
-of the parameter associated  with the actually executed control-flow path.
+values from different incoming paths, at control-flow
+merge points.
+
+Consider the following example:
+
+\begin{verbatim}
+x := input();
+if (x == 42)
+    y := 1;
+else
+    y := x*2;
+print(y);
+\end{verbatim}
+
+There is a distinct definition of $y$ in each branch of the \texttt{if}
+statement. So multiple definitions of $y$ reach the \texttt{print} statement
+at the control-flow merge point. When this program is transformed to SSA,
+the multiple definitions of $y$ are renamed as $y1$ and $y2$. However 
+the \texttt{print} statement could use either variable, dependent on the
+outcome of the \texttt{if} conditional test. A $\phi$-function introduces
+a new variable $y3$, which takes the value of either $y1$ or $y2$.
+Thus the SSA version of the program is:
+
+\begin{verbatim}
+x := input();
+if (x == 42)
+    y1 := 1;
+else
+    y2 := x*2;
+y3 := \phi(y1,y2);
+print(y);
+\end{verbatim}
+
+
+
+At the start of a block of code, the $\phi$-function has
+$n$ parameters if there are $n$ incoming control-flow paths to this block.
+The behaviour of the $\phi$-function is to select the value
+of the parameter associated with the actually executed control-flow path.
 This value is assigned to the fresh variable name, on the left-hand-side
 of the $\phi$-function.
-These pseudo-assignments are required to maintain the SSA property
+Such pseudo-functions are required to maintain the SSA property
 of unique variable definitions,
-in the presence of non-sequential (non-linear?) control flow.
+in the presence of non-sequential control flow.
+
+\textit{FIXME - I'm worried about the order of information
+presented in these paragraphs. I think it all needs to be there,
+but maybe it could be organized more intuitively... -jsinger}
 
 It is important to note that, if there are multiple $\phi$-functions
 at the head of a basic block, then these are executed simultaneously,
-\textit{not} one after another.
-This distinction becomes important if the destination of a $\phi$-function
+\textit{not} sequentially.
+This distinction becomes important if the target of a $\phi$-function
 is the same as the source of another $\phi$-function, perhaps after
-optimizations such as copy propagation.
+optimizations such as copy propagation. \textit{(ref later chapters?)}
 
-Strictly speaking, $phi$-functions are not directly executable,
+Strictly speaking, $\phi$-functions are not directly executable,
 since the dynamic control-flow path leading to the $\phi$-function
 is not explicitly encoded as an input to $\phi$-function.
-($\phi$-fn used for analysis of program, but not for any
-interpretation / execution.)
+This is tolerable, since $\phi$-functions are only 
+used during static analysis of the program. They are removed
+before any program interpretation or execution takes place.
 There are various executable extensions of $\phi$-functions, 
 such as $\gamma$-functions, which take
-an extra parameter to specify which rvalue to assign to the lvalue.
-(forward ref to VSDG chapter?)
+an extra parameter to specify which source value to assign to the
+target variable. (forward ref to VSDG chapter?)
 
-When we eliminate $\phi$-functions in the conversion out of SSA form,
+When we eliminate $\phi$-functions in the SSA destruction phase,
 they are replaced by parallel copy operations at the end of predecessor
 control flow nodes. (forward note to Fabrice's section on this,
 in later chapter).
@@ -224,6 +257,12 @@ in later chapter).
 called \textit{phoney}-functions at IBM during the development
 of SSA - as reported by Kenny Zadeck.)
 example 3. while loop? (iteration)
+
+\textit{FIXME - I would like an example of how to transform a 
+while loop into SSA, showing how the $\phi$-function
+must be placed at the loop header. Fabrice doesn't think this
+example is necessary, but it would be helpful for beginners, I feel...
+-jsinger}
 
 \begin{verbatim}
 x = 0;
@@ -240,86 +279,11 @@ print(y)
 %%%%%%%%%%%
 
 
-\section{brief history}
-
-
-% Crib most of this from Kenneth Zadeck. 
-
-% Talk about other program dependence graph
-% representations, 
-
-Throughout the 1980s, various compiler intermediate
-representations were proposed to encapsulate data
-dependence, in a way that enabled fast and accurate
-data flow analysis.
-The key property that motivated the design of
-such IRs was the exposure of variable \textit{def-use} 
-information, with standardized shapes for
-\textit{def-use chains}, and the ability
-to propagate data flow information efficiently
-from definitions to uses,
-and vice versa.
-(examples, program dependence graph, program dependence web).
-(perhaps a forward pointer to 
-VSDG chapter?)
-
-% Talk about early developments at IBM in 1980s.
-% Talk about eventual emergence of SSA.
-
-Static single assignment form was one of these IRs, 
-which was developed at IBM Research, and publicly announced
-in several research papers in the late 1980s. (cites)
-SSA rapidly gained popularity due to its 
-intuitive nature and straightforward
-construction/implementation.
-
-The majority of current commercial and open-source compilers
-use SSA as a key intermediate representation for
-program optimization.
-
-SSA - for heavy-duty optimizations.
-For JIT compilers - hot methods.
-For static compilers, high-level optimization. (-O3?)
-
-GCC and SSA. - brief outline of history. (Case study?)
-
-There are some high-level languages that enforce
-a single-assignment property (examples: SISAL, Java \texttt{final} variables). 
-(also mention link between SSA and functional programming -
-referential transparency. All FP languages support single assignment
-(\texttt{val} not \texttt{var}) as default.
-However in general,
-it is straightforward to translate a non-SSA program into an SSA
-program. (Links to appropriate chapters here?
-Simple construction / Advanced construction chapters.)
-
-Why is it important for compilers to have SSA-based IRs? Simple motivation
-(i) Strict discipline on namespace. 
-Each variable has a unique definition point.
-(ii) Namespace explicitly reflects points where values from
-different control-flow paths merge. 
-These properties serve to simplifies variable def-use relationships,
-which underpin data flow analysis.
-(then link to appropriate chapters later in book.)
-Advantages gained from these properties...
-\begin{enumerate}
-\item Certain compiler optimizations can be more effective
-when operating on programs in SSA form
-(examples - control-flow-insensitive
-analyses)
-\item Certain compiler optimizations can be more efficient
-when operating on SSA programs (examples?) 
-\item Compiler analyses and transformations can be easier
-to express in SSA - software engineering benefit. Better
-for debugging, productivity, etc. (examples?)
-\end{enumerate}
-
-
-
 %%%%%%%%%%%
 
-\section{comparison with dataflow analysis (high level overview of DFA)}
+\section{Comparison with Classical Data Flow Analysis}
 
+\textit{FIXME - still need to redraft this section...}
 
 Very simple. Discuss lattice-based data flow analysis.
 Propagating facts around control-flow points in a CFG.
@@ -334,6 +298,140 @@ analysis where data flow properties change only with definitions
 change at other points - can still fit these neatly into the SSA
 analysis framework by inserting additional pseudo-definitions
 to rename variables. examples? (forward pointers).
+
+
+%%%%%%%%%%%%%%%%
+
+\section{SSA in Context}
+
+
+% Crib most of this from Kenneth Zadeck. 
+
+% Talk about other program dependence graph
+% representations, 
+
+\subsection{Historical Context}
+
+Throughout the 1980s, various compiler intermediate
+representations (IRs) were proposed to encapsulate data
+dependence, in a way that enabled fast and accurate
+data flow analysis.
+The key property that motivated the design of
+such IRs was the exposure of variable \textit{def-use} 
+information, giving the ability
+to propagate data flow information directly
+from definitions to uses,
+and vice versa.
+Example IRs include the program dependence graph \cite{ferrante87program}
+and program dependence web \cite{ottenstein90program}.
+Chapter \ref{vsdg} VSDG? gives further details on dependencegraph
+style IRs.
+
+% Talk about early developments at IBM in 1980s.
+% Talk about eventual emergence of SSA.
+
+Static single assignment form was one such IR, 
+which was developed at IBM Research, and publicly announced
+in several research papers in the late 1980s
+\cite{rosen88global,alpern88detecting,cytron89efficient}.
+SSA rapidly gained popularity due to its 
+intuitive nature and straightforward
+construction algorithm.
+The single assignment constraint gives a 
+standardized shape for variable def-use chains,
+which can simplify data flow analysis techniques.
+
+\subsection{Current Usage}
+
+The majority of current commercial and open-source compilers
+use SSA as a key intermediate representation for
+program analysis.
+SSA is generally enabled with the \texttt{-O}
+flag in ahead-of-time compilers (since SSA construction
+is fairly expensive, and only required for optimization).
+Again, for just-in-time compilers, only the \textit{hot} 
+methods will be recompiled with SSA-based optimizations.
+
+All modern optimizing compiler infrastructures, e.g.\ LLVM, 
+use SSA from the ground up.
+Other compilers, e.g.\ GCC, began
+development before SSA was well-characterized or
+widely known.
+In such cases, SSA support can be backported into 
+the original optimization infrastructure.
+For instance, GCC uses SSA as of version 4.0
+\cite{novillo03tree,novillo04design}.
+\textit{perhaps give forward pointer to Diego's chapter on the advantages
+of SSA in gcc?}
+
+\subsection{SSA for High-Level Languages}
+
+So far, we have presented SSA as a useful feature for 
+compiler-based analysis of low-level programs.
+It is interesting to note that some high-level languages enforce
+the SSA property.
+The SISAL language is defined in such a way that
+programs automatically have referential transparency, since
+multiple assignments are not permitted to variables.
+Other languages allow the single assignment property to be
+applied on a per-variable basis, using facilities like
+Java \texttt{final} variables
+and C\# \texttt{const} and \texttt{readonly} modifiers. 
+
+The motivation for allowing the programmer to enforce
+SSA in an explicit manner in high-level programs is that
+\textit{immutability simplifies concurrent programming}.
+Read-only data can be shared freely between multiple threads,
+without any data dependence problems.
+This is becoming an increasingly important issue, with the
+trend of multi- and many-core processors.
+
+Chapter \ref{} \textit{intro-semantics} details the correspondence
+between SSA and functional programming.
+In brief, referential transparency is one of the
+cornerstones of the functional programming paradigm, so 
+functional languages support single assignment by default.
+
+% However in general,
+% it is straightforward to translate a non-SSA program into an SSA
+% program. (Links to appropriate chapters here?
+% Simple construction / Advanced construction chapters.)
+
+
+
+%%%%%%%%%%%%%%%%
+
+\section{Benefits of SSA}
+
+In this chapter, we have introduced the notion of SSA.
+We now conclude by enumerating some of the benefits it provides.
+
+SSA imposes a strict discipline on the variable naming in programs,
+in such a way that each variable has a unique definition point.
+New names are introduced at variable assignments, and at control-flow
+merge points.
+This serves to simplify variable def-use relationships,
+which underpin data flow analysis.
+There are three main advantages that SSA enables:
+\begin{description}
+\item[Program runtime benefit]
+Certain compiler optimizations can be more effective
+when operating on programs in SSA form. These include the
+class of \textit{control-flow insensitive analyses}.
+\item[Compile time benefit]
+Certain compiler optimizations can be more efficient
+when operating on SSA programs, since
+referential transparency means that data flow information
+can be associated directly with variables, rather than with variables
+at each program point.
+\item[Compiler development benefit]
+Program analyses and transformations can be easier
+to express in SSA. This means that compiler engineers
+can be more productive, in writing new compiler passes,
+and debugging existing passes.
+\texttt{FIXME - Any anecdotal experience from GCC - ask Diego?}
+\end{description}
+
 
 
 %%%%%%%%%%%
