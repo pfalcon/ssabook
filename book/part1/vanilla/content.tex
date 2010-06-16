@@ -4,9 +4,6 @@
 
 %%%%%%%%%%%
 
-\section{motivation}
-
-
 % Possibility of unique names for distinct entities.
 % Maybe a slightly humorous example, involving Homer Simpson and
 % Homer the classical Greek poet. Convey the point that,
@@ -33,53 +30,132 @@ Simpsons television series (rather than Greek poetry)
 is the subject.
 On the other hand, if everyone had a \textit{unique} name,
 then there would be no possibility of confusing 20th century
-American cartoon characters with ancient Greek poets.
+American cartoon characters with ancient Greek literary figures.
 \textit{Could we have a cartoon picture here?}
 
 % where SSA is applied, in compiler intermediate representations...
 This book is about the \textit{static single assignment form} (SSA),
-which is a naming convention for variables in low-level representations
+which is a naming convention for storage locations (variables)
+in low-level representations
 of computer programs.
-A program is said to be in SSA form when each variable is defined (hence
-\textit{assignment})
-exactly once (hence \textit{single}) in the program text
-(hence \textit{static}).
+%% remove following definition, since we have a full Section
+%% on definition coming up soon...
+% A program is said to be in SSA form when each variable is defined (hence
+% \textit{assignment})
+% exactly once (hence \textit{single}) in the program text
+% (hence \textit{static}).
+The term \textit{static} indicates that SSA is particularly
+relevant for program analysis that occurs prior to execution.
+The term \textit{single} refers to the uniqueness property of
+variable names that SSA imposes. As illustrated above, this enables
+more accurate analysis.
+The term \textit{assignment} means variable definitions. For
+instance, in the code 
+\begin{verbatim}
+x := y+1
+\end{verbatim}
+the variable $x$ is being assigned the value of expression $(y+1)$.
+This is a definition, or assignment, of $x$.
 
-There are some high-level languages that enforce
-a single-assignment property (examples: SISAL, Java \texttt{final} variables). 
-(also mention link between SSA and functional programming -
-referential transparency. All FP languages support single assignment
-(\texttt{val} not \texttt{var}) as default.
-However in general,
-it is straightforward to translate a non-SSA program into an SSA
-program. (Links to appropriate chapters here?
-Simple construction / Advanced construction chapters.)
+%%%%%%%%%%%%%%%%%%%%%
 
-Why is it important for compilers to have SSA-based IRs? Simple motivation
-(i) Strict discipline on namespace. 
-Each variable has a unique definition point.
-(ii) Namespace explicitly reflects points where values from
-different control-flow paths merge. 
-These properties serve to simplifies variable def-use relationships,
-which underpin data flow analysis.
-(then link to appropriate chapters later in book.)
-Advantages gained from these properties...
-\begin{enumerate}
-\item Certain compiler optimizations can be more effective
-when operating on programs in SSA form
-(examples - control-flow-insensitive
-analyses)
-\item Certain compiler optimizations can be more efficient
-when operating on SSA programs (examples?) 
-\item Compiler analyses and transformations can be easier
-to express in SSA - software engineering benefit. Better
-for debugging, productivity, etc. (examples?)
-\end{enumerate}
+\section{Definition of SSA}
 
 
-%%%%%%%%%%%
+The seminal paper on SSA 
+\cite{cytron91toplas}
+gives an informal prose
+definition as follows:
 
-\section{informal semantics (with examples)}
+\begin{quotation}
+A program is defined to be in SSA
+form if each variable is a target of
+exactly one assignment statement in the
+program text.
+\end{quotation}
+
+% Informally, static means `program text.'
+% single means `unique names'
+% assignment means `at variable definitions.'
+
+%% Again, informally, unique definition for each variable.
+
+This is the simplest,
+least constrained, definition of SSA. However
+there are various, more specialized, varieties of SSA,
+which impose further constraints on programs.
+Such constraints are generally expressed in terms
+of dominance properties of variable definitions, or
+the presence or absence of certain 
+pseudo-functions at control-flow merge points.
+% Formally, in terms of dominance. Each var has a unique
+% definition, and def dominates all uses.
+% Perhaps require implicit defs of all vars at entry,
+% implicit uses of all vars at exit?
+Each distinct SSA flavour has specific properties---many of
+these are discussed in Chapter \ref{FIXME} 2.
+% forward links to Philip's discussion of
+% SSA flavours and properties here
+
+One important property that holds for all forms of SSA,
+including the simple definition above, is 
+\emph{referential transparency}.
+Since there is only a single definition for each variable
+in the program text, a variable's value
+is independent of
+its position in the program.
+(We may refine the information we have for a variable
+based on branching conditions, but the underlying value
+does not change at an \texttt{if} statement.)
+Programs written in pure functional languages
+are referentially transparent.
+
+Referentially transparent programs are more amenable to 
+formal methods and mathematical reasoning since
+the meaning of an expression depends only on the
+meaning of its subexpressions
+and not on the order of evaluation or
+side-effects of other expressions.
+
+For a referentially opaque program, consider
+the following program fragment.
+\begin{verbatim}
+x := 1;
+y := x + 1;
+x := 2;
+z := x + 1;
+\end{verbatim}
+A naive (and incorrect) analysis may assume that the values
+of y and z are equivalent, since they have identical 
+assignments of $(x+1)$. 
+However the value of variable $x$ depends on whether
+the current code position is before or after the second assignment
+to $x$. 
+
+When this program fragment is transformed to SSA code,
+it becomes referentially transparent. The translation process
+involves renaming to  
+eliminate multiple assignments to the same variable. Now it is
+apparent that $y$ and $z$ are only equivalent if $x1$ and $x2$
+are equivalent.
+\begin{verbatim}
+x1 := 1;
+y  := x1 + 1;
+x2 := 2;
+z  := x2 + 1;
+\end{verbatim}
+
+
+% "The most important feature of mathematical notation is that an expression is used solely to describe (or denote) a value. In other words, the meaning of an expression is its value and there are no other effects, hidden or otherwise, in any procedure for actually obtaining it. Furthermore, the value of an expression depends only on the values of its constituent expressions (if any) and these subexpressions may be replaced freely by others possessing the same value. ... The characteristic property of mathematical expressions described here is called "referential transparency." Bird, Richard, and Wadler, Philip; Introduction to Functional Programming, p. 4; Prentice Hall, 1988.
+
+
+%%%%%%%%%%%%%%%%%%%%%
+
+
+
+\section{Informal Semantics of SSA}
+
+% including examples
 
 
 Given a simple pseudo-code language, show examples of programs in SSA.
@@ -163,81 +239,6 @@ print(y)
 
 %%%%%%%%%%%
 
-\section{definition}
-
-
-The original paper on SSA gives an informal
-definition as follows:
-
-\begin{quotation}
-A single program is defined to be in SSA
-form if each variable is a target of
-exactly one assignment statement in the
-program text.
-\end{quotation}
-
-% Informally, static means `program text.'
-% single means `unique names'
-% assignment means `at variable definitions.'
-
-%% Again, informally, unique definition for each variable.
-
-This is the simplest definition of SSA. However
-there are various, more specialized, varieties of SSA,
-which impose further constraints on programs.
-These constraints are generally expressed in terms
-of dominance properties of variable definitions, or
-the presence/absence of certain 
-$\phi$-functions at control-flow merge points.
-% Formally, in terms of dominance. Each var has a unique
-% definition, and def dominates all uses.
-% Perhaps require implicit defs of all vars at entry,
-% implicit uses of all vars at exit?
-Each distinct SSA flavour has specific properties---many of
-these are discussed in Chapter \ref{FIXME} 2.
-% forward links to Philip's discussion of
-% SSA flavours and properties here
-
-One important property that holds for all forms of SSA,
-including the simple definition above, is 
-\emph{referential transparency}.
-Since there is only a single definition for each variable
-in the program text, we can be sure of that variable's value
-regardless of its position in the program.
-Programs written in pure functional languages
-are referentially transparent.
-
-Referentially transparent programs are more amenable to 
-formal methods and mathematical reasoning since
-the meaning of an expression depends only on the
-meaning of its subexpressions
-and not on the order of evaluation or
-side-effects of other expressions.
-
-For a hideously referentially opaque program, consider
-the following fragment of C code, which has of side-effecting
-expression evaluations and an explicitly undefined evaluation order. 
-\begin{verbatim}
-x = 1;
-x = x++ + ++x;
-\end{verbatim}
-
-When this code is transformed to SSA-based three-address code,
-it becomes referentially transparent. The translation process has
-imposed a specific evaluation order and replaced side-effecting
-expressions with intermediate values.
-\begin{verbatim}
-x1 = 1;
-x2 = x1 + 1;
-x3 = x2 + 1;
-x4 = x2 + x3;
-\end{verbatim}
-
-
-% "The most important feature of mathematical notation is that an expression is used solely to describe (or denote) a value. In other words, the meaning of an expression is its value and there are no other effects, hidden or otherwise, in any procedure for actually obtaining it. Furthermore, the value of an expression depends only on the values of its constituent expressions (if any) and these subexpressions may be replaced freely by others possessing the same value. ... The characteristic property of mathematical expressions described here is called "referential transparency." Bird, Richard, and Wadler, Philip; Introduction to Functional Programming, p. 4; Prentice Hall, 1988.
-
-
-%%%%%%%%%%%
 
 \section{brief history}
 
@@ -281,6 +282,39 @@ For JIT compilers - hot methods.
 For static compilers, high-level optimization. (-O3?)
 
 GCC and SSA. - brief outline of history. (Case study?)
+
+There are some high-level languages that enforce
+a single-assignment property (examples: SISAL, Java \texttt{final} variables). 
+(also mention link between SSA and functional programming -
+referential transparency. All FP languages support single assignment
+(\texttt{val} not \texttt{var}) as default.
+However in general,
+it is straightforward to translate a non-SSA program into an SSA
+program. (Links to appropriate chapters here?
+Simple construction / Advanced construction chapters.)
+
+Why is it important for compilers to have SSA-based IRs? Simple motivation
+(i) Strict discipline on namespace. 
+Each variable has a unique definition point.
+(ii) Namespace explicitly reflects points where values from
+different control-flow paths merge. 
+These properties serve to simplifies variable def-use relationships,
+which underpin data flow analysis.
+(then link to appropriate chapters later in book.)
+Advantages gained from these properties...
+\begin{enumerate}
+\item Certain compiler optimizations can be more effective
+when operating on programs in SSA form
+(examples - control-flow-insensitive
+analyses)
+\item Certain compiler optimizations can be more efficient
+when operating on SSA programs (examples?) 
+\item Compiler analyses and transformations can be easier
+to express in SSA - software engineering benefit. Better
+for debugging, productivity, etc. (examples?)
+\end{enumerate}
+
+
 
 %%%%%%%%%%%
 
