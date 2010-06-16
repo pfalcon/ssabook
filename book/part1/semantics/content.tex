@@ -27,28 +27,22 @@ of ``unimplementable'' $\phi$-instructions, the models are motivated
 by the aim
 \begin{itemize}
 \item to make syntactic conditions and semantic invariants that are
-  implicit in the definition of SSA more explicit or easier to enforce
-  for a given program. The introduction of SSA itself was motivated by
-  a similar goal: to represent aspects of program structure, namely
-  the def-use relationships, explicitly in syntax, by enforcing a
-  particular naming discipline. In a similar way, semantic models and
-  representations of SSA in other formalisms aim to shed light on
-  aspects of SSA that are crucial for the correct operation but not
-  necessarily enforced by the syntactic SSA format. Simple examples
-  for syntactic conditions that should be satisfied but are
-  occasionally left implicit include ``all $\phi$-functions in a block
-  must be of the same arity'', ``the variables assigned to by the
-  $\phi$-functions in a block must be distinct'', or
-  ``$\phi$-functions are only allowed to occur at the beginning of of
-  a basic block''. Reasoning using semantic models helps us to
-  understand why such conditions are required and to identify
-  opportunities for relaxing them.
+  implicit in the definition of SSA more explicit. The introduction of
+  SSA itself was motivated by a similar goal: to represent aspects of
+  program structure, namely the def-use relationships, explicitly in
+  syntax, by enforcing a particular naming discipline. In a similar
+  way, representations of SSA in other formalisms explicitly enforce
+  invariants such as ``all $\phi$-functions in a block must be of the
+  same arity'', ``the variables assigned to by the $\phi$-functions in
+  a block must be distinct'', or ``$\phi$-functions are only allowed
+  to occur at the beginning of of a basic block''. Reasoning using
+  semantic models helps us to understand why such conditions are
+  required and to identify opportunities for relaxing them.
 \item to have formal criteria with respect to which SSA-based code
-  transformations may be proven correct. For example, implementations
-  of Glesner's models (see
-  Section~\ref{section:Part1:Semantics:GlesnerSemantics}) in
-  Isabelle/HOL were used to prove the correctness of dead code
-  elimination and code generation transformation, while Chakravarty et
+  transformations may be proven correct. For example,
+  Glesner~\cite{DBLP:conf/asm/Glesner04} uses a representation of SSA
+  in terms of abstract state machines to prove the correctness of a
+  code generation transformation, while Chakravarty et
   al.~\cite{ChakravartyKZ:COCV03} prove the correctness of a
   functional representation of Wegmann and Zadeck's SSA-based sparse
   conditional contant propagation
@@ -58,17 +52,17 @@ by the aim
   validate SSA-based analyses and transformations at their genuine
   language level, before out-of-SSA-translation is performed
 \item to provide a formal basis for comparing and integrating variants
-  of SSA (such as the variants discussed later in this book), for
-  translating between these variants, and for translating into and
-  out of SSA
+  of SSA (such as the variants discussed elsewhere in this book), for
+  translating between these variants, and for translating into and out
+  of SSA
 \item to provide conceptual support for the appeal of SSA by relating
   core concepts to principles well-understood in other domains of
   compiler and programming language research
 \end{itemize}
-As the variations on SSA discussed in this book highlights, a compiler
-writer has considerable elbow room even after subscribing to ``the''
-SSA discipline. A cross-cutting goal of the semantic models is to
-provide orientation in this design space.
+%As the variations on SSA discussed in this book highlights, a compiler
+%writer has considerable elbow room even after subscribing to ``the''
+%SSA discipline. A cross-cutting goal of the semantic models is to
+%provide orientation in this design space.
 
 We restrict our attention to three
 approaches.
@@ -84,7 +78,7 @@ approaches.
   operands.
 \item Section~\ref{section:Part1:Semantics:FunctionalLanguages} outlines a correspondence of SSA to restricted functional languages, which was
   pioneered by O'Donnell, Kelsey, and Appel. Control flow is either
-  represented in continuation-passing-style (CPS) or as sets of
+  represented in continuation-passing-style (CPS) or by 
   mutually tail-recursive first-order functions. Exploiting the
   conceptual similarity between points of definition of imperative
   variables and binding of functional names, and between dominance and
@@ -95,7 +89,7 @@ approaches.
   $\lambda$-calculus. These features also make the formalism a natural
   common representation for integrating compiler front-ends for
   different languages.
-\item Section~\ref{section:Part1:Semantics:PopSemantics} finally summarizes a denotational model developed by Pop et al.. Motivated in part by recent proposals to require loop-closing $\phi$-nodes~\cite{}, the authors formally relate SSA to imperative code in non-SSA form, complementing the formal relationships between SSA and functional languages. Contrary to Glesner, the authors argue that SSA is in fact a declarative language in its own right rather than the imposition of a particular data flow discipline over the control flow structure. 
+\item Section~\ref{section:Part1:Semantics:PopSemantics} finally summarizes a denotational model developed by Pop et al.~\cite{PopJS2007}. Motivated in part by recent proposals to require loop-closing $\phi$-nodes~\cite{}, the authors formally relate SSA to imperative code in non-SSA form, complementing the formal relationships between SSA and functional languages, and extend the SSA discipline to a full declarative language. 
 \end{enumerate}
 Similar to the task of implementing one programming language in
 another, each model embeds SSA into a more ``basic'' host
@@ -107,33 +101,32 @@ considerable. Indeed, for the sake of readability, we gloss over
 numerous technical details in the following sections and refer the
 reader to the literature for more in-depth treatments of the models.
 
+%%%%%%%%%%%%%
+%
+%\section{An Operational Semantics}
+%\label{section:Part1:Semantics:GlesnerSemantics}
+%
+%Existing work by Glesner et al, TU Berlin.
+%
+%
 %%%%%%%%%%%%
 
-\section{An Operational Semantics}
-\label{section:Part1:Semantics:GlesnerSemantics}
-
-Existing work by Glesner et al, TU Berlin.
-
-
-%%%%%%%%%%%%
-
-\section{Equivalence with functional languages}
+\section{Functional interpretations}
 \label{section:Part1:Semantics:FunctionalLanguages}
 
-An alternative understanding of SSA is provided by functional
-programming languages. This interpretation is rooted in the
-observation that the central goal of SSA, namely to provide each use
-of a variable with a unique point of definition, is obtained for free
-from the concepts of binding and lexical scoping. Like the binding of
-a variable in $\lambda$-calculus, a let-binding
-$\letin x e {e'}$ in a functional language binds the result
-of $e$ to name $x$ for the duration (scope) $e'$.
-Contrary to assignments to imperative variables, such a binding
+Our first model of SSA is provided by functional programming
+languages. This interpretation rooted in the observation that the
+central goal of SSA, namely to provide each use of a variable with a
+unique point of definition, is obtained for free from the concepts of
+binding and lexical scoping. Like the binding of a variable in
+$\lambda$-calculus, a let-binding $\letin x e {e'}$ in a functional
+language binds the result of $e$ to name $x$ for the duration (scope)
+$e'$.  Contrary to assignments to imperative variables, such a binding
 \emph{shadows} earlier bindings of $x$ throughout the evaluation
 of $e'$, but does not overwrite them\footnote{In order to avoid
 confusion, we refer to identifiers in the functional world as
 \emph{names}, reserving the term \emph{variable} for the imperative
-regime.}. Indeed, the choice of name \verb|x| is arbitrary and the
+regime.}. Indeed, the choice of name $x$ is arbitrary and the
 result of $e'$ is not altered if we capture-avoidingly replace
 (``$\alpha$-rename'') $x$ by some other fresh name $y$ that does not
 occur free in $e'$. As mentioned in Chapter~\ref{Section1.3}, this
@@ -150,18 +143,17 @@ representation routinely used in compilers for functional languages
 
 Programs in CPS explicitly communicate code fragments (``continuation
 terms'') that stipulate where evaluation should continue once the
-execution of the current fragment has terminated. Continuations are
-thus similar to the use of return addresses in procedure calls. Being
-particular higher-order functions, continuations may create, apply,
-and comunicate further continuations, enabling the efficient
-represention of arbitrary control flow.  Intra-procedural 
+execution of the current fragment has terminated. In this respect,
+continuations are similar to return addresses in procedure
+calls. Being particular higher-order functions, continuations may
+create, apply, and comunicate further continuations, enabling the
+efficient represention of arbitrary control flow.  Intra-procedural
 merge points correspond to invocations of identical (local)
-continuations, albeit with possibly differing actual arguments.
-Each formal data parameter of such a continuation plays exactly the
-same role as a single $\phi$-function at the beginning of a code
-block: to unify the arguments stemming from various calls sites and
-bind them to a unique name for the duration of the ensuing code
-fragment.
+continuations, albeit with possibly differing actual arguments.  Each
+formal data parameter of such a continuation plays exactly the same
+role as a single $\phi$-function at the beginning of a code block: to
+unify the arguments stemming from various calls sites and bind them to
+a unique name for the duration of the ensuing code fragment.
 
 An alternative to the use of anonymous continuation terms is to
 represent a procedure as a set of mutually tail-recursive functions --
@@ -201,18 +193,18 @@ flow-dependence graph.
 Occasionally, \emph{direct style} refers to the combination of
 tail-recursive functions and let-normal form. Variations of this
 discipline include
-\emph{administrative normal form} (A-normal form, ANF~\cite{DBLP:conf/pldi/FlanaganSDF93}), B-form~\cite{DBLP:conf/pldi/TarditiMCSHL96}, and SIL~\cite{DBLP:journals/jfp/TolmachO98}, while~\cite{DBLP:conf/icfp/Kennedy07} presents a recent perspective on continuations. 
+\emph{administrative normal form} (A-normal form, ANF~\cite{DBLP:conf/pldi/FlanaganSDF93}), B-form~\cite{DBLP:conf/pldi/TarditiMCSHL96}, and SIL~\cite{DBLP:journals/jfp/TolmachO98}. 
 
 %Before illustrating the correspondence in more detail we briefly
 %discuss the target representation.
 
-\subsection{Functional translation into and out of SSA}
+\subsection{Translation into and out of SSA}
 
 The correspondence between SSA and functional languages may be broken
 down into the correspondence pairs shown in
 Table~\ref{tableFunctionalCorrespondencesI}. We discuss some of these
 aspects by considering the translation into SSA, using the program in
-Figure~\ref{FunctionalCorrespondenceRunningExample} as a running
+Figure~\ref{fig:FunctionalCorrespondenceRunningExample} as a running
 example.
 
 \begin{table}
@@ -297,16 +289,18 @@ $$\begin{array}{l}
   \mathtt{in}\ f_1()\ \mathtt{end}
 \end{array} 
 \end{array}
-$$ Names are not unique, but the program already obeys a core
-property that motivates SSA: each use of a name is associated with a
-unique binding, namely the unique \emph{innermost} binding in whose
-scope the use occurs.
-
-Given that points of variable definition amount to binding occurrences
-of names and that the control flow successor relation is explicitly
-represented by the subterm relationship, it is not coincidental that
-liveness inequations and formal parameter lists are related. Indeed,
-this fact is suggested by the structural similarity between the
+$$ 
+The resulting programs has the following properties:
+\begin{itemize}
+\item all function declarations are closed, i.e.~the free variables of their bodies are contained in their formal parameter lists
+\item names are not unique, but the program already obeys a core property
+that motivates SSA: each use of a name is associated with a unique
+binding, namely the unique \emph{innermost} binding in whose scope the
+use occurs.
+\item inside each function the subterm relationship captures the control flow successor relation in the corresponding basic block.
+\end{itemize}
+The correspondence between liveness and free occurrences of names
+mainfests itself in the striking structural similarity between the
 liveness-equation for assignments $$\mathsf{LV}([x:=a]^i) =
 \mathsf{Use}(a) \cup (\mathsf{LV}(\mathit{succ}(i)) \setminus \mathsf{Defs}(i))$$ and the clause for the corresponding expression form %$\letin x a e$ 
 in the definition of free variables,
@@ -327,7 +321,7 @@ arguments of these $\phi$-functions are the arguments in the
 corresponding positions in the calls to $f_i$. As the number of
 arguments in each call to $f_i$ coincides with the number of $f_i$'s
 formal parameters, the $\phi$-functions in $b_i$ are all of the same
-arity, namely the number of call sited to $f$. In order to coordinate
+arity, namely the number of call sites to $f$. In order to coordinate
 the relative positioning of the arguments of the $\phi$-functions, we
 choose an arbitrary enumeration of these call sites. 
 
@@ -341,36 +335,35 @@ $\supseteq$ in the dataflow equations. Using inequations rather than
 equations allows functions to have more formal parameters than
 strictly necessary. Requiring all parameter lists to be chosen
 according to the
-\emph{same} solution prevents (ill-defined) function bodies whose free
-variables not amongst their parameters.  In particular, including all
-variables in all parameter lists constitutes a solution to the
-inequations but not necessarily one to the equations.}. Thus, the
-above method correponds to the construction of \emph{pruned} SSA--see
-Chapter~\ref{ChapterPrunedSSA}.
+\emph{same} solution prevents (ill-defined) functions whose bodies contain free
+variables that are not amongst the formal parameters.  In particular,
+including all variables in all parameter lists constitutes a solution
+to the inequations but not necessarily one to the equations.}. Thus,
+the above method correponds to the construction of \emph{pruned}
+SSA--see Chapter~\ref{ChapterPrunedSSA}.
 
-While resulting in a legal SSA program (indeed any algorithm claiming
-to operate on arbitrary SSA should be prepared to accept such a
-program), the construction clearly introduces more $\phi$-functions
-than necessary. A closer inspection reveals that each superfluous
-$\phi$-function corresponds to some function $f_i$ passing one of its
-arguments on to some other function $f_j$ without modifying it. The
-technique for eliminating such arguments is called
-\emph{lambda-dropping}~\cite{DBLP:journals/tcs/DanvyS00}, is the inverse of
-\emph{lambda-lifting}~\cite{DBLP:conf/fpca/Johnsson85}, and may already be performed before
-making variable names distinct.
+While resulting in a legal SSA program, the construction clearly
+introduces more $\phi$-functions than necessary. A closer inspection
+reveals that each superfluous $\phi$-function corresponds to some
+function $f_i$ passing one of its arguments on to some other function
+$f_j$ without modifying it. The technique for eliminating such
+arguments is called
+\emph{lambda-dropping}~\cite{DBLP:journals/tcs/DanvyS00} and is the inverse of
+\emph{lambda-lifting}~\cite{DBLP:conf/fpca/Johnsson85}.
 
-Lambda-dropping first analyses the static invocation graph to identify
-when function definitions may be moved inside each other (\emph{block
-sinking}). As the above construction yields closed functions
-(i.e.~each function's list of formal parameters is a superset of the
-free variables of its body), block-sinking is always legal. In our
-example, $f_3$ is only invoked from within $f_2$, and $f_2$ is only
-called in the bodies of $f_2$ and $f_1$.  We may thus move the
-definition of $f_3$ into that of $f_2$, and the latter one into $f_1$.
+Lambda-dropping may be performed before or after variable names are
+made distinct, and first analyses the static invocation graph to
+identify when function definitions may be moved inside each other
+(\emph{block sinking}). As the above construction yields closed
+functions, block-sinking is always legal. In our example, $f_3$ is
+only invoked from within $f_2$, and $f_2$ is only called in the bodies
+of $f_2$ and $f_1$.  We may thus move the definition of $f_3$ into
+that of $f_2$, and the latter one into $f_1$.
 
 Several options exist as to where the function definitions should be
 inserted in their host functions.  Inserting them near the beginning yields the
-program $$
+program 
+$$
 \begin{array}{l}
   \begin{array}{lcl}\mathtt{fun}\ f_1() & = & \end{array}\\
   \qquad
@@ -401,94 +394,58 @@ program $$
 $$ 
 An alternative is to insert them near the end of their host
 functions, directly prior to their use: 
-\begin{verbatim}
-fun f1() = 
-   let val v = 1 
-       val z = 8 
-       val y = 4
-       fun f2(v,z,y) = 
-            let val x = 5+y
-                val y = x*z
-                val x = x-1
-            in if x=0 then let fun f3(y,v) = let val w = y+v in w end
-                           in f3(y,v) end
-               else f2(v,z,y)
-            end
-   in f2(v,z,y) 
-   end
-\end{verbatim}
-%$$
-%\begin{array}{l}
-%  \begin{array}{lcl}\mathtt{fun}\ f_1() & = & \end{array}\\
-%  \qquad
-%   \begin{array}[t]{l}
-%    \, \letinD v 1 {
-%    \, \letinD z 8 {
-%    \, \letinD y 4 {}}}\\
-%     \begin{array}{lcl}\mathtt{fun}\ f_2(v,z,y) & = & \end{array}\\
-%    \, \qquad \begin{array}{l}  
-%            \,  \letinD x {5+y} {
-%            \, \letinD y {x*z} {
-%            \, \letinD x {x-1} {}}}\\ 
-%            \begin{array}{lcl}\mathtt{fun}\ f_3(y,v) & = & \letin w {y+v} w\end{array}\\
-%            \, \mathtt{in}\ \ite {x=0} {\call {f_2} {v,z,y}}
-%                     {\call {f_3} {y,v}}\ \mathtt{end}\\
-%             \mathtt{end}\ \mathtt{end}\ \mathtt{end}
-%           \end{array}\\
-%     \, \mathtt{in}\  {\call {f_2} {v,z,y}}\ \mathtt{end}\ \mathtt{end}\ \mathtt{end}
-%   \end{array}\\
-%\begin{array}{lcl}
-%  \mathtt{in}\ f_1()\ \mathtt{end}
-%\end{array} 
-%\end{array}
-%$$ 
+$$
+\begin{array}{ll}
+\mathtt{fun}\ f_1()\ = & \mathtt{let}\ v = 1 \ 
+                  \mathtt{in\ let}\ z = 8 \ 
+                  \mathtt{in\ let}\ y = 4\ \mathtt{in}\\
+&\! \begin{array}{ll}
+     \mathtt{fun}\ f_2(v,z,y) = &
+     \mathtt{let}\ x = 5+y\
+     \mathtt{in\ let}\ y = x*z\
+     \mathtt{in\ let}\ x = x-1\ \mathtt{in}\\
+   & \mathtt{if}\ x=0\\ 
+   &  \mathtt{then}\ 
+      \begin{array}[t]{l}
+         \mathtt{fun}\ f_3(y,v) = 
+         \mathtt{let}\ w = y+v\ \mathtt{in}\ w\ \mathtt{end}\\
+         \mathtt{in}\ f_3(y,v)\ \mathtt{end}
+      \end{array}\\
+   & \mathtt{else}\ f_2(v,z,y)\ \mathtt{end\ end\ end}
+  \end{array}\\
+& \mathtt{in}\ f_2(v,z,y)\ \mathtt{end\ end\ end\ end}\\
+\mathtt{in}\ f_1()\  \mathtt{end}
+\end{array}
+$$
 The latter placement enables the second phase of
 lambda-dropping, called
 \emph{parameter dropping}, to remove variables from the lists of
 formal parameters based on the syntactic scope. In our example, both
 parameters of $f_3$ can be removed; of the three parameters of $f_2$,
 only $y$ survives:
-\begin{verbatim}
-fun f1() = 
-   let val v = 1 
-       val z = 8 
-       val y = 4
-       fun f2(y) = 
-            let val x = 5+y
-                val y = x*z
-                val x = x-1
-            in if x=0 then let fun f3() = let val w = y+v in w end
-                           in f3() end
-                      else f2(y)
-            end
-   in f2(y) 
-   end
-\end{verbatim}
-%$$
-%\begin{array}{l}
-%  \begin{array}{lcl}\mathtt{fun}\ f_1() & = & \end{array}\\
-%  \qquad
-%   \begin{array}[t]{l}
-%    \, \letinD v 1 {
-%    \, \letinD z 8 {
-%    \, \letinD y 4 {}}}\\
-%     \begin{array}{lcl}\mathtt{fun}\ f_2(y) & = & \end{array}\\
-%    \, \qquad \begin{array}{l}  
-%            \,  \letinD x {5+y} {
-%            \, \letinD y {x*z} {
-%            \, \letinD x {x-1} {}}}\\ 
-%            \begin{array}{lcl}\mathtt{fun}\ f_3() & = & \letin w {y+v} w\end{array}\\
-%            \, \mathtt{in}\ \ite {x=0} {\call {f_3} {}}
-%                     {\call {f_2} {y}}\ \mathtt{end}\\
-%             \mathtt{end}\ \mathtt{end}\ \mathtt{end}
-%           \end{array}\\
-%     \, \mathtt{in}\  {\call {f_2} {y}}\ \mathtt{end}\ \mathtt{end}\ \mathtt{end}
-%   \end{array}\\
-%\begin{array}{lcl}
-%  \mathtt{in}\ f_1()\ \mathtt{end}
-%\end{array} 
-%\end{array}
-%$$ 
+$$
+\begin{array}{ll}
+\mathtt{fun}\ f_1()\ = & \mathtt{let}\ v = 1 \ 
+                  \mathtt{in\ let}\ z = 8 \ 
+                  \mathtt{in\ let}\ y = 4\ \mathtt{in}\\
+&\! \begin{array}{ll}
+     \mathtt{fun}\ f_2(y) = &
+     \mathtt{let}\ x = 5+y\
+     \mathtt{in\ let}\ y = x*z\
+     \mathtt{in\ let}\ x = x-1\ \mathtt{in}\\
+   & \mathtt{if}\ x=0\\ 
+   &  \mathtt{then}\ 
+      \begin{array}[t]{l}
+         \mathtt{fun}\ f_3() = 
+         \mathtt{let}\ w = y+v\ \mathtt{in}\ w\ \mathtt{end}\\
+         \mathtt{in}\ f_3()\ \mathtt{end}
+      \end{array}\\
+   & \mathtt{else}\ f_2(y)\ \mathtt{end\ end\ end}
+  \end{array}\\
+& \mathtt{in}\ f_2(y)\ \mathtt{end\ end\ end\ end}\\
+\mathtt{in}\ f_1()\  \mathtt{end}
+\end{array}
+$$
 Interpreting this program back in SSA yields code that
 contains a single $\phi$-function, for variable $y$ at the beginning
 of block $b_2$. The reason that this $\phi$-function can't be
@@ -502,61 +459,102 @@ Analysing whether function definitions may be nested inside one
 another is tantamount to analysing the imperative dominance structure:
 function $f_i$ may be moved inside $f_j$ exactly if all calls to $f_i$
 come from within $f_j$ exactly if all paths from the initial program
-point to $b_i$ traverse $f_j$ exactly if $f_j$ dominates $f_i$. The
-optimal nesting structure is thus given by the dominator tree: the
-maximal level at which a function may occur is its level (counting
-from the root) in the dominator tree.
+point to block $b_i$ traverse $b_j$ exactly if $b_j$ dominates
+$b_i$. The optimal nesting structure is thus given by the dominator
+tree: the maximal level at which a function may occur is its level
+(counting from the root) in the dominator tree.
 
-The choice as to where functions are inserted in their hosts
-corresponds to variants of SSA. For example, the recently introduced
-loop-closed SSA form~\cite{} requires the insertion of $\phi$-nodes
-for all variables that are modified in a loop, in order to merge
-copies of these variables that arise when the loop is unrolled.  In
-the functional setting, this amounts to inserting functions $f$ that
-are called from within a recursive function $g$ near
-the top of $g$. In our example program, this means to insert
-$\mathtt{f_3}$ near the top of $\mathtt{f_2}$, but $\mathtt{f_2}$ near
-the end of $\mathtt{f_1}$:
-\begin{verbatim}
-fun f1() = 
-   let val v = 1 
-       val z = 8 
-       val y = 4
-       fun f2(v,z,y) = 
-            let fun f3(y,v) = let val w = y+v in w end
-                val x = 5+y
-                val y = x*z
-                val x = x-1
-            in if x=0 then f3(y,v)
-               else f2(v,z,y) 
-            end
-   in f2(v,z,y) 
-   end
-\end{verbatim}
+The choice as to where functions are placed corresponds to variants of
+SSA. For example, the recently introduced loop-closed SSA form~\cite{}
+requires the insertion of $\phi$-nodes for all variables that are
+modified in a loop, in order to merge copies of these variables that
+arise when the loop is unrolled.  In the functional setting, this
+amounts to inserting functions $f$ that are called from within a
+recursive function $g$ at the same level as $g$. In our example
+program, $f_3$ is thus placed at the same level as
+$f_2$, but the placement of $f_2$ is left unaltered.
+$$
+\begin{array}{ll}
+\mathtt{fun}\ f_1()\ = & \mathtt{let}\ v = 1 \ 
+                  \mathtt{in\ let}\ z = 8 \ 
+                  \mathtt{in\ let}\ y = 4\ \mathtt{in}\\
+& \mathtt{fun}\ f_3(y,v) = 
+   \mathtt{let}\ w = y+v\ \mathtt{in}\ w\ \mathtt{end}\\
+&\! \begin{array}{ll}
+     \mathtt{fun}\ f_2(v,z,y) = &
+     \mathtt{let}\ x = 5+y\
+     \mathtt{in\ let}\ y = x*z\
+     \mathtt{in\ let}\ x = x-1\ \mathtt{in}\\
+   & \mathtt{if}\ x=0\ \mathtt{then}\ f_3(y,v)\
+     \mathtt{else}\ f_2(v,z,y)\ \mathtt{end\ end\ end}
+  \end{array}\\
+& \mathtt{in}\ f_2(v,z,y)\ \mathtt{end\ end\ end\ end}\\
+\mathtt{in}\ f_1()\  \mathtt{end}
+\end{array}
+$$
 As a consequence, any parameter of the invoked function that is
-rebound in the loop body cannot be $\lambda$-dropped:
-\begin{verbatim}
-fun f1() = 
-   let val v = 1 
-       val z = 8 
-       val y = 4
-       fun f2(y) = 
-            let fun f3(y) = let val w = y+v in w end
-                val x = 5+y
-                val y = x*z
-                val x = x-1
-            in if x=0 then f3(y)
-               else f2(y) 
-            end
-   in f2(v,z,y) 
-   end
-\end{verbatim}
+rebound in the loop cannot be $\lambda$-dropped. In the example,
+$y$ is not deleted from the parameter list of $f_3$.
+$$
+\begin{array}{ll}
+\mathtt{fun}\ f_1()\ = & \mathtt{let}\ v = 1 \ 
+                  \mathtt{in\ let}\ z = 8 \ 
+                  \mathtt{in\ let}\ y = 4\ \mathtt{in}\\
+& \mathtt{fun}\ f_3(y) = 
+   \mathtt{let}\ w = y+v\ \mathtt{in}\ w\ \mathtt{end}\\
+&\! \begin{array}{ll}
+     \mathtt{fun}\ f_2(y) = &
+     \mathtt{let}\ x = 5+y\
+     \mathtt{in\ let}\ y = x*z\
+     \mathtt{in\ let}\ x = x-1\ \mathtt{in}\\
+   & \mathtt{if}\ x=0\ \mathtt{then}\ f_3(y)\
+     \mathtt{else}\ f_2(y)\ \mathtt{end\ end\ end}
+  \end{array}\\
+& \mathtt{in}\ f_2(y)\ \mathtt{end\ end\ end\ end}\\
+\mathtt{in}\ f_1()\  \mathtt{end}
+\end{array}
+$$ 
+Subsequently, loop unrolling replaces the recursive
+call to $f_2$ by the body of $f_2$. The resulting code (here in the
+form where the unrolling is not isolated as a separate function
+declaration) 
+$$
+\begin{array}{ll}
+\mathtt{fun}\ f_1()\ = & \mathtt{let}\ v = 1 \ 
+                  \mathtt{in\ let}\ z = 8 \ 
+                  \mathtt{in\ let}\ y = 4\ \mathtt{in}\\
+& \mathtt{fun}\ f_3(y) = 
+   \mathtt{let}\ w = y+v\ \mathtt{in}\ w\ \mathtt{end}\\
+&\! \begin{array}{ll}
+     \mathtt{fun}\ f_2(y) = &
+     \mathtt{let}\ x = 5+y\
+     \mathtt{in\ let}\ y = x*z\
+     \mathtt{in\ let}\ x = x-1\ \mathtt{in}\\
+   & \mathtt{if}\ x=0\ \mathtt{then}\ f_3(y)\\
+   & \mathtt{else} 
+       \begin{array}[t]{l} 
+         \mathtt{let}\ x = 5+y\
+         \mathtt{in\ let}\ y = x*z\
+         \mathtt{in\ let}\ x = x-1\ \mathtt{in}\\
+         \mathtt{if}\ x=0\ \mathtt{then}\ f_3(y)\
+         \mathtt{else}\ f_2(y)\ \mathtt{end\ end\ end}
+       \end{array}\\ 
+   & \mathtt{end\ end\ end}
+  \end{array}\\
+& \mathtt{in}\ f_2(y)\ \mathtt{end\ end\ end\ end}\\
+\mathtt{in}\ f_1()\  \mathtt{end}
+\end{array}
+$$ 
+contains two invocations sites for $f_3$, in precise correspondence to
+the control flow arcs in the unrolled SSA program. Each call passes
+the correct value to the ``loop closing'' parameter $y$ of $f_3$.
 
 The above example code excerpts exhibit a further feature: the
 argument list of any call coincides with the list of formal parameters
-of the invoked function. This discipline is not generally enjoyed by
-functional programs, and is typically destoyed during optimizing
-program transformations, in a similar way as the relationship between
+of the invoked function. This discipline is not enjoyed by functional
+programs in general, and is destoyed by the renaming phase that makes
+names globally distinct. Optimizing program transformations also
+destroy this discipline, in a similar way as the relationship between
 SSA variables originating from the same program variable is destroyed
 by imperative program manipulations--see
 Chapter~\ref{ChapterTransformations}. On the other hand, programs
@@ -606,14 +604,16 @@ assumptions in context $\Gamma$. Usually, contexts track the types of
 imperative analysis. Thus, almost any type system is an extension of
 the concept of free variables, turning the above relationship between
 liveness and free variables into an instance of the given
-analogies. The distinctness of formal parameters (see above), the
-distinctness of function names in function declaration blocks, and
-similar syntactic restrictions, may be easily enforced by equipping
-the corresponding typing rules with additional side-conditions.
+analogies. The distinctness of formal parameters, the distinctness of
+function names in function declaration blocks, and similar syntactic
+restrictions, may be easily enforced by equipping the corresponding
+typing rules with additional side-conditions, and are in any case
+enforced by many functional languages as part of the language
+definition.
 
 A main benefit of SSA for dataflow analyses, the avoidance of
 variables that are unrelated but happen to be identically named, is
-enjoyed by type systems, as the adaption of type contexts in the rule
+enjoyed by type systems, as the adaptation of type contexts in the rule
 for let-bindings is compatible with referential transparency.
 
 Imperative analysis frameworks employ transfer functions for relating
@@ -638,36 +638,75 @@ inter-procedural analyses\footnote{Maybe the author of the chapter on
 inter-procedural analyses can briefly take up this point, allowing me
 to insert a forward-reference here?}.
 
-%%%%%%%%%%%%
+\section{Dataflow interpretations}
+\label{section:Part1:Semantics:Dataflow}
+The second group of interpretations for SSA is formed by models that
+emphasize dataflow aspects, i.e.~the flow of values along the
+def-use-chains. Control flow is either disregarded entirely or
+restricted to the boundaries between basic blocks.
 
-\section{A Denotational Semantics}
+\subsection{Glesner's intra-block dataflow model}
+Glesner~\cite{DBLP:conf/asm/Glesner04} presents a model of SSA that
+retains the control flow structure between basic blocks, and also the
+phase distinction between the execution of $\phi$-instructions and the
+execution of ordinary instructions in a basic block. The latter,
+however, proceed data-driven in that their progress is only governed
+by the availability of operands.
+
+Formally, the model is phrased in terms of \emph{abstract state
+machines}~\cite{DBLP:journals/tocl/Gurevich00}, an algebraic formalism
+for transition systems that supports the partitioning of states into
+\emph{static} components and
+\emph{dynamic} components. Being invariant under execution, the syntax
+of a program is encoded using the static features and is modeled as a
+single first-order algebra over a signature of operations, basic
+blocks, and predicate symbols which encode the basic-block-level
+CFG. The dynamic aspects of program execution are encoded using the
+dynamic features: states are modeled as different first-order algebras
+over a shared signature. Transition rules model the evolution of
+states by stipulating how -- given a fixed static algebra -- the
+dynamic algebras of adjacent states are related.
+
+The dynamic language associates with each (static) instruction a slot
+for the result value. Additional dynamic components include the
+representations to the current and adjacent basic blocks, and a tag
+that distinguishes the $\phi$-phase from the phase for non-$\phi$-
+instructions. The transition rules for instructions are predicated on
+the existence of values in the result slots of the dataflow
+predecessor instructions, such that instructions that have all
+argument positions filled may fire in an arbitrary order, updating
+their result slots. Conditional and unconditional jumps make their
+result available in slots that are used to update the current-block
+data structures.
+
+In addition to defining the operational model of SSA, Glesner also
+defines a similar model for a machine language with unstructured
+control flow, and then proves the functional correctness of a
+translation that allocates one register per instruction (holding the
+result value), eliminates $\phi$-instructions by appropriate copy
+operations, and linearizes the data flow graphs inside basic blocks by
+topological sorting. 
+
+\subsection{Pop et al.'s global dataflow model}
 \label{section:Part1:Semantics:PopSemantics}
 %\footnote{Sebastian-Pop-style denotational semantics of SSA form (i.e. as
 %dataflow/Lucid}
-Both, the model of Glesner and functional representations, retain a
-model of the control flow structure of SSA programs: Glesner's
-programs are CFG's where the nodes are dataflow graphs; function
-definitions in the latter representation are comprised of variable
-bindings that are nested according to the local control flow successor
-relation, terminate with invocations to the functions representing the
-succeeding basic blocks, and may be nested according to the (control
-flow) dominance structure.
-
-The model introduced by Pop et al.~\cite{PopCJS2006} departs from this
-discipline, eliminating the control flow structure rather than making
-it explicit.  Instead, programs are represented as collections of
-defining equations,
+The model introduced by Pop et al.~\cite{PopJS2007} dispenses with the
+control flow structure entirely, by eliminating any tangible forms of
+basic blocks or program order. Programs are represented as collections
+of defining equations,
 \begin{eqnarray*}
 x_1 & = & e_1\\
 & : &\\
 x_n & = & e_n
 \end{eqnarray*}
-one for each variable $x_i$. Instead of referring to \emph{control
-flow succeessors}, the right-hand sides $e_i$ of these equations may
-refer to \emph{data flow predecessors}, i.e. the variables that
-provide the operands necessary for updating $x_i$. As a
-consequence, the order in which equations are presented is irrelevant,
-and execution proceeds completely data-driven.
+one for each variable $x_i$. Contrary to the functional
+representation, the right-hand sides $e_i$ of these equations do not
+refer to \emph{control flow successors} but to \emph{data flow
+predecessors}, i.e.~to the variables that provide the operands
+necessary for updating $x_i$. As a consequence, the order in which
+equations are presented is irrelevant, and execution proceeds
+completely data-driven.
 
 In order to transform a sequence of assignments into this form we may
 apply the approach for converting a basic block into SSA: we introduce
@@ -708,7 +747,7 @@ left, i.e. when $e$ evaluates for the first time to $\mathtt{false}$.
 
 For example, the representation of
 $\mathtt{i=7;\ j=0;\ while\ (j<10)\ \{j=j+i\}}$
-(taken from~\cite{PopCJS2006}) contains the five equations
+(taken from~\cite{PopJS2007}) contains the five equations
 $$
 \begin{array}{rclcrcl}
 i_1 & = & 7 & \qquad & j_2 & = & \loopnode 1 {j_1} {j_3}\\
@@ -773,35 +812,36 @@ information to be maintained, as the choice as to which argument of
 $\loopnode \ell {e} {e'}$ is evaluated is encoded in the dependency on
 the entry at the appropriate position in the iteration space vector.
 
-The article~\cite{PopCJS2006} and Pop's
+The article~\cite{PopJS2007} and Pop's
 dissertation~\cite{PopDissertation} contain formal details about the
 representation, its interpretation, and its formal relationship to a
 non-SSA language. In particular, these sources explain how a
-conventionial program of assignments and loops may be compositionally
+conventional program of assignments and loops may be compositionally
 converted into a set of equations, in a semantics-preserving
 way. Source program expressions are uniquely labeled, so that globally
 unique variable names can be generated by differentiating the original
 program variables according to the (naturally distinct) labels for
 assignments.  Contrary to the unstructured labels used
 in~\cite{NielsonNielsonHanking:POPA}, the authors use a class of
-labels ("Dewey-like numbers") that is 
+labels ("Dewey-like numbers") with the following three properties.
 \begin{description}
-\item[extensible] This feature
-is used for generating fresh target variables for the two kinds
-of $\phi$-operations
-\item[hierarchically structured according to the subterm relation]
-   This admits  a structure-directed translation into
-the equation-based representation
-\item [compatible with the control flow successor relationship:] 
-  This feature -- in combination
+\item[extensibility:] this feature
+is used for generating fresh target variables for $\phi$-operations
+\item[hierarchical structure according to the subterm relation:]
+   this admits a structure-directed translation into the
+   equation-based representation
+\item [compatibility with the control flow successor relationship:] 
+  this feature -- in combination
 with the iteration space vectors -- is employed to define a compositional
 (denotational) semantics of the source language. 
 \end{description}
 In addition to proving a suitable theorem asserting that the
 translation is semantics-preserving, the authors also give a reading
-of this result in terms of classical models of computations in that it
-amounts to a syntactic embedding of the RAM model into recursive
-partial functions.  In addition, Pop's
+of this result in terms of classical models of computations by
+interpreting it as the embedding of the RAM model into the model of
+partial recursive functions. Similar to out-of-SSA translation, a
+conversion is defined (and proven correct) that transforms systems of
+equations into imperative programs. Finally, Pop's
 dissertation~\cite{PopDissertation} describes how a number of program
 analyses may be phrased in terms of the equational language, including
 induction variable analysis and other loop optimizations.
@@ -822,13 +862,13 @@ The relative merits of the various functional representations remain
 an active area of research, in particular with respect to their
 integration with program analyses and optimizing transformations, and
 conversions between these formats. Recent contributions include
-\cite{DBLP:journals/jfp/DanvyMN07} and~\cite{DBLP:journals/lisp/Reppy02}. 
-Danvy et al.~\cite{DBLP:conf/dsl/DanvySZ09} show how to use
-continuations to translate a subset of Algol into JavaScript.
+\cite{DBLP:journals/jfp/DanvyMN07,DBLP:journals/lisp/Reppy02,DBLP:conf/icfp/Kennedy07}. 
+%Danvy et al.~\cite{DBLP:conf/dsl/DanvySZ09} show how to use
+%continuations to translate a subset of Algol into JavaScript.
 
 Closely related to continuations and direct-style functional
 representations are
-\emph{monadic} languages such as Benton et al's MIL~\cite{BentonKennedyRussel:ICFP1998} and  Peyton-Jones et al.'s language~\cite{PeytonJonesShieldsLT:POPL1998}. These partition expressions into a category of \emph{values} and \emph{computations}, similarly to the isolation of primitive terms discussed above (see also~\cite{Reynolds1974,Plotkin75}). This allows one to treat side-effects (memory access, IO, exceptions,\ldots) in a uniform way, following\footnote{Mention Ohori} Moggi~\cite{Moggi1991}. 
+\emph{monadic} languages such as Benton et al's MIL~\cite{BentonKennedyRussel:ICFP1998} and  Peyton-Jones et al.'s language~\cite{PeytonJonesShieldsLT:POPL1998}. These partition expressions into a category of \emph{values} and \emph{computations}, similar to the isolation of primitive terms in let-normal form (see also~\cite{Reynolds1974,Plotkin75}). This allows one to treat side-effects (memory access, IO, exceptions,\ldots) in a uniform way, following\footnote{Mention Ohori} Moggi~\cite{Moggi1991}. 
 
 Regarding formally worked-out instantiations of the correspondences
 for program anlayses, Chakravarty et al.~present a functional analysis
