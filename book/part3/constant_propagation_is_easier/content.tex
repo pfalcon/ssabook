@@ -64,8 +64,10 @@ instead of control flow. This representation allows a selective propagation of
 program properties among data dependent graph nodes only. As before, the
 processing stops when the information at the graph's nodes stabilizes. The basic
 algorithm is not limited to constant propagation and can also be applied to
-efficiently solve a large class of other data flow
-problems~\cite{novillo:bib:N05} as will be shown in the following.
+solve a large class of other data flow problems~\cite{novillo:bib:N05}
+efficiently. However, not all data flow analyses can be modeled. We will thus
+investigate the limitations of the SSA-based approach and briefly discuss
+problems that cannot be modeled.
 
 The remainder of this chapter is organized as follows. First, the basic concepts
 of (traditional) data flow analysis are presented in
@@ -74,9 +76,15 @@ foundation and background for the discussion of the SSA-based propagation
 engine in Section~\ref{novillo:sec:prop-engine}. We then provide examples of
 data flow analyses that can be realized efficiently by the aforementioned
 engine, namely copy propagation in Section~\ref{novillo:sec:copy-prop} and value
-range propagation in Section~\ref{novillo:sec:vrp}. We finally conclude and
-provide links for further reading in Section~\ref{novillo:sec:conclusion}.
-\obacht{TODO:}{Mention Dead Code Elimination}
+range propagation in Section~\ref{novillo:sec:vrp}. Finally, a few examples of
+data flow problems will be discussed that cannot be modeled using this approach.
+Dead code elimination, discussed in
+Section~\ref{novillo:sec:dead_code_elimination}, is such a problem that can be
+solved elegantly using SSA graphs. Section~\ref{novillo:sec:live_variables}
+covers liveness analysis, which similarly profits from SSA form, even though it
+cannot be modeled using the generic propagation engine via SSA graphs. We
+finally conclude and provide links for further reading in
+Section~\ref{novillo:sec:conclusion}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Preliminaries}
@@ -86,11 +94,10 @@ Data flow analysis is at the heart of many compiler transformations and
 optimizations, but also finds application in a broad spectrum of analysis and
 verification tasks in program analysis tools such as program checkers, profiling
 tools, and timing analysis tools. This section gives a brief introduction to the
-basics of data flow analysis. However, due to space considerations, we can not
+basics of data flow analysis. However, due to space considerations, we cannot
 cover this topic in full depth, interested readers are thus advised to consult
 standard text books, such as the one by Nielsen, Nielsen, and
 Hankin~\cite{novillo:bib:NNH99}.
-\obacht{TODO:}{May/Must Information?}
 
 As noted before, data flow analysis allows to derive information of certain
 interesting program properties that may help to optimize the program. Typical
@@ -117,13 +124,13 @@ framework} that consists of:
 \subsection{Property Space}
 \label{novillo:sec:property_space}
 
-\begin{figure}[b]
+\begin{figure}[t]
   \begin{center}
     \includegraphics{constprop_lattice}
   \end{center}
   \vspace{-1em}
-  \caption{Lattice commonly used to represent whether a variable is known to
-           hold a constant value at a given program point.}
+  \caption{Example of a lattice, which is commonly used to represent whether a
+           variable is known to hold a constant value at a given program point.}
   \label{novillo:fig:lattice_constant_propagation}
 \end{figure}
 
@@ -140,11 +147,11 @@ Lower bounds and greatest lower bounds are defined analogously.
 A particularly interesting class of partially ordered sets are \emph{complete
 lattices}, where all subsets have a least upper bound as well as a greatest
 lower bound. These bounds are unique and are denoted by $\bigsqcup$ and
-$\bigsqcap$. In the context of program analysis the former is often referred to
-as the \emph{join operator}, while the latter is termed the \emph{meet
-operator}. Complete lattices have two distinguished elements, the \emph{least
-element} and the \emph{greatest element}, often denoted by $\bot$ and $\top$
-respectively.
+$\bigsqcap$ respectively. In the context of program analysis the former is often
+referred to as the \emph{join operator}, while the latter is termed the
+\emph{meet operator}. Complete lattices have two distinguished elements, the
+\emph{least element} and the \emph{greatest element}, often denoted by $\bot$
+and $\top$ respectively.
 
 An \emph{ascending chain} is a totally ordered subset $\{l_1, \ldots, l_n \}$ of
 a complete lattice, where for all $i, j \in \{1, \ldots, n\}, i < j: l_i
@@ -158,15 +165,17 @@ represent whether a given variable is known to hold a specific constant value at
 a given program point at run-time. The analysis and the corresponding
 optimization are often uniformly referred to as \emph{constant propagation}.
 For this lattice, $\top$ indicates that no specific information on the
-variable's value is known. The symbol $\bot$, on the other hand, indicates that
-the analysis was not able to prove that the variable holds a constant value in
-all cases. The other elements in the lattice denote that the variable is known
-to hold the respective value. The $\sqsubseteq$ relation is represented by the
-arrows in the figure. Clearly, all chains for this lattice are at most of length
-three ($\bot \sqsubseteq c \sqsubseteq \top$, $c \in \mathbb{N}$).
+variable's value is available. The symbol $\bot$, on the other hand, indicates
+that the analysis was not able to prove that the variable holds the same
+constant value in all cases. The other elements in the lattice denote that the
+variable is known to hold the respective value. The $\sqsubseteq$ relation is
+represented by the arrows in the figure. Clearly, all chains for this lattice
+are at most of length three ($\bot \sqsubseteq c \sqsubseteq \top$, $c \in
+\mathbb{N}$).
 
 %///////////////////////////////////////////////////////////////////////////////
 \subsection{Program Representation}
+\label{novillo:sec:program_representation}
 
 \begin{figure}[b]
   \begin{center}
@@ -179,11 +188,11 @@ three ($\bot \sqsubseteq c \sqsubseteq \top$, $c \in \mathbb{N}$).
 
 Individual functions of the input program are represented as separate flow
 graphs of the form $G = (V,E)$, where the nodes represent operations, or
-instructions, at a program point, and edges denote the possible flow of control
-at run-time. The graph contains two distinguished nodes, the \emph{start} and
-the \emph{exit} node, denoted by $s$ and $t$ respectively. These two nodes are
-special in that the former is the only node that does not have any predecessor
-and the latter is the only node without any successor.
+instructions, at a program point and edges denote the possible flow of control
+at run-time. The graph contains two distinguished nodes, the \emph{start} node
+$s$ and the \emph{exit} node $t$. These two nodes are special in that the former
+is the only node without any predecessors and the latter is the only node
+without any successors.
 
 During the analysis, data flow information is propagated from one node to
 another adjacent node along the respective graph edge. Every node is associated
@@ -217,7 +226,7 @@ perform \emph{inter-procedural} analyses~\cite{novillo:bib:NNH99}.
 %///////////////////////////////////////////////////////////////////////////////
 \subsection{Transfer Functions}
 
-\begin{table}[t]
+\begin{table}[b]
   \begin{center}
     \begin{tabular}{lp{8mm}l}
       Operation                   & & Transfer Function                      \\ \hline
@@ -241,11 +250,15 @@ L$ that transform the information available from the \emph{in} set of the
 respective flow graph nodes and store the result in the corresponding \emph{out}
 set.
 
-Continuing the example from above, a simple set of transfer functions can be
+Continuing the example from before, a simple set of transfer functions can be
 defined, as shown in Table~\ref{novillo:fig:transfer_functions}. Assignments to
 variables invalidate the information that is available on that particular
-variable. However, in the case of a copy operation or the assignment of a
-constant value, new information is obtained.
+variable, i.e., information is removed from the input set. However, in the case
+of a copy operation or the assignment of a constant value, new information is
+obtained, i.e., is appended to the input set. Care has to be taken that
+previous information is properly invalidated. Other operations not modifying any
+variable are associated with the identity function, i.e., all the information is
+preserved.
 
 %///////////////////////////////////////////////////////////////////////////////
 \subsection{Solving Data Flow Problems}
@@ -255,7 +268,7 @@ a set of transfer functions, yields an instance of a monotone framework. Which,
 in fact, describes a set of \emph{data flow equations} that need to be solved in
 order to retrieve the analysis result. A very popular and intuitive way of
 solving these equations is to compute the \emph{maximal fixed point} (MFP) using
-an iterative work list algorithm. The work list contains operations that has
+an iterative work list algorithm. The work list contains operations that have
 to be reevaluated by first combining the information form all their predecessors
 in the flow graph, then applying their transfer function, and finally
 propagating the obtained information to all successors by appending them to the
@@ -274,7 +287,12 @@ graph $G=(V, E)$ it is easy to see that the MFP solution can be computed in
 $O(|E| \cdot h)$ time, or, due to the fact that $|E| \leq |V|^2$, in $O(|V|^2
 \cdot h)$. Note that the height of the lattice often depends on properties of
 the input program, which might ultimately yield bounds worse than cubic in the
-number of graph nodes. \obacht{TODO:}{Talk about Memory consumption?}
+number of graph nodes. Furthermore, every node of the flow graph is associated
+with an \emph{in} and an \emph{out} set, in order to store data flow
+information and propagate preliminary analysis results to the neighbors in the
+graph. The sets often contain information that is unrelated to the particular
+nodes in question in order to ensure that the information is properly propagated
+to all relevant program points.
 
 For reducible flow graphs the order in which operations are processed by the
 work list algorithm can be
@@ -288,8 +306,8 @@ necessarily lead to improved compilation times~\cite{novillo:bib:CTK06}.
 
 Apart from computing a fixed point, data flow equations can also be solved using
 a more powerful approach called the \emph{meet over all paths} (MOP) solution.
-Even though more powerful, computing the MOP solution is often harder or even
-undecidable~\cite{novillo:bib:NNH99}. Consequently, the MFP solution is
+Even though more powerful, computing the MOP solution is often harder to compute
+or even undecidable~\cite{novillo:bib:NNH99}. Consequently, the MFP solution is
 preferred in practice.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -345,10 +363,10 @@ Figure~\ref{novillo:fig:ssa_graph}, along with the corresponding SSA graph and
 CFG. Assume we are interested in propagating information from the assignment of
 variable y$_1$ at the beginning of the code excerpt down to its unique use at
 the end. Using the traditional CFG representation this requires the propagation
-through several intermediate program points. These program points are concerned
-with computations of the variables x$_1$  through x$_3$ only and are thus
-irrelevant for the computation at hand. The SSA graph representation, on the
-other hand, allows to propagate the desired information directly without any
+to pass though several intermediate program points. These program points are
+concerned with computations of the variables x$_1$  through x$_3$ only and are
+thus irrelevant for the computation at hand. The SSA graph representation, on
+the other hand, allows to propagate the desired information directly without any
 intermediate steps. At the same time, we also find that the control flow join
 following the \textbf{if} is properly represented by the $\phi$-operation
 defining the variable x$_3$ in the SSA graph.
@@ -408,11 +426,10 @@ in order to obtain the best possible results.
   \label{novillo:alg:propagation}
 \end{algorithm}
 
-\obacht{TODO:}{How is data flow information associated with the SSA nodes.}
 Similar to monotone frameworks for traditional data flow analysis, frameworks
 for \emph{sparse data flow propagation} under SSA form can be defined. As
 before, such a framework consist of: (1) a complete lattice, (2) a set of
-transfer functions, (3) a flow graph, and additionally (4) an SSA graph. We
+transfer functions, (3) a flow graph, and, additionally, (4) an SSA graph. We
 again seek a maximal fixed point solution (MFP) using an iterative work list
 algorithm. However, in contrast to the algorithm described before, data flow
 information is not propagated along the edges of the flow graph but along the
@@ -420,10 +437,15 @@ edges of the SSA graph. For regular uses the propagation is straightforward due
 to the fact that every use receives its value from a unique definition. Special
 care has to be taken for $\phi$-operations, which select a value among their
 operands depending on the incoming flow edges. The data flow information of the
-incoming operands has to be combined using the meet operator of the lattice.
-Furthermore, the flow graph is used in order to track which operations are not
-reachable under any program execution and thus can be safely ignored during the
-computation of the fixed point solution.
+incoming operands has to be combined using the meet or join operator of the
+lattice. As data flow information is propagated along SSA edges that have a
+single source, is is sufficient to store the data flow information with the
+node. The \emph{in} and \emph{out} sets used by the traditional approach -- see
+Section~\ref{novillo:sec:program_representation} -- are obsolete, since
+$\phi$-operations already provide the required buffering. Furthermore, the flow
+graph is used in order to track which operations are not reachable under any
+program execution and thus can be ignored safely during the computation of the
+fixed point solution.
 
 The algorithm processes two work lists, the \emph{FlowWorkList} containing edges
 of the flow graph and the \emph{SSAWorkList}, which consists of edges from the
@@ -475,18 +497,18 @@ Step~\ref{novillo:alg:propagation:ssaedge}b, which thereafter triggers the
 reevaluation automatically when necessary.
 
 Regular operations as well as $\phi$-operations are visited by
-Algorithm~\ref{novillo:alg:visit} whenever the corresponding flow graph node has
-become executable or when the data flow information of one of its predecessors
-in the SSA graph changed. $\phi$-operations combine the information from
-multiple flow paths using the usual meet operator, but only considering those
-operands where the associated edge is marked executable. Conditional branches
-are handled by examining its conditions based on the data flow information
-computed so far. Depending on whether those conditions are satisfiable or not,
-flow edges are appended to the \emph{FlowWorkList} in order to ensure that all
-reachable operations are considered during the analysis. Finally, all regular
-operations are processed by applying the relevant transfer function and possibly
-propagating the updated information to all uses by appending the respective
-SSA graph edges to the \emph{SSAWorkList}.
+Algorithm~\ref{novillo:alg:visit} when the corresponding flow graph node has
+become executable or whenever the data flow information of one of their
+predecessors in the SSA graph changed. $\phi$-operations combine the information
+from multiple flow paths using the usual meet operator, but only considering
+those operands where the associated edge is marked executable. Conditional
+branches are handled by examining its conditions based on the data flow
+information computed so far. Depending on whether those conditions are
+satisfiable or not, flow edges are appended to the \emph{FlowWorkList} in order
+to ensure that all reachable operations are considered during the analysis.
+Finally, all regular operations are processed by applying the relevant transfer
+function and possibly propagating the updated information to all uses by
+appending the respective SSA graph edges to the \emph{SSAWorkList}.
 
 \begin{figure}[t!]
   \begin{center}
@@ -502,7 +524,8 @@ SSA graph edges to the \emph{SSAWorkList}.
 \obacht{Example:}{Do we need a more detailed description of the work lists?}
 As an example, consider the program shown in Figure~\ref{novillo:fig:ssa_graph}
 and the constant propagation problem. First,
-assume that the condition of the \textbf{if} can not be statically evaluated.
+assume that the condition of the \textbf{if} cannot be statically evaluated, we
+thus have to assume that all its successors in the CFG are reachable.
 Consequently, all flow edges in the program will eventually be marked
 executable. This will trigger the evaluation of the constant assignments to
 the variables x$_1$,  x$_2$, and y$_1$. The transfer functions immediately yield
@@ -517,28 +540,32 @@ executions a more precise result can be computed, as shown in
 Figure~\ref{novillo:fig:ssa_propagation:b}. Neither the flow edge leading to the
 assignment of variable x$_1$ is marked executable nor its outgoing edge leading
 to the $\phi$-operation of variable x$_3$. Consequently, the reevaluation of
-the $\phi$-operation only considers the data flow information of its second
-operand x$_2$, which is known to be constant. This finally enables to analysis
-to show that the assignment to variable z$_1$ is in fact constant as well.
+the $\phi$-operation considers the data flow information of its second operand
+x$_2$ only, which is known to be constant. This finally enables to analysis
+to show that the assignment to variable z$_1$ is, in fact, constant as well.
 
-\obacht{Complexity results}{\begin{itemize}
-                              \item Relate to bounds of traditional data flow
-                                    analysis, (O($|V|^2 \cdot h$)??)
-                              \item Do we have any numbers that propagation is
-                                    faster under SSA form?
-                              \item Memory consumption: Point out that we can
-                                    keep data flow information with every
-                                    definition.
-                            \end{itemize}
-}
-During the course of the propagation algorithm every edge of the SSA graph is
+\obacht{Complexity results}{Do we have any numbers that propagation is
+                            faster under SSA form? }
+
+During the course of the propagation algorithm, every edge of the SSA graph is
 processed at least once, whenever the operation corresponding to its definition
 is found to be executable. Afterward, an edge can be revisited several times
 depending on the height $h$ of the lattice representing the analysis' property
-space. Reachable edges of the flow graph, on the other hand, are processed at
-most once. This leads to an upper bound in execution time of $O(|E_{SSA}| \cdot
-h + |E_{FG}|)$, where $E_{SSA}$ and $E_{FG}$ represent the edges of the
-SSA graph and the flow graph respectively -- see~\cite{bib:wegman.ea-91}.
+space. Edges of the flow graph, on the other hand, are processed at most once.
+This leads to an upper bound in execution time of $O(|E_{SSA}| \cdot h +
+|E_{FG}|)$, where $E_{SSA}$ and $E_{FG}$ represent the edges of the SSA graph
+and the flow graph respectively -- see~\cite{bib:wegman.ea-91}. The size of the
+SSA graph increases with respect to the original non-SSA program. Measurements
+indicate that this growth is linear~\cite{novillo:bib:cytron.ea-91}, yielding a
+bound that is comparable to the bound of traditional data flow analysis.
+However, in practice the SSA-based propagation engine outperforms the
+traditional approach. This is  due to the direct propagation from the definition
+of a variable to its uses, without the costly intermediate steps that have to be
+performed on the CFG. The overhead is also reduced in terms of memory
+consumption. Instead of the \emph{in} and \emph{out} sets capturing the complete
+property space on every program point in the program, it is sufficient to
+associate every node in the SSA graph with the data flow information of the
+corresponding variable. This leads to considerable savings in practice.
 
 %///////////////////////////////////////////////////////////////////////////////
 \subsection{Limitations}
@@ -546,15 +573,15 @@ SSA graph and the flow graph respectively -- see~\cite{bib:wegman.ea-91}.
 Unfortunately, the presented approach also has its drawbacks in terms of
 general applicability. The problem arises from two sources: (1) the exclusive
 propagation of information between data-dependent operations and (2) the
-semantics and placement of $\phi$ operations. The former issue prevents the
+semantics and placement of $\phi$ operations. The former issue prohibits the
 modeling of data flow problems that propagate information to program points that
 are not directly related to either a definition or a use of a variable, while
-the latter prevents the modeling of backward problems.
+the latter prohibits the modeling of backward problems.
 
 Consider, for example, the well known problem of available
 expressions~\cite{novillo:bib:NNH99} that often occurs in the context of
 redundancy elimination. An expression is available at a given program point when
-the expression is computed, and not modified thereafter, on all paths leading to
+the expression is computed and not modified thereafter on all paths leading to
 the program point. In particular, this might include program points that are
 independent from the expression and its operands, i.e., neither defines nor uses
 any of its operands. However, the SSA graph does not cover those program points
@@ -568,21 +595,25 @@ invalidate the nice property of having a single source for incoming edges of a
 given variable, as variables typically have more than one use. In addition,
 $\phi$-operations are placed at join points with respect to the \emph{forward}
 control flow and thus do not capture join points in the reversed flow graph.
-SSA graphs are consequently not suited to model backward problems.
+SSA graphs are consequently not suited to model backward problems in general.
 
 Even though the presented approach has its restrictions, it lead the way to the
 development of advanced sparse data flow techniques, such as the \emph{sparse
 evaluation graph} by Choi~et.al.~\cite{novillo:bib:CCF91} or the \emph{compact
 evaluation graph}~\cite{novillo:bib:R02}. Those graphs can be computed for both,
 backward and forward problems, and allow to propagate information to program
-points independent of definitions and uses of certain variables. Nevertheless,
-data flow analysis based on SSA graphs is still a useful and effective solution
-for many interesting problems, as will be shown in the following sections. We
-will also highlight the fact that SSA form is still helpful in solving
-traditional backward problems such as dead code elimination.
+points independent of definitions and uses of certain variables.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{Copy Propagation}
+\section{Examples}
+\label{novillo:sec:examples}
+
+Even though data flow analysis based on SSA graphs has its limitations, it is
+still a useful and effective solution for many interesting problems, as will be
+shown in the following sections.
+
+%///////////////////////////////////////////////////////////////////////////////
+\subsection{Copy Propagation}
 \label{novillo:sec:copy-prop}
 
 Copy propagation in SSA form is, in principle, very simple.  Given the
@@ -606,7 +637,7 @@ variables.
   \label{novillo:fig:copy_propagation}
 \end{figure}
 
-The data flow problem for copy propagation can be described as the problem of
+The analysis for copy propagation can be described as the problem of
 propagating the \textit{copy of} value of variables.  Given a sequence of
 copies as shown in Figure~\ref{novillo:fig:copy_propagation:a}. We say that
 y$_1$ is a \textit{copy of} x$_1$ and z$_1$ is a \textit{copy of} y$_1$.  The
@@ -618,14 +649,14 @@ variable itself. For the example above, this yields that both, y$_1$ and z$_1$,
 are copies of x$_1$, which in turn is a copy of itself. The lattice of this data
 flow problem is thus similar to the lattice shown previously for constant
 propagation. However, the lattice elements correspond to variables of the
-program instead of integer numbers and the least element of the lattice
-represents the fact that the variable is a copy of itself.
+program instead of integer numbers. The least element of the lattice
+represents the fact that a variable is a copy of itself.
 
 Similarly, we would like to obtain the result that x$_3$ is a copy of y$_1$ for
 the example depicted in Figure~\ref{novillo:fig:copy_propagation:b}. This is
 accomplished by choosing the meet operator such that a copy relation is
 propagated whenever the copy-of values of all the $\phi$-operation's operands
-match. So, when visiting the $\phi$-operation for x$_3$, the propagator finds
+match. So, when visiting the $\phi$-operation for x$_3$, the analysis finds
 that x$_1$ and x$_2$ are both copies of y$_1$, which allows to propagate the
 desired result that x$_3$ is a copy of y$_1$.
 
@@ -636,7 +667,7 @@ uses, the ordering used here is meant for illustration only. Processing starts
 at the operation labeled $1$, with both work lists empty and the data flow
 information $\top$ associated with all variables:
 
-\begin{figure}[b!]
+\begin{figure}[t!]
   \begin{center}
     \includegraphics{copy_propagation_loop}
   \end{center}
@@ -665,9 +696,9 @@ information $\top$ associated with all variables:
       branch labeled $6$ cannot be analyzed and thus causes its outgoing flow
       edges $e5$ and $e6$ to be added to the work list.
 \item Now, flow edge $e5$ is processed and marked executable. Since the target
-      operations are already known to be executable, only the $phi$-operation is
-      revisited. However, variables x$_1$ and x$_4$ have the same copy-of value
-      x$_1$, which is identical to the previous result computed in
+      operations are already known to be executable, only the $\phi$-operation
+      is revisited. However, variables x$_1$ and x$_4$ have the same copy-of
+      value x$_1$, which is identical to the previous result computed in
       Step~\ref{novillo:copy_prop:ex:x_2}. Thus, neither of the two work lists
       is modified.
 \item Assuming that the flow edge $e6$ leads to the exit node of the flow graph
@@ -683,7 +714,8 @@ propagation will only reevaluate the subset of operations affected by newly
 computed data flow information instead of the complete flow graph once the set
 of executable operations has been discovered.
 
-\section{Value Range Propagation}
+%///////////////////////////////////////////////////////////////////////////////
+\subsection{Value Range Propagation}
 \label{novillo:sec:vrp}
 
 \begin{figure}[b!]
@@ -742,7 +774,7 @@ implicit conditions such as the \emph{minimum}, \emph{maximum}, or the
 the execution succeeds, e.g., a pointer is known not to be \texttt{NULL} when a
 memory access succeeds. However, not all program points where this additional
 range information is available are captured by SSA graphs, which capture
-variable definitions, their uses, and $phi$-operations only.
+variable definitions, their uses, and $\phi$-operations only.
 
 The graph is thus preprocessed in order to split the live ranges of variables
 at appropriate program points whenever range information can be derived. The
@@ -750,20 +782,21 @@ splitting can be accomplished by inserting artificial \emph{assert} operations
 into the SSA graph that take an input variable and a condition as operands and
 return a copy of the input variable's value. Note that this \emph{ad hoc} form
 of live range splitting could be generalized, e.g., by program representations
-such as \emph{static single information} form
-(SSI)~\cite{novillo:bib:A99,novillo:bib:S05} -- also see Chapter~\ref{} of this
+such as \emph{static single information}
+(SSI)~\cite{novillo:bib:A99,novillo:bib:S05} or Extended SSA
+($e$-SSA)~\cite{novillo:bib:BGV00} form -- also see Chapter~\ref{} of this
 book. \obacht{Reference}{Missing reference to live range splitting chapter.}
 
 Following this live range splitting, a data flow problem is solved in order to
-propagate the available range information available through the conditions of
-the assert expressions to the respective uses. The lattice representing the
-range information is more complex in structure than the previous examples. The
-lattice elements are divided into two classes, \emph{regular} ranges and
-\emph{anti} ranges, and consist of a lower and upper bound, where the bounds can
-be arbitrary symbolic expressions. Regular ranges specify that the actual values
-of a variable lie within the lower and upper bound, while for anti ranges the
+propagate the range information available through the conditions of the assert
+expressions to the respective uses. The lattice representing of the range
+information is more complex in structure than the previous examples. The lattice
+elements are divided into two classes, \emph{regular} ranges and \emph{anti}
+ranges, and consist of a lower and upper bound, where the bounds can be
+arbitrary symbolic expressions. Regular ranges specify that the actual values of
+a variable lie within the lower and upper bound, while for anti ranges the
 opposite is true. The meet operator is defined by combining the bounds such that
-the resulting range covers both its arguments, i.e., in the case of regular
+the resulting range covers both of its arguments, i.e., in the case of regular
 ranges combining the information of $r_1 = [l_1, u_1]$ and $r_2 = [l_2, u_2]$
 yields the range $[min(l_1, l_2), max(u_1, u_2)]$.
 
@@ -772,12 +805,12 @@ infinite chains. The lattice thus needs to be restricted in order to guarantee
 termination of the analysis. As an example, consider a loop with an
 unconditional increment of a counter variable. This could lead to an infinite
 feedback look where the value range associated with the counter grows infinitely
-on every iteration. In practice, infinite chains are prevented by choosing the
-transfer functions such that growth is restricted. For example, the popular open
-source compiler GCC, restricts the transfer functions of many operations, such
-as addition or subtraction, to constant singleton ranges only, i.e., ranges that
-consist of a single element that is known to be constant. Other compiler allow
-the range to grow within certain limits.
+on every iteration of the work list algorithm. In practice, infinite chains are
+prevented by choosing the transfer functions such that growth is restricted. For
+example, the popular open source compiler GCC, restricts the transfer functions
+of many operations, such as addition or subtraction, to constant singleton
+ranges only, i.e., ranges that consist of a single element that is known to be
+constant. Other compiler allow the range to grow within certain limits.
 
 The augmented CFG of the original program from Figure~\ref{novillo:fig:vrp-1} is
 shown in Figure~\ref{novillo:fig:vrp-2:a}. Two additional \emph{assert}
@@ -814,7 +847,7 @@ steps of the data flow analysis are discussed:
       function.}
 \item Due to the updated range information of i$_5$ and the fact that the flow
       edge $e7$ is now known to be executable, the $\phi$-operation of i$_2$ has
-      to be reevaluated. Combining the range information computed in
+      to be reevaluated. Combining the range information computed by
       step~\ref{novillo:vrp:ex:i_1} and \ref{novillo:vrp:ex:i_5} yields a new
       range $[0, \infty]$.
 \item Note that at this point all edges have been marked executable, the
@@ -831,19 +864,80 @@ steps of the data flow analysis are discussed:
       uses are reevaluated.
 \item Finally, the counter increment is reevaluated, however, the range for its
       variable i$_5$ does not change and the analysis terminates.
+
 \end{enumerate}
 
 The final result of the analysis is used in order to eliminate array bounds
-checks, conditional branches, or unreachable code. For example, the analysis
-result computed at Step~\ref{novillo:vrp:ex:i_3} for the previous example,
-allows to safely eliminate the array bounds check. Furthermore, range
-information is valuable during the optimization of data representations, e.g.,
-to reduce the number of bits for certain computations without loss of precision.
-\obacht{TODO:}{Add citations here??}
+checks, conditional branches, or unreachable code~\cite{novillo:bib:BGV00}. For
+example, the analysis result computed at Step~\ref{novillo:vrp:ex:i_3} for the
+previous example, allows to safely eliminate the array bounds check.
+Furthermore, range information is valuable during the optimization of data
+representations, e.g., to reduce the number of bits for certain computations
+without loss of precision~\cite{novillo:bib:SBA00}.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{Dead Code elimination}
+\obacht{Section}{Rename}
+\section{Beyond Sparse Data Propagation}
+\label{novillo:sec:beyond_sparse_data_propagation}
+
+We have seen that the generic propagation engine is capable to elegantly solve
+forward problems based on the sparse SSA graph. However, due to limitations of
+the graph, not all problems can be modeled.  This section will highlight some
+problems where SSA form has proven helpful using specialized algorithms.
+
+%///////////////////////////////////////////////////////////////////////////////
+\subsection{Dead Code Elimination}
 \label{novillo:sec:dead_code_elimination}
+
+Dead code elimination (DCE) is a very important compiler optimization that
+eliminates computations that do not have any effect on the program output. This
+situation may arise from different sources. Code is called \emph{unreachable}
+when it can never, under any circumstances, be executed at run-time. A common
+case of unreachable code is often related to conditional branches where the
+condition always evaluates to either true or false -- the respective other case
+is unreachable, provided no other control path leads to the code.  Another form
+of dead code arises from reachable computations, i.e., it is possible that the
+computations are carried out at run-time, that are never used by any subsequent
+computations. Dead or unreachable code can be removed in either case without
+impairing the program's correctness.
+
+A popular algorithm for DCE, a typical backward data flow analysis, is due to
+Cytron et al.~\cite{novillo:bib:CFRWZ91}. This algorithm exploits SSA form in
+order to eliminate both forms of dead code. It proceeds by initially marking all
+computations of a procedure to be dead. Computations are iteratively marked to
+be live using a work list algorithm according to the following criteria: (1)
+computations with observable side-effects such as I/O operations, function
+calls, and assignments to global or shared memory locations, (2) assignments to
+variables that are used by other live computations, (3) conditional branches
+where at least on control-dependent computation has been marked live. When the
+work list drains, no additional live computations can be discovered. The
+remaining code marked as dead can safely be eliminate. It is easy to see that
+SSA form simplifies the processing of criteria (2) of this algorithm, since the
+relation between definitions and uses is captured naturally.
+
+%///////////////////////////////////////////////////////////////////////////////
+\subsection{Live Variables}
+\label{novillo:sec:live_variables}
+
+Another important problem is the computation of live variables at all program
+points of a procedure or a subset thereof, which is usually solved using a
+backward data flow analysis. The approach is applicable to programs in SSA form,
+however, due to the increased number of variable names due to renaming during
+SSA construction, a considerable overhead is induced.
+
+\obacht{Citation}{Cite Benoits Liveness Sets paper}
+\obacht{Reference}{Missing reference to liveness chapter.}
+Fortunately, the live ranges, i.e., the set of program points where variables
+are live, offer properties under SSA form that facilitate the computation of
+liveness information. In fact, several options exist that allow to derive
+traditional liveness sets, where every program point is annotated with a set of
+live variables, or to perform on-demand liveness checks for individual
+variables~\cite{novillo:bib:BHGD08}. In either case, the fact that uses of a
+variables are in any case dominated by its definition is exploited, which allows
+to prune the set of program point where variables are possibly live. We do not
+present details of these approaches and the involved algorithms, since
+Chapter~\ref{} covers this topic in great detail.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Conclusion}
