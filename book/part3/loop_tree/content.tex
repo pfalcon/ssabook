@@ -38,16 +38,15 @@ cyclic definitions.
 In the classic definition of the \SSA{}, the \CFG{} provides the
 skeleton of the program: basic blocks contain assignment statements
 defining \SSA{} variable names, and the basic blocks with multiple
-predecessors contain phi nodes.
+predecessors contain phi nodes.  Let's look at what happens when,
+starting from a classic \SSA{} representation, we remove the \CFG{}.
 
-Let's look at what happens when, starting from a classic \SSA{}
-representation, we remove the \CFG{}.  In order to remove the \CFG{},
-a pretty printer function writes the content of basic blocks by
-traversing the \CFG{} structure (the \CFG{} traversal could be
-performed in any order: random order, depth-first order, dominator
-order, etc.).  Does the representation, obtained from this pretty
-printer, contain enough information to enable us to compute the same
-thing as the original program?
+In order to remove the \CFG{}, a pretty printer function writes the
+content of basic blocks by traversing the \CFG{} structure (the \CFG{}
+traversal could be performed in any order: random order, depth-first
+order, dominator order, etc.).  Does the representation, obtained from
+this pretty printer, contain enough information to enable us to
+compute the same thing as the original program?
 
 Let's see what happens with an example: supposing that the original
 program looks like this (in its \CFG{} based \SSA{} representation):
@@ -127,16 +126,16 @@ We can remark that some information is lost in this pretty printing:
 the exit condition of the loop disappeared.  However, the information
 about the natural loop is still available under the form of a cyclic
 definition: by simple substitutions, we can rewrite this \SSA{} code
-as:
+to expose the self reference to ``i'', as:
 \begin{verbatim}
   i = phi (3, i + 1)
   k = phi (i)
   return k;
 \end{verbatim}
-We have the definition of the \SSA{} name ``i'' defined in function of
-itself.  This pattern is characteristic of the existence of a natural
-loop: we would be able to find an execution order that satisfies the
-scalar dependences with the help of a loop construct:
+Thus, we have the definition of the \SSA{} name ``i'' defined in
+function of itself.  This pattern is characteristic of the existence
+of a natural loop: we would be able to find an execution order that
+satisfies the scalar dependences with the help of a loop construct:
 \begin{verbatim}
   x = 3;
   loop
@@ -158,7 +157,7 @@ example:
 \item \closephi{} nodes merge the values in the end of a loop.  They
   are used to capture the last value of a name defined in a loop.
   Names defined in a loop can only be used within that loop or in the
-  arguments of a \closephi{} node (that is closing the set of uses of
+  arguments of a \closephi{} node (that is ``closing'' the set of uses of
   the names defined in that loop).  In a canonical \SSA{} form it is
   possible to limit the number of arguments of \closephi{} nodes to
   one.
@@ -184,8 +183,7 @@ So ``k'' is defined as the first value of ``i'' satisfying the loop
 exit condition, ``i $>=$ N''.  This is a well defined value (in the
 case of finite loops), as the sequence of values that ``i'' takes, is
 defined by the \loopphi{} node and taking the first element of that
-sequence satisfying the loop exit condition, gives us the value
-defining ``k''.
+sequence satisfying the loop exit condition.
 
 In the next section, we will look at an algorithm that translates the
 \SSA{} representation into a representation of polynomial functions,
@@ -260,21 +258,29 @@ sequence is represented by a multivariate chain of recurrences.  When
 ``step'' translates into a sequence variating in the same loop ``x'',
 the chain of recurrence represents a polynomial of a higher degree.
 
-The semantics of the chains of recurrences is defined by the equation:
+The semantics of the chains of recurrences is defined, using the
+binomial coefficients $\binom{n}{p}$, by the equation:
 \begin{equation*}
   \CHREC{c_0,+,c_1,+,c_2,+,\ldots,+,c_n}_k(\vec{\ell})=
   \sum_{p=0}^{n}c_{p}\binom{\ell_k}{p}.
 \end{equation*}
+with $\vec{\ell}$ the iteration domain vector (the iteration loop
+counters for all the loops in which the chain of recurrence variates),
+and $\ell_k$ the iteration counter for loop number $k$.
 
 This semantics allows the rewriting rule:
 \begin{equation*}
   \CHREC{c_0, +, \CHREC{c_1, +, c_2}_x}_x = \CHREC{c_0, +, c_1, +, c_2}_x
 \end{equation*}
 that is very useful in the analysis of induction variables, as it
-allows the partial analysis of the outer induction variable: first,
-the step part is left in a symbolic form, and then, by instantiating
-the step, the chain of recurrence is that of a higher degree
-polynomial.
+allows the partial analysis of the outer induction variable:
+\begin{itemize}
+\item first, the step part is left in a symbolic form (i.e.,
+  $\CHREC{c_0, +, s}_x$),
+\item then, by instantiating the step ``s'' (i.e.,
+  $\CHREC{c_1, +, c_2}_x$), the chain of recurrence is that of a higher degree
+  polynomial (i.e., $\CHREC{c_0, +, \CHREC{c_1, +, c_2}_x}_x = \CHREC{c_0, +, c_1, +, c_2}_x$).
+\end{itemize}
 
 \subsection{Instantiation of symbols and region parameters}
 
@@ -288,8 +294,8 @@ cases, it becomes necessary to leave in a symbolic form every
 definition outside a given region, and these symbols are then called
 parameters of the region.
 
-Let's look again at the example of Figure~\ref{spop:fig:ivstep} to
-see how the sequence of values of the induction variable ``c'' is
+Let's look again at the example of Figure~\ref{spop:fig:ivstep} to see
+how the sequence of values of the induction variable ``c'' is
 characterized with the chains of recurrences notation.  The first
 step, after the cyclic definition is detected, is the translation of
 this information into a chain of recurrence: in this example, the
@@ -297,11 +303,16 @@ initial value (or base of the induction variable) is ``a'' and the
 step is ``e'', and so ``c'' is represented by a chain of recurrence
 $\CHREC{a, +, e}_1$ that is variating in loop number $1$.  The symbols
 are then instantiated: ``a'' is trivially replaced by its definition
-leading to $\CHREC{3, +, e}_1$.  The analysis of ``e'' provides this
+leading to $\CHREC{3, +, e}_1$.  The analysis of ``e'' leads to this
 chain of recurrence: $\CHREC{8, +, 5}_1$ that is then used in the
 chain of recurrence of ``c'', $\CHREC{3, +, \CHREC{8, +, 5}_1}_1$ and
 that is equivalent to $\CHREC{3, +, 8, +, 5}_1$, a polynomial of
-degree two.
+degree two:
+\begin{eqnarray*}
+  F(\ell)
+  &=& 3\binom{\ell}{0} + 8\binom{\ell}{1} + 5\binom{\ell}{2} \\
+  &=& \frac{5}{2}\ell{}^2+\frac{11}{2}\ell + 3.
+\end{eqnarray*}
 
 \subsection{Number of iterations and computation of the end of loop value}
 
