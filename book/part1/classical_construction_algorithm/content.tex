@@ -1,50 +1,106 @@
-       \chapter{Classical construction/update/destruction algorithm \Author{J. Singer, F. Rastello}}
+\chapter{Classical construction/update/destruction algorithm \Author{J. Singer, F. Rastello}}
 
 \def\phiops{$\phi$-functions}
 \def\phiop{$\phi$-function}
+
+%% jsinger - simple introductory paragraphs
+
+This chapter describes the standard algorithms for SSA \textit{construction} and
+\textit{destruction}.
+
+SSA construction refers to the process of translating a non-SSA program into
+one that satisfies the SSA constraints. In general, this transformation
+occurs as one of the
+earliest phases in the middle-end of an optimizing compiler, when the program
+has been converted to three-address intermediate code.
+SSA destruction is sometimes called out-of-SSA translation. This phase
+takes place in an optimizing compiler after all SSA optimizations have
+been performed, and prior to code generation. (However note that there are
+specialized code generation techniques that work directly on SSA-based
+intermediate representations. \emph{FIXME - forward ref})
+
+The algorithms presented in this chapter are simple and pragmatic, hence they
+are the most widely implemented in current compilers. Note that more
+efficient, albeit more complex, alternative algorithms have been devised.
+These are reviewed in \emph{FIXME - forward refs to subsequent chapters}.
+
 \section{Simple programming language model}
 
-Simple description of an intraprocedural control flow graph
-representation, with non-address-taken local variables.
-Forward references to sections dealing with more SSA for complex
-features like memory, concurrency, etc.
-No constraints on control-flow structures in CFG
-(unlike in syntax-directed SSA construction algorithms).
+Throughout this chapter,
+we assume that a `program' is represented as an
+intraprocedural control flow graph,
+with a single entry node $r$, from which every other
+node is reachable.
+\emph{FIXME - precise definition of CFG in appendix?}
+Data flow occurs through definitions and uses of 
+local variables, with no pointer indirection.
+\emph{FIXME - forward references to chapters dealing with
+SSA extensions for complex features like memory, concurrency, etc}
+% No constraints on control-flow structures in CFG
+% (unlike in syntax-directed SSA construction algorithms).
+
 
 
 \section{Construction}
-{\em We need the notion of CFG, $r$ the entry node. Need the notion of dominance, and (iterated)-dominance-frontier. Need the notion of reaching definition.}
+{\em We need the notion of CFG, $r$ the entry node. Need the notion of
+  dominance, and (iterated)-dominance-frontier. Need the notion of reaching
+  definition. Give pointers to relevant appendix definitions.}
 
-In this chapter, each procedure is represented as a control flow graph (CFG). All node of the CFG is supposed to be reachable from the entry node $r$.
 
-Transforming a code that has no \phiops\ to a code that has SSA form is called SSA construction. The classical construction algorithm for SSA form falls into two phases. 
-First \phiops\ are inserted so that any use of a given variable is reached (without traversing another definition) by only one definition of this variable. In other words, this first phase of \phiops\ insertion splits live-ranges. The so obtained live-ranges have the property of having only one definition.
-Then variables are renamed so that the code contains textually only one definition per variable, and such that each use refers to its corresponding unique reaching definition. In other words, this second phase assigns one variable per live-range. 
+% Transforming a code that has no \phiops\ to a code that has SSA form is
+% called SSA construction.
+The original construction algorithm for SSA form \cite{cytron91efficiently}
+divides into two distinct phases.
+\begin{enumerate}
+\item \textbf{\phiop\ insertion} ensures that any use of a given variable $v$ is reached 
+%(without traversing another definition of $v$)
+%%%% jsinger - reaching definitions explanation will
+%%%% outline how traversing a new def kills the previous
+%%%% reaching def.
+by exactly one definition of $v$. In other words, this first phase of \phiop\ insertion performs \textit{live-range splitting}.
+The resulting live-ranges have the property of having a single definition, which occurs at the beginning of each live range.
+\item \textbf{variable renaming} assigns a unique variable name to each live-range. This second phase rewrites variable names in program statements such that the program text contains only one definition of each variable, and every use refers to its corresponding unique reaching definition.
+\end{enumerate}
 
-Historically, SSA came into different flavors. Building the so called minimal SSA (which is not completely minimal as we will see further) requires to insert \phiops\ at join nodes, i.e. nodes that can be reached by two different definitions of the same variable using two disjoint paths. 
+As already outlined in Chapter \emph{FIXME - 2}, there are different flavors of SSA with distinct properties. In this chapter, we focus on the \textit{minimal} SSA form. Construction of minimal SSA 
+(which is not completely minimal as we will see further) 
+requires the insertion of \phiops\ at \textit{join nodes},
+i.e.\ nodes in the CFG that can be reached by two or more distinct definitions of the same variable using disjoint paths. 
+%% jsinger - is the disjoint paths qualification necessary, if we define "reaching definitions" carefully?
+%%
 % FAB: in fact Cytron et al. iterate on join sets. Weiss said that J+(S)=J(S). So removed the citation that was useless
-Under the assumption that each variable has a {\em pseudo definition} at the root~$r$ of the CFG, this set of join nodes is exactly the iterated dominance frontier.
-It ends up with a very simple algorithm that places \phiops\ variable per variable. 
-For a given variable it places \phiops\ at the iterated dominance frontier $DF^{+}(S)$ of the set of definition points $S$ for this variable. 
-Considering that the dominance frontier of each CFG node is precomputed, the \phiops\ can be inserted iteratively using a worklist of definition points, and flags (to avoid multiple insertions). 
-This gives the following pseudo-code for \phiops\ insertion:
+Given the assumption that each variable has a {\em pseudo-definition} at the root~$r$ of the CFG, the set of join nodes for a variable definition corresponds exactly to the iterated dominance frontier of that definition.
+\emph{FIXME - this previous sentence needs to be tidied up.}
+
+We end up with a straightforward algorithm that places \phiops\ on a per-variable basis.
+For a given variable $v$, we place \phiops\ at the iterated dominance frontier $DF^{+}(S)$ of the set of definition points $S$ for $v$. 
+If we assume, not unreasonably, that the dominance frontier of each CFG node is precomputed, then the \phiops\ can be inserted iteratively using a worklist of definition points, and flags (to avoid multiple insertions). 
+This gives the following pseudo-code for the \phiop\ insertion algorithm:
 \begin{verbatim}
 proc phi_insertion
 // places phi functions at the iterated dominance frontier
   foreach global variable v
     let Worklist:=definitions(v)
+        typeof(Worklist) == CFGNode List
     let Inserted:=emptyset
+        typeof(Inserted) == CFGNode List
     foreach D in Worklist
+        typeof(D) == statement
       foreach I in DF(D) \ Inserted
+        typeof I == CFGNode
         insert "v=phi(v,...,v)" @ beginning of node I
         Inserted += {I}
 \end{verbatim}
+\emph{jsinger - Hi Fabrice, I think it would be helpful to include
+types for variables in this algorithm. At the moment, there is some confusion
+over CFG nodes and individual statements. We need to resolve this...}
 
-Once \phiops\ are placed using this algorithm, the code may still contain several definitions per variables, but a use may refer to only one definition (that reach him). Moreover, with the following semantic for \phiops\ where its uses are considered to be on the corresponding predecessor blocks, then use-def chains are along the dominance tree. In other word the unique definition that reach a use dominates it. 
+Once \phiops\ have been inserted using this algorithm, the program may still contain several definitions per variable, however there is a static single definition statement that reaches each use. Moreover, with the following semantics for \phiops\ where its variable uses are considered to be on the corresponding predecessor basic blocks, then use-def chains are aligned with the CFG dominance tree. In other word the unique definition that reaches each use dominates that use.
 
-To obtain a code with a single assignment per variable, renaming have to be performed. But thanks to the dominance property this can be easily achieved using a DFS traversal of the dominance tree: 
-during the traversal one just have to keep track for each variable, of its nearest dominating definition.
-This gives the following pseudo-code for variable renaming:
+To obtain a code with a static single assignment per variable, it is necessary to perform variable renaming. Because of the dominance property outlined above,
+renaming can be easily achieved using a DFS traversal of the dominance tree.
+During the traversal, for each variable $v$, it is necessary to remember its nearest dominating definition.
+This gives the following pseudo-code for the variable renaming algorithm:
 \begin{verbatim}
 proc renaming:
 // rename variable def and use to have one definition per variable
@@ -78,7 +134,10 @@ proc v.update_reachingDef(o):
   v.reachingDef:=rd
 \end{verbatim}
 
-As detailed and explained further, this simple algorithm ends up with a SSA form that is minimal (with the meaning given by Cytron et al.), that could be pruned (some dead \phiops\ are unnecessarily inserted), that is conventional (the transformation that renames back all $\phi$-related variables into a unique representative one, and removes all \phiops\ is a correct SSA-destruction algorithm), and has the dominance property (each variable use is dominated by its unique definition).
+As detailed and explained further \emph{(in Philip's chapter?)}, this simple algorithm constructs programs in a SSA form that is \textit{minimal} (with the meaning given by Cytron et al.).
+The SSA code could be \textit{pruned} (some dead \phiops\ are unnecessarily inserted).
+It is \textit{conventional} SSA (the transformation that renames back all $\phi$-related variables into a unique representative one, and removes all \phiops\ is a correct SSA-destruction algorithm).
+Finally, such SSA has the \textit{dominance} property (each variable use is dominated by its unique definition).
 
 \section{Turning general SSA into conventional/pruned/dominance property}
 
