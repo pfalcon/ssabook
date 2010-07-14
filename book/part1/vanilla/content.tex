@@ -299,6 +299,8 @@ must be placed at the loop header. Fabrice doesn't think this
 example is necessary, but it would be helpful for beginners, I feel...
 -jsinger}
 
+%% loop illustrates difference between static and dynamic single/multiple
+%% assignments -cck
 
 example 3. while loop? (iteration)
 
@@ -321,47 +323,172 @@ print(y)
 
 \section{Comparison with Classical Data Flow Analysis}
 
-\textit{FIXME - still need to redraft this section...}
+% Very simple. Discuss lattice-based data flow analysis.
+% Propagating facts around control-flow points in a CFG.
 
-Very simple. Discuss lattice-based data flow analysis.
-Propagating facts around control-flow points in a CFG.
+Data flow analysis collects information about programs
+in order to make optimizing code transformations.
+During actual program execution, information flows between
+variables. Static analysis captures
+this behaviour by propagating \textit{abstract} information,
+or data flow facts,
+using an operational representation of the 
+program such as the CFG. This is the approach used in 
+classical data flow analysis.
 
-Talk about SSA simplification - rename whenever data flow
-facts can change (for a certain class of data flow problems?)
-so, can associate facts directly with names, rather than with
-name at point.
-Plain SSA - rename at variable definitions - so any data flow
-analysis where data flow properties change only with definitions
-(e.g. constant propagation) OK. Other data flow properties may 
-change at other points - can still fit these neatly into the SSA
-analysis framework by inserting additional pseudo-definitions
-to rename variables. examples? (forward pointers).
+Often, data flow information can be propagated more efficiently
+using a \textit{functional}, or \textit{sparse},
+representation of the program such 
+as SSA.
+% Information that are only related to values can be efficiently 
+% propagated using a more functional representation of the program
+% along a more sparse evaluation graph (such as SSA).
+When a program is translated into SSA form,
+variables are renamed at definition points.
+For certain data flow problems (e.g.\ constant propagation)
+this is exactly the set of program points where data flow
+facts may change.
+Thus it is possible to associate data flow facts directly with 
+variable names, rather than
+maintaining a vector of data flow facts, indexed over all variables
+at each program point.
+% Talk about SSA simplification - rename whenever data flow
+% facts can change (for a certain class of data flow problems?)
+% Plain SSA - rename at variable definitions - so any data flow
+% analysis where data flow properties change only with definitions
+% (e.g. constant propagation) OK. 
+For other data flow problems, properties may 
+change at points that are not variable definitions.
+These problems can be accommodated in a sparse analysis framework
+by inserting additional pseudo-definition functions at appropriate 
+points
+to induce additional variable renaming. \emph{FIXME - forward pointers to
+appropriate chapters?}
 
 
-\textit{FIXME - the following text is from Fabrice - need
-to integrate with this section.}
+% Variables carry values.
+% Analysis compute diverse information about those values.
+% For engineering purposes, it is good to have one
+% name/variable per different value and to store
+% the value/information on the variable.
+% A not very efficient alternative is to store the information
+% for each couple (prog.point, variable) e.g. data flow analysis
+% on the CFG.
+% When the computed info depends only on variable definitions this
+% leads to have one variable per def i.e. SSA.
 
-Compiler performs analysis and transformations.
-Variables carry values.
-Analysis compute diverse information about those values.
-For engineering purposes, it is good to have one
-name/variable per different value and to store
-the value/information on the variable.
-A not very efficient alternative is to store the information
-for each couple (prog.point, variable) e.g. data flow analysis
-on the CFG.
-When the computed info depends only on variable definitions this
-leads to have one variable per def i.e. SSA.
-Program execution make the information flow from
-one variable to another. Static analysis captures
-this behaviour by statically propagating information.
-This can be done using an operational representation of the 
-program along the CFG. 
-Information that are only related to values can be efficiently 
-propagated using a more functional representation of the program
-along a more sparse evaluation graph (such as SSA).
+The rest of this section presents a trivial example
+data flow analysis: 
+\textbf{non-zero value analysis}. 
+For each variable in a program, the aim is to determine statically whether
+that variable can contain a zero integer value at runtime.
+Figure \ref{fig:part1-vanilla-nonzerolattice} shows the lattice of 
+data flow facts. The analysis will assign an abstract value from this lattice
+to each variable at each point in the program text.
 
-\textit{end of Fabrice's comment}
+\begin{figure}
+\begin{center}
+\includegraphics[scale=0.6]{zero_lattice.png}
+\end{center}
+\caption{\label{fig:part1-vanilla-nonzerolattice}Lattice of data flow facts
+  for non-zero value analysis}
+\end{figure}
+
+Figure \ref{fig:part1-vanilla-cfgexample}(a) shows an example program CFG.
+The full control flow structure of the program is given, however
+it only shows definition
+statements relating to variable $x$.
+Figure \ref{fig:part1-vanilla-cfgexample}(b) shows the SSA version of this
+example program. Full details of the SSA construction algorithm are given in 
+Chapter \emph{FIXME - 3}. For now, it is sufficient to see that:
+\begin{enumerate}
+\item Integer subscripts have been used to rename
+variable $x$ from the original program.
+\item We have assumed an implicit definition of $x_0$ at the entry point of
+  the program.
+\item A $\phi$-function has been
+inserted at the appropriate control-flow merge point where multiple reaching
+definitions of $x$ converged in the original program.
+\end{enumerate}
+
+
+\begin{figure}
+\begin{center}
+\includegraphics[scale=0.3]{cfg_example.png}
+%
+\includegraphics[scale=0.3]{ssa_example.png}
+\end{center}
+\caption{\label{fig:part1-vanilla-cfgexample}Example control flow graph for
+  non-zero value analysis, only showing relevant definition statements for
+  variable x, in both (a) non-SSA and (b) SSA form.}
+\end{figure}
+
+
+With classical data flow analysis on the CFG in Figure
+\ref{fig:part1-vanilla-cfgexample}(a),
+we would compute information about variable $x$ for each of the six nodes
+in the CFG, using suitable data flow equations.
+This might give results such as those shown in Table
+\ref{tab:part1-vanilla-cfgres}.
+
+\begin{table}
+\begin{center}
+\begin{tabular}{l|l} \hline
+CFG node & abstract value of $x$ \\ \hline
+1 & undefined \\
+2 & undefined \\
+3 & undefined \\
+4 & is 0 \\
+5 & not 0 \\
+6 & maybe 0 \\ \hline
+\end{tabular}
+\end{center}
+\caption{\label{tab:part1-vanilla-cfgres}Results of the CFG data flow analysis}
+\end{table}
+
+Using SSA-based data flow analysis on Figure 
+\ref{fig:part1-vanilla-cfgexample}(b),
+we compute information about each variable based on a simple
+analysis of its definition statement. This gives us four data flow facts,
+one for each SSA version of variable $x$, as shown in Table
+\ref{tab:part1-vanilla-ssares}.
+
+\begin{table}
+\begin{center}
+\begin{tabular}{l|l} \hline
+SSA variable & abstract value \\ \hline
+$x_0$ & undefined \\
+$x_1$ & is 0 \\
+$x_2$ & not 0 \\
+$x_3$ & maybe 0 \\ \hline
+\end{tabular}
+\end{center}
+\caption{\label{tab:part1-vanilla-ssares}Results of the SSA data flow
+  analysis}
+\end{table}
+
+
+This illustrates several key advantages of the SSA-based analysis.
+First, data flow
+\textit{information propagates directly}
+from definition statements to uses, via
+the def-use links implicit in the SSA naming scheme. 
+In contrast, the 
+classical data flow framework 
+propagates information throughout the program,
+including points such as node 2 where the information 
+about $x$ does not change, or is not relevant.
+Second, the results of the SSA data flow analysis are
+\textit{more succinct}.
+There are four data flow facts (one for each SSA version of $x$)
+versus six facts for the non-SSA program (one fact about variable $x$
+per CFG node).
+
+Part II 
+\emph{FIXME - forward ref}
+of this book gives a more comprehensive treatment of 
+SSA-based data flow analysis.
+
 
 %%%%%%%%%%%%%%%%
 
