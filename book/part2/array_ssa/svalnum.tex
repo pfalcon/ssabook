@@ -1,15 +1,12 @@
 
 In this section, we show how the heap arrays of Extended Array SSA form
-reduce questions of pointer analysis questions regarding array indeces.
+reduce questions of pointer analysis questions regarding array indices.
 In particular, we show how global value numbering and allocation
 site information can be used to efficiently 
 compute
 {\it definitely-same} ($\DS$) and {\it definitely-different}
 ($\DD$) information for 
 heap array indices.
-For simplicity, the
-$\DS$ and $\DD$ analyses described in this section are limited in
-scope to scalar references.
 
 As an example, consider the following Java source
 code fragment annotated with heap array accesses:
@@ -33,100 +30,23 @@ all program executions, and 2)
 object references $q$ and $r$ are distinct (definitely different) in
 all program executions. 
 
-For a program in SSA form, we 
-say that $\DS(a,b) =
-\mbox{\it true}$ if and only if variables
-$a$ and $b$ are known to have exactly
-the same value
-at all points that are
-dominated by the definition of $a$ and dominated by the definition of $b$.
-Analogous to $\DS$, $\DD$ denotes a ``definitely-different'' binary
-relation \ie\ $\DD(a,b) = \mbox{\it true}$ if and only if $a$ and
-$b$ are known to have distinct (non-equal) values
-at all points that are
-dominated by the definition of $a$ and dominated by the definition of $b$.
-
-\REM{
-We now discuss the compile-time
-computation of the $\DS$ and $\DD$ relations for symbolic
-indices. 
-Given scalar variables $I_1$ and $I_2$
-in SSA form, only one of the following three cases
-is possible:
-\begin{center}
-\parbox{3.0in}{
-\begin{programa}
-$\DS$($I_1$, $I_2$) = FALSE; $\DD$($I_1$, $I_2$) = FALSE \\
-$\DS$($I_1$, $I_2$) = TRUE; $\DD$($I_1$, $I_2$) = FALSE \\
-$\DS$($I_1$, $I_2$) = FALSE; $\DD$($I_1$, $I_2$) = TRUE \\
-\end{programa}
-}
-\end{center}
-The first case is the most conservative solution.  In the absence of
-any other knowledge, it is always correct to state that
-$\DS(I_1,I_2) = \mbox{\it false}$ and $\DD(I_1,I_2) = \mbox{\it
-false}$.
-}
-
-The problem of determining if two symbolic index values are the same
-is equivalent to the classical problem of {\it global value
-numbering}~\cite{AlWZ88,Much97,RoWZ88}. 
-We use the notation $\V(i)$ to denote the value number of SSA 
+As before, we use the notation $\V(i)$ to denote the value number of SSA 
 variable $i$.  Therefore, if $\V(i) = \V(j)$, then 
 $\DS(i,j)$ = {\it true}.  
-\REM{
-As mentioned
-earlier, our approach is to compute the $\DS$ relation only for scalar
-variables as a prepass to the constant propagation and scalar
-replacement analyses.  Since our framework use Array SSA form, it is
-most convenient to use an efficient scalar global value numbering
-algorithm based on SSA form (such as the algorithm in
-\cite{AlWZ88}) for this purpose. 
-}
 For the code fragment above, the  statement, {\tt p~=~r},
 ensures that $p$ and $r$ are given the same value number 
 (\ie\ $\V(p) = \V(r)$), so that $\DS(p,r)$ = {\it true}.
 
-
-\REM{ 
-For the three-address code in figure~\ref{fig:java}, we would obtain the
-following partitioning after global value numbering of scalars:
-$$
-\{ p, r \},
-\{ a \},
-\{ i \},
-\{ j \},
-\{ q \},
-\{ t1 \}, \{ t2 \}, \{ t3 \}, \{ t4 \}, \{ t5 \},
-\{ t1 \}, \{ t2 \}, \{ t3 \}, \{ t4 \}, \{ t5 \},
-\{ t6 \}, \{ t7 \}, \{ t8 \}, \{ t9 \}, \{ t10 \}
-$$
-}
-In general, the problem of
-computing $\DD$ is more complex than value numbering.  Note that $\DD$, unlike $\DS$, is not
-an equivalence relation because $\DD$ is not transitive.  If $\DD(a,
-b)=\mbox{\it true}$ and $\DD(b, c)=\mbox{\it true}$, it does not imply
-that $\DD(a, c)=\mbox{\it true}$. 
-\REM{
-We can leverage past work on data dependence
-analysis~\cite{Wolf89} to efficiently
-identify many simple but common cases for
-which $\DD$ can be evaluated to {\it true} for program array
-subscript expressions.
-For example, it is clear
-that $\DD(i, i+1) = \mbox{\it true}$, and that $\DD(i, 0) = \mbox{\it
-true}$ if $i$ is a loop index variable that is known to be $\geq 1$.
-}
-
-For object references, we use allocation-site information to compute
-the $\DD$ relation.  
-In particular, we rely on two observations:
+The problem of
+computing $\DD$ for object references is more complex than value numbering, and relates
+to the classical work on pointer alias analysis.  We outline a simple approach below, which can be replaced by more sophisticated techniques that may be available.
+We rely on two observations related to allocation-site information:
 \begin{enumerate}
 \item Object references that contain the results of distinct allocation-sites
 must be different.
 \item An object reference containing the result of an allocation-site
 must be different from any object reference 
-that occurs at a program point that dominates the allocation site.
+that occurs at a program point that dominates the allocation site in the control flow graph.
 (As a special case, this implies that the result of an allocation site
 must be distinct from all object references that are method parameters.)
 \end{enumerate}
@@ -284,15 +204,12 @@ represent $\DD$ information for integer-valued array indices???
 
 }
 
-In the remainder of the chapter, we assume that the index of a heap
-array is (in general) a vector whose size matches the rank of the heap
-array \eg\ an index into a one-dimensional heap array $\HA^x$ will be
-a vector of size 1 (\ie\ a scalar), and an index into a
-two-dimensional heap array $\Hb$ will be a vector of size 2.  (For
-Java programs, heap arrays will have rank $\leq 2$ since all program
-arrays are one-dimensional.)  Given a vector index $\vec{k} = (k_1,
-\ldots)$, we will use the notation $\V(\vec{k})$ to represent a vector
-of value numbers, $(\V(k_1), \ldots)$.  Thus, $\DS(\vec{j}, \vec{k})$
+In the remainder of the chapter,
+we will use the notation $\V(\vec{k})$ to represent a vector
+of value numbers, $(\V(k_1), \ldots)$, 
+given a vector index $\vec{k} = (k_1,
+\ldots)$.
+Thus, $\DS(\vec{j}, \vec{k})$
 is {\it true} if and only if vectors $\vec{j}$ and $\vec{k}$ have the
 same size, and their corresponding elements are definitely-same \ie\
 $\DS(j_i,k_i )= \mbox{\it true}$ for all $i$.  Analogously,
