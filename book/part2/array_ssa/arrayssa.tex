@@ -1,53 +1,22 @@
 The goal of Array SSA form is to provide the same benefits for arrays
 that traditional SSA provides for scalars.
-Array SSA form was first introduced in \cite{KnSa98}.  In that work,
-Array SSA form is made manifest at run-time to enable
-parallelization. In this chapter,  we show how Array SSA form can be used at
-compile-time for static analysis.
-
-\REM{
-Although both uses require use-def relationships at the element level,
-the requirements for these two uses differ significantly.
-
-\begin{itemize}
-
-\item At run-time  {\em precise} information for each {\em
-dynamic} reference is required.
-
-\item At compile-time {\em conservative} information for each 
-{\em static} reference is required.
-
-\end{itemize}
-
-These distinct requirements lead to distinct versions of the Array SSA
-form.  
-}
-
-Section~\ref{sec:full} reviews the {\it full Array SSA form} introduced
-in \cite{KnSa98}; full Array SSA form provides exact use-def information 
+Section~\ref{sec:full} summarizes the {\it full Array SSA form} introduced
+in \cite{KnSa98}.  Full Array SSA form provides exact use-def information 
 at run-time for each dynamic read access of an array element.
 Section~\ref{sec:partial} introduces {\it partial Array SSA form}
-as a new representation for static analysis; partial Array SSA form provides
+as a  representation for static analysis; partial Array SSA form provides
 conservative use-def information at compile-time for each static
 read access of an array element.
 Throughout this chapter,
 we assume that all array operations in the input program are
 expressed as reads and writes of individual array elements.  The
-extension to more complex array operations (\eg\ on array sections
-in Fortran~90) is straightforward, and has been
+extension to more complex array operations (\eg\ on array sections or whole arrays)
+has been
 omitted to simplify the presentation of this chapter.
 
 \subsection{Full Array SSA Form}\label{sec:full}
-This section reviews traditional scalar SSA form introduced in 
-\cite{CFRWZ91a}, as well as the
-full Array SSA form introduced
-in \cite{KnSa98}.  For convenience, Array SSA form is first presented
-for scalar variables and then for array variables.
-
-
-% This text came from scalar.tex
-
-The salient properties of traditional scalar
+As a reminder, 
+the salient properties of traditional scalar
 SSA form are as follows~\cite{CFRWZ91a}:
 \begin{enumerate}
 
@@ -62,6 +31,11 @@ traversed.
 \item Each use refers to exactly one name generated from either
 of the two rules above.
 \end{enumerate}
+It is important
+to note that the $\phi$ function in traditional SSA form statement,  $S_3 := \phi (S_1,S_2)$,
+is not a pure function of $S_1$ and $S_2$ because its value
+depends on the control flow path taken to reach the statement.
+
 
 
 \begin{figure}%[p]
@@ -79,25 +53,6 @@ of the two rules above.
 \caption{Control Flow with Scalar Definitions}
 \label{scalar-source}
 \end{figure}
-
-
-\begin{figure}%[p]
-\begin{center}
-\parbox{3.0in}{
-\begin{programa}
-\Ta  if $(C)$ then \\
-\Tb   $S_1 := \ldots$ \\
-\Ta  else  \\
-\Tb   $S_2 := \ldots$ \\
-\Ta  end if \\
-\Ta  $S_3 := \phi (S_1,S_2)$
-\end{programa}
-}
-\end{center}
-\caption{Traditional SSA form}
-\label{trad-ssa}
-\end{figure}
-
 
 \begin{figure}%[p]
 \begin{center}
@@ -121,25 +76,6 @@ of the two rules above.
 \label{our-phi}
 \end{figure}
 
-For example, traditional
-SSA form converts the code in Figure~\ref{scalar-source}
-to that in Figure~\ref{trad-ssa}.  The $S_3 := \phi (S_1,S_2)$ statement
-defines $S_3$ as a new name that represents the merge of definitions
-$S_1$ and $S_2$.  It is important
-to note that the $\phi$ function in traditional SSA form
-is not a pure function of $S_1$ and $S_2$ because its value
-depends on the path taken through the {\tt if} statement. 
-This path is unknown until runtime and may vary with each dynamic execution
-of this code.  
-\REM{
-It has been suggested~\cite{CFRWZ91a} that the computation of
-$S_3 := \phi (S_1,S_2)$ 
-can be accomplished by inserting copy statements $S_3 := S_1$ and $S_3 := S_2$
-as shown in figure~\ref{trad-phi}.  However, doing so would destroy the
-static single assignment property because of multiple
-assignments to $S_3$.
-}
-
 The full Array SSA form uses $\Phi$ operators instead of $\phi$
 functions used by traditional SSA form. The semantics of the $\Phi$
 operator can be defined as a pure function.  
@@ -152,24 +88,9 @@ $\Phi$
 operator. Each
 $\phi$ function in traditional SSA form such as $\phi(S_1,S_2)$ is
 rewritten as $\Phi(S_1,@S_1,S_2,@S_2)$.  For each static definition
-$S_k$, its @ variable $@S_k$ identifies (as described below)
-the most recent ``timestamp'' {\it
+$S_k$, its @ variable $@S_k$ identifies
+the most recent {\em iteration vector} (``timestamp'') {\it
 at} which $S_k$ was modified by this definition.
-
-For an {\it acyclic} control flow graph, a static definition
-$S_k$ may execute either zero times or one time.
-These two cases can be simply encoded as
-$@S_k = \False$ and $@S_k = \True$ to indicate whether
-or not definition $S_k$ was executed.
-For a control flow graph with {\it cycles} (loops), a static
-definition $S_k$
-may execute an arbitrary number of times.  In general,
-we need more detailed
-information for the $@S_k = \True$ case
-so as to distinguish among different
-dynamic execution instances of static definition $S_k$.
-Therefore, we set $@S_k$ to contain the dynamic {\it iteration vector} at
-which the static definition $S_k$ was last executed.
 
 The {\it iteration vector}~\cite{Wolf89,Sark91} of a 
 static 
@@ -178,7 +99,7 @@ set of loops
 that enclose the definition.  
 We do
 not require that the surrounding loops be structured
-counted loops (\ie\ like  Fortran {\sc do} loops) or that the
+counted loops or that the
 surrounding loops be tightly nested.  
 Our only assumption in full Array SSA form
 is that
@@ -189,14 +110,6 @@ for partial Array SSA form.)
 For single-entry loops, we know that each def executes at most
 once in a given iteration of its surrounding loops, hence the iteration vector
 serves the purpose of a ``timestamp''.
-All structured loops (e.g., {\tt do}, {\tt while},
-{\tt repeat}-{\tt until}) are single-entry even when they
-contain multiple exits; also, most
-unstructured loops (built out of {\tt goto} statements)
-found in real programs are single-entry as well.
-In the worst case, 
-a multiple-entry  loop can be transformed into multiple
-single-entry loops by {\it node splitting}~\cite{Hech77,AhSU86}.
 
 Let $n$ be the number of loops that
 enclose a given definition.  For convenience, we treat the outermost
@@ -209,24 +122,10 @@ $\vec{i} = (i_1, \ldots, i_n)$, which is
 an 
 $n$-tuple of iteration numbers
 one for each enclosing loop. 
-\REM{
-Array SSA form can be used either at run-time as discussed in
-\cite{KnSa98} or for static analysis, as in the constant propagation
-algorithms presented in this chapter.  In this section, 
-we explain the meaning of @
-variables as if they are computed at run-time. } 
-%The existence of valid
-%semantics for @ variables as computed at run-time justifies the
-%Partial Array SSA form used for static analysis.
 We assume that all @ variables, $@S_k$, are initialized to the empty
 vector, $@S_k := (\;)$, at the start of program execution.  For each
 real (non-$\Phi$) definition of a renamed scalar, $S_k$, we assume that a statement of the
-form $@S_k := \vec{i}$ is inserted\footnote{ It may appear that the @ variables do not satisfy the
-static single assignment property because each $@S_k$ variable has two
-static definitions, one in the initialization and one at the real
-definition of $S_k$.  However, the initialization def is executed only
-once at the start of program execution and is treated as a special-case
-initial value rather than as a separate definition.} immediately after definition
+form $@S_k := \vec{i}$ is inserted immediately after definition
 $S_k$, where $\vec{i}$
 is the current iteration vector for all loops that surround
 $S_k$. 
@@ -243,8 +142,13 @@ form for the program in figure~\ref{scalar-source}.
 Note that @ variables $@S_1$ and $@S_2$ are explicit arguments
 of the $\Phi$ operator.
 In this example of acyclic code, there are only two possible
-values for each @ variable --- the empty vector, $(\;)$, and the unit vector,
-$(1)$, which correspond to $\False$ and $\True$ respectively.
+values for each @ variable --- the empty vector, $(\;)$, and the unit vector\footnote{The astute reader may have observed that the @ variables do not satisfy the
+static single assignment property because each $@S_k$ variable has two
+static definitions, one in the initialization and one at the real
+definition of $S_k$.  However, the initialization def is executed only
+once at the start of program execution and is treated as a special-case
+initial value rather than as a separate definition.},
+$(1)$.
 
 
 
@@ -354,65 +258,9 @@ $(1)$, which correspond to $\False$ and $\True$ respectively.
 }
 
 Figure~\ref{fig:for} shows an example for-loop and its conversion to
-Array SSA form.  Because of the
-presence of a loop, the set of possible
-values for an @ variable becomes unbounded, rather than being limited to $\False$ or $\True$.  For example, 
-$@S_1$ may equal =$(100)$ on exit from the loop.
-As discussed below, $@S_1$ and $@S_2$ are still explicit arguments
-of the $\Phi$ operator; their iteration vector values
-are used to evaluate the $\Phi$ operator at run-time.
-Note that the initialization of @ variables at the top of 
-figure~\ref{fig:for} is only necessary for @ variables
-that are associated with real (non-$\phi$) definitions \ie\
-for $@S$, $@S_1$, $@S_2$.
-
-\newpage
-
-\REM{
-This leads us to the notion of {\it dynamic definitions}.
-A scalar variable may be defined multiple
-times during the execution of the program.  Each of these is called a
-{\em dynamic definition} of the variable. A dynamic definition of a variable is
-specified by
-\begin{itemize}
-
-\item a specific static definition and
-
-\item a point in the iteration space of that definition.
-
-\end{itemize}
-
-
-Consider the dynamic definitions for variable $S$
-in Figure~\ref{fig:for}. The two
-non-$\Phi$ static definitions of $S$ are $S_1$ and $S_2$.
-Consider, for example, a condition $C$ in figure~\ref{fig:for} that
-checks if the value of $i$ is even.
-In this case, definition $S_1$ is executed in every iteration
-and definition $S_2$ is executed only in iterations $2, 4, 6, \ldots$.
-These are all dynamic definitions. 
-$@S_1$ and $@S_2$ will be set to $(1), (2), (3), (4), \ldots$ and
-$(2), (4), \ldots$ respectively as these dynamic definitions are performed.
-
-For a given variable and execution
-point in the program, the last dynamic definition to have
-executed
-is the one that is
-{\em visible}.  Dynamic definitions executed earlier are {\em
-occluded} by subsequent ones.  Each variable has at most one visible dynamic 
-definition at any time.  
-%This is the reason why 
-%a max function was used to combine @ array values at
-%a $\Phi$ function.
-The role of $\Phi$ operators is to identify
-the visible dynamic definition of the variable at specified program points.
-}
-
-
-
-
+Array SSA form.  
 Given a $\Phi$ operator,
-$S_3 := \Phi(S_2, @S_2, S_1, @S_1)$ (\eg\ as in figure~\ref{fig:for}), 
+$S_3 := \Phi(S_2, @S_2, S_1, @S_1)$,
 the value of $S_3$ is given by the following 
 conditional expression (where $\succeq$ denotes a lexicographic greater-than-or-equal
 comparison of iteration vectors):
@@ -434,58 +282,6 @@ No initialization is required
 for an @ variable for a $\Phi$ definition
 because its value is completely determined by other @ variables.
 
-Consider, for example, an instance of condition $C$ in figure~\ref{fig:for} that returns $\True$ if and only if the value of $i$ is even.
-In this case, definition $S_1$ is executed in every iteration
-and definition $S_2$ is executed only in iterations $2, 4, 6, \ldots$.
-For this ``even-value'' branch condition, the final values of $@S_1$ and $@S_2$ are both equal to
-$(100)$ if $m=100$.  Since these values satisfy the condition
-$@S_2 \succeq @S_1$, 
-the conditional expression will yield $S_3 = S_2$.
-
-Consider another execution of the for-loop in figure~\ref{fig:for} in
-which condition $C$ evaluates to $\False$ in each iteration of the for
-loop.  For this execution, the final values of $@S_2$ and $@S_1$ will be
-the empty vector $(\;)$ and $(100)$ respectively.  Therefore, 
-$@S_2 \prec @S_1$, and the conditional expression for the
-$\Phi$ operator will yield $S_3 = S_1$
-for this execution.
-
-
-\REM{
-The above description outlines how @ variables and $\Phi$ operators 
-can be computed at run-time.  However, if Array SSA form is used
-for static analysis, then no run-time 
-overhead is incurred due to the @ variables and $\Phi$ operators.  Instead,
-the @ variables and $\Phi$ operators
-are inserted in the compiler intermediate representation prior 
-to analysis, and then removed after the  program properties
-of interest
-have been discovered by static analysis.
-}
-
-\REM{
-A major benefit of the $\Phi$ operator being a pure function in Array
-SSA form is that $\Phi$ operators can be simplified just like normal
-operations by using techniques such as copy propagation and dead code
-elimination.  As an illustration, figure~\ref{fig:nested-if} shows an
-example program containing three nested {\tt if} constructs.
-Traditional SSA form requires that a $\phi$ function be placed after
-each {\tt end~if} statement in this program, as shown in
-figure~\ref{fig:nested-if}.  However, the presence of @ variables
-allows the Array SSA form to be simplified so that it contains only a
-single $\Phi$ operator, as shown at the bottom of
-figure~\ref{fig:nested-if}.  This simplification can lead to more
-efficient analysis compared to analysis algorithms based on
-traditional SSA form.
-}
-
-% This text came from the first subsection in array.tex
-
-%This discussion of Array SSA form applied to scalars provides the
-%foundation for its use for arrays since the application to scalars is
-%simply a degenerate case of the application to arrays.
-
-
 
 \begin{figure}%[p]
 \begin{center}
@@ -494,7 +290,7 @@ traditional SSA form.
 \mbox{n1:}
 \Tb $A[*] := \mbox{\rm initial value of $A$}$\\
 \Tb$i := 1$ \\
-\Tb $C := i\ <\ n $\\
+\Tb $C := i\ <\ 2 $\\
 \Tb if $C$ then \\
 \mbox{n2:}\Tc $k := 2\ *\ i$ \\
 \Tc $A[k] := i$\\
@@ -557,18 +353,17 @@ follows:
 
 All array variables are renamed so as to 
 satisfy the static single assignment property \ie\ each
-definition of an array is assigned a unique name.  Analogous to traditional scalar SSA
+definition of an array element is assigned a unique name.  Analogous to traditional scalar SSA
 form, control $\Phi$ operators are introduced to generate new names
 for merging two or more prior definitions, and to ensure that each use
-refers to exactly one ($\Phi$ or non-$\Phi$) definition.
-As discussed next in item~\ref{def:phi}, definition $\Phi$ operators are introduced to deal with preserving (non-killing) definitions of arrays.
+refers to exactly one definition.
 
 \item {\bf Definition $\Phi$'s:}
 \label{def:phi}
 
 
-A new {\it definition} $\Phi$ operator is 
-introduced in Array SSA form to deal with ``non-killing'' definitions
+A  {\it definition} $\Phi$ operator is 
+introduced in Array SSA form to deal with preserving (``non-killing'') definitions
 of arrays.  Consider $A_0$ and $A_1$, two renamed 
 arrays that originated from the same array variable in the source program
 such that $A_1[k] := \ldots$
@@ -579,12 +374,6 @@ A definition $\Phi$ of the form $A_2 := d\Phi(A_1, @A_1, A_0, @A_0)$
 is inserted immediately after the definition for $A_1$ and $@A_1$.
 (We use the notation $d\Phi$ when we want to 
 distinguish a definition $\Phi$ operator from a control $\Phi$ operator.)
-Any subsequent use of the original program
-variable $A$ (prior to an
-intervening def) will now refer to $A_2$ rather than $A_1$.  
-An example of a definition $\Phi$ can be seen in the definition for
-$A_2$ in figure~\ref{fig:full-form}.
-
 Since definition $A_1$ only updates one element of $A_0$, $A_2$ represents
 an element-level merge of arrays $A_1$ and $A_0$.
 Definition $\Phi$'s did not need to be
@@ -597,26 +386,13 @@ One consequence of renaming arrays is that
 each (renamed) array variable, $A_j$, in Array SSA form has an associated 
 @ variable, $@A_j$, such that $@A_j$ has
 the same shape (rank and dimension sizes) as array variable $A_j$.
-Each element of an array-valued @ variable contains an iteration 
-vector, just like a scalar @ variable.
 Each update of a single array element of the form $A_j[k] := \ldots$, 
 is followed by the statement of the form $@A_j[k] := \vec{i}$
 where $\vec{i}$ is the iteration vector for the loops surrounding
 the definition of $A_j$.
-(For an example, see the statement $@A_1[k] := (1)$
-in figure~\ref{fig:full-form}.)
-
 Thus, an array-valued @ variable, $@A_j$,  
 can record a separate iteration vector for
 each element that is assigned by definition $A_j$.
-For each array-valued @ variables associated with
-real (non-$\Phi$) definition, all of its elements are assumed to be initialized to the empty vector, $(\;)$.
-As mentioned earlier,
-no initialization is required
-for an @ array for a $\Phi$ definition (such as $@A_2$ and $@A_3$
-in figure~\ref{fig:full-form})
-because its value is completely determined by other @ arrays.
-
 
 \item {\bf Array-valued  $\Phi$ operators:}
 \label{array:phi}
@@ -626,12 +402,7 @@ a $\Phi$ operator
 for array variables must also return an
 array value.  Consider a (control or definition) $\Phi$ operator in
 a statement of
-the form, $A_2 := \Phi(A_1, @A_1, A_0, @A_0)$.  (For an example,
-see the $d\Phi$ operator 
-in figure~\ref{fig:full-form}.)
-The result of the $\Phi$ operator is a
-a merge of arrays $A_1$ and $A_0$.  The semantics of
-this merge can be specified exactly
+the form, $A_2 := \Phi(A_1, @A_1, A_0, @A_0)$. Its semantics can be specified exactly
 by the following conditional expression
 for each element, $A_2[j]$, in the result array $A_2$:
 \begin{eqnarray*}
@@ -642,9 +413,6 @@ A_2[j] & = &
 \mbox{\bf end if}
   \end{array}
 \end{eqnarray*}
-Note that this conditional expression uses a lexicographic
-comparison ($\succeq$) of @ values just as
-in the scalar case.
 The key extension over the scalar case is that the conditional expression
 specifies an element-level merge of arrays $A_1$ and $A_0$.
 \end{enumerate}
@@ -654,36 +422,13 @@ specifies an element-level merge of arrays $A_1$ and $A_0$.
 The previous section described full Array SSA form with @ variables
 and $\Phi$ operators that can be evaluated at run-time.
 This section introduces {\it partial Array SSA form}
-as a new representation for static analysis.  Partial Array SSA form 
+as a  representation for static analysis.  Partial Array SSA form 
 is a compile-time approximation of full Array SSA form that provides
 conservative use-def information for each static
 read access of an array element.
 
-\REM{
-However, static analyses such as sparse constant propagation algorithm
-presented here, rely on conservative assumptions about runtime
-behavior.  For such analyses we require that we know all possible
-sources for the value during any execution, not, as in the run-time
-case, a specific source for the value at a specific point in the
-execution.
-}
-
-\REM{
-Recall that the run-time semantics of the $\Phi$ operator in the
-statement, $A_2 := \Phi(A_1, @A_1, A_0, @A_0)$, is
-specified by the following conditional expression:
-\begin{eqnarray*}
-A_2[j] & = &
-  \begin{array}{llll}
-\mbox{\bf if} & @A_1[j] \succeq @A_0[j] & {\bf then} & A_1[j] \\
-\mbox{\bf else} & A_0[j] \\
-\mbox{\bf end if}
-  \end{array}
-\end{eqnarray*}
-}
-
 Consider a statement of the form, $A_2 := \Phi(A_1, @A_1, A_0, @A_0)$,
-that contains a (control or definition) $\Phi$ operator.
+that contains a $\Phi$ operator.
 A static analysis will need to 
 approximate
 the computation of this $\Phi$ operator by 
@@ -694,8 +439,6 @@ are compile-time approximations of their run-time values.
 We use the notation $\L(V)$ to denote the lattice element for 
 a scalar or array
 variable $V$.
-(Details of the lattice representation assumed in this work
-are presented in section~\ref{sec:arraylattice}.)
 Therefore, the 
 statement, $A_2 := \Phi(A_1, @A_1, A_0, @A_0)$, will (in general)
 be modeled by the data flow equation 
@@ -704,15 +447,9 @@ $\L(A_2) = \L_{\Phi}(\L(A_1), \L(@A_1), \L(A_0), \L(@A_0))$.
 Our first observation is that there is no extra information
 provided at compile-time by the @ variables
 for any static analysis that does not distinguish between reachable code
-and unreachable code (such as the sparse constant propagation
-algorithm in section~\ref{sec:sc}).
-If $A_1$ and $A_0$ are scalar variables, then the value of 
-$A_2 := \Phi(A_1, @A_1, A_0, @A_0)$
-either comes from $A_1$ or $A_0$.  Since all control flow paths are
-considered to be reachable, the @ variables do not provide any
-useful information at compile-time for scalar variables.  Therefore,
+and unreachable code.  In such cases,
 it is sufficient to model
-the above statement by
+$A_2 := \Phi(A_1, @A_1, A_0, @A_0)$ by
 a data flow equation of the form $\L(A_2) = \L_{\phi}(\L(A_1), \L(A_0))$
 that does not use lattice variables $\L(@A_1)$ and $\L(@A_0)$.
 For array variables, the only useful information
@@ -721,17 +458,11 @@ of which elements were updated by the assignment to array $A_1$.
 %The actual ``timestamp'' (iteration vector) for the assignment is not
 %relevant if all paths are considered to be reachable.
 However, as we will see in section~\ref{sec:arraylattice}, this information
-is anyhow included in the lattice value $\L(A_1)$ for array $A_1$. 
-Therefore, the lattice values for the @ variables, $\L(@A_1)$ and $\L(@A_0)$,
-do not provide any useful extra information, and it
-is sufficient to model the $\Phi$ statement by the
-data flow equation, $\L(A_2) = \L_{\phi}(\L(A_1), \L(A_0))$, for arrays
-as well.
+is also included in the lattice value $\L(A_1)$ for array $A_1$. 
 
 Our second observation is that
 a static analysis that needs to distinguish between unreachable
-code and reachable code (such as the conditional constant propagation
-algorithm in section~\ref{sec:scc}), can do so efficiently
+code and reachable code can do so efficiently
 by introducing {\it executable flags} for nodes and edges in the
 CFG (Control Flow Graph) as in \cite{WeZa91}.
 If executable flags are computed in the data flow analysis, then
@@ -743,53 +474,20 @@ the corresponding data flow equation (in the presence of unreachable code
 elimination) will be 
 $\L(A_2) = \L_{\Phi}(\L(A_1), X_{e1}, \L(A_0), X_{e0})$ where 
 $X_{e1}$ and $X_{e0}$ are the executable flags for edges $e1$ and $e0$.
-(Full details are
-presented in section~\ref{sec:scc}.)
+(Full details can be found in \cite{KnSa98b}.)
 
-
-\begin{figure}%[p]
-\begin{center}
-\parbox{3.0in}{
-\begin{programa}
-\mbox{n1:} 
-\Tb $A_0[*] := \mbox{\rm initial value of $A$}$\\
-\Tb $i := 1$ \\
-\Tb $C := i\ <\ n $ \\
-\Tb if $C$ then \\
-\mbox{n2:}
-\Tc $k :=  2\ *\ i$ \\
-\Tc $A_1[k] := i$\\
-\Tc $A_2 := d\phi(A_1, A_0)$\\
-\Tc print $A_2[k]$\\
-\Tb endif \\
-\mbox{n4:} 
-\Tb $A_3 := \phi(A_2, A_0)$\\
-\Tb print $A_3[2]$ 
-\end{programa}
-}
-\end{center}
-\caption{Conversion of program in figure \protect{\ref{fig:ssa-acyclic-array}} to Partial Array SSA Form}
-\label{fig:partial-form}
-\end{figure}
-
-
-
-In summary, we see that the @ variables need not be modeled in
-compile-time analysis of Array SSA form.  Hence, in {\it partial}
-Array SSA form, we drop the @ variables and use the
+Since @ variables need not be modeled for the
+compile-time analyses discussed in this chapter,
+we drop them and use the
 $\phi$ operator, $A_2 := \phi(A_1, A_0)$ instead of
-$A_2 := \Phi(A_1, @A_1, A_0, @A_0)$.
+$A_2 := \Phi(A_1, @A_1, A_0, @A_0)$ in {\it partial}
+Array SSA form.  
 A consequence of dropping @ variables is that partial Array
 SSA form does not need to deal with iteration
 vectors, and therefore does not require the control flow
 graph to be {\it reducible} as in full Array SSA form.
-
-As an example, figure~\ref{fig:partial-form} shows 
-the partial Array SSA form for the program
-in figure~\ref{fig:ssa-acyclic-array}.
 The use of $\phi$ operators without @ variables brings
 partial Array SSA form closer to traditional SSA form.
 The key difference is that partial Array SSA form still contains 
 renamed arrays and definition $\phi$ operators for updates to array elements.
-In the future, we may consider adding lattice elements for @ variables
-if there is any extra analysis benefit in doing so.
+
