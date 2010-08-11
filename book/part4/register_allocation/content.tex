@@ -12,53 +12,28 @@
 was still TODO macros: \the\todocount.^^J}\fi}
 
 
+\def\
 \def\ac#1{#1}
 \def\dom{\preceq}
 \def\ssa{SSA\xspace}
-\def\maxlive{Maxlive\xspace}
+\def\maxlive{\ensuremath{\mathrm{Maxlive}}\xspace}
 \def\irc{Iterated Register Coalescing\xspace}
 
+\graphicspath{{register_allocation/}{part4/register_allocation/}}
 
-\chapterauthor{Bouchez, Hack}
+% \chapterauthor{Bouchez, Hack}
 
-{\sl
-We will start by giving an overview and intuitive understanding why SSA helps 
-register allocation. Then we present the sub-problems of spilling and 
-coloring/coalescing, as two separate phases, under the light of SSA. Finally, 
-practical issues like register constraints and critical edge splitting are 
-discussed.
+Register allocation maps the variables of a program to 
+physical memory locations. The compiler determines the location for each variable and each program point.
+Ideally, as many operations as possible draw their operands from processor registers without loading them from memory before. 
+Due to the huge latency of the memory hierarchy (even loading from L1 cache takes 3--10 times longer than accessing a register), register allocation is one of the most important optimizations in a compiler. 
 
-%% Intro by Hack
-%We will start by giving an overview and intuitive understanding why SSA helps register allocation.
-%Then, we present the principal architecture of an SSA-based register allocator.
-
-%We discuss spilling, assignment, and coalescing in further detail and review the proposed techniques.
-%Finally, we present the corresponding complexity results for each phase.
-}
+However, there is only a small number of registers available in a CPU (usual values range from~8 to~128).
+Hence, the task of register allocation is not only assigning the variables to registers but also to figure out when which variables is stored to and loaded from memory (spilling).
+Furthermore, register allocation also has to deal with removing spurious copy operations (copy coalescing) inserted by several phases in the compilation process before and allocation restrictions that the instruction set architecture and the runtime system imposes (register targeting).
 
 
-\todo{Longer introduction}
-
-The goal of register allocation is to map the variables of a program to 
-physical memory locations. The compiler must indeed decide, in advance, in 
-which locations will be held the values necessary for the computations of the 
-program, and so for each instruction of the program. Registers are a very fast 
-memory, hence are preferred for holding these values directly needed by the 
-CPU. But there is a limited, small number of registers available in a 
-processor, for instance only 8 registers for the IA-32 architecture (X86, 32 
-bits), or 64 for the ST200, a Very Long Instruction Word (VLIW) processor.  On 
-the other hand, in the initial program representation and until very late in 
-the compiler back-end, values are stored in variables or temporaries, which are 
-unbounded in number.
-
-
-\todo{Explain reg-alloc = coloring, i.e., color = register.}
-
-
-\section{Why does SSA help for register allocation?}
-
-
-\subsection{Classical register allocation}
+\section{Introduction}
 
 {\sl
 \begin{itemize}
@@ -70,146 +45,125 @@ unbounded in number.
 \end{itemize}
 }
 
-Traditionally, register allocation schemes come in two flavors: based on 
-graph-coloring, for better results but more time and memory consuming, suitable 
-for off-line compilation; and based on ``linear scans,'' for easiness of the 
-scheme and quick compilation, suitable for Just-in-Time (JIT) compilation.  The 
-goal of any register allocation algorithm is to make the best use of registers 
-possible, i.e., minimizing the \emph{spilling} (storing variables to memory), and to 
-reduce data movements between registers by performing \emph{coalescing} (putting 
-variables linked by copy instructions in the same register).
+Register allocation is usually performed per procedure.
+A liveness analysis determines for each variable the program points where the variable is live.
+A variable is live at a program point if there exists a path in procedure on which the variable will be used later on and is not overwritten before that use.
+Hence, storage needs to be allocated for that variable; ideally a register.
+The set of all program points where a variable is live is called the \emph{live range} of the variable.
+The resource conflict of two variables is called \emph{interference} and is usually defined via liveness:
+Two variables interfere if (and only if) there exists a program point where they a simultaneously live\footnote{
+This definition of interference by liveness is an overapproximation.
+There are refined definitions that create less interferences.
+However, in this chapter we will restrict ourselves to this definition.
+}.
+The number of live variables at a program point is called the \emph{register pressure} at that program point. 
+The maximum register pressure over all program points in a procedure is called the register pressure of that procedure or \maxlive.
 
-\subsubsection{Spilling \& coalescing inter-dependence.}
-For all modern architectures, reducing the spilling is more important that 
-maximizing the coalescing, since loading or storing a variable in memory takes 
-more cycles than performing a register-to-register {\tt move} instruction. 
-However, the two optimisations are often performed at the same time (\todo{true 
-for linear-scan too?}) because they both depends on whether there is enough 
-registers for the variables or not. For instance, in traditional graph-coloring 
-register allocation, spilling allows to remove some node of the interference 
-graph, hopefully reducing the number of colors required. Conjointly, coalescing 
-two variables merges the corresponding nodes, which can have positive effects
-or negative effects: on the one hand, it will remove a copy in the program and 
-diminishes the degree of the nodes that are common neighbours, hence augmenting 
-their chances to be simplified (\todo{define simplification, or link to iterated 
-register coalescing?}), i.e., increasing the chances that the graph becomes 
-colorable; on the other hand, the created node will have more neighbours, hence 
-diminishing its chances to be simplified and augmenting its chances of being 
-spilled, in which case two variables are being spilled (the coalesced ones) 
-instead of just one, or even maybe none. 
+It is helpful to think of interference as an undirected \emph{interference graph:}
+The variables of the program are its nodes.
+To nodes are connected if they interfere.
+The set of variables live at some program point build a \emph{clique} in this graph:
+Every variable in this set interferes with the other in the set, hence their nodes are all mutually connected.
+The size of the largest clique in the interference graph is called its \emph{clique number} $\omega$.
+A \emph{coloring} of this graph with~$k$ colors corresponds to a valid register allocation with~$k$ registers.
+Hence, we will use the terms register and color in the following text.
+A $k$-coloring is a mapping from the graph's nodes to the first~$k$ natural numbers (called colors) such that two neighboring nodes have different colors.
+The smallest~$k$ for which a coloring exists is called the graph's~\emph{chromatic number} $\chi$.
+Of course $\chi\ge\omega$ holds for every graph, because the nodes in a clique must all have different colors.
 
-Since there is no way to know the minimum number of colors required to color a 
-general graph, coalescing strategies are usually \emph{conservative}, to avoid 
-transforming a $k$-colorable graph into a non $k$-colorable one. This means 
-opportunities to improve the spilling and the coalescing are missed.
+Chaitin~\cite{chaitin:1981:register} showed that for every undirected graph, there is a program that has this graph as its interference graph.
+From the NP-completeness of graph coloring then follows the NP-completeness of register allocation.
+Hence, determining the chromatic number of the interference graph is not possible in polynomial time unless P=NP.
 
-\subsubsection{Decoupling register allocation.}
-We will see that, under SSA form, we have a polynomial algorithm that can tell 
-whether $R$ registers are sufficient or not. This allows to decouple register 
-allocation into two phases: the first phase spills variables until we know that 
-$R$ registers are sufficient, at which point no coalescing can help reducing 
-the coloring number any further; then, the remaining variables are assigned to 
-registers while performing as much coalescing as possible as long as it does 
-not induce more spill.
+This the major nuisance of classical register allocation:
+The compiler cannot efficiently determine how many registers are needed.
+Startling here is that one apparently might need more registers than \maxlive.
+\maxlive certainly is a lower bound on the chromatic number, but the chromatic number might be greater. 
+This means that although at every program point there are no more than \maxlive variables live at the same time, we still might need $>\maxlive$ registers for a correct register allocation.
+This seems unintuitive at first sight but is caused by control-flow merges, as can be seen in Figure~\ref{fig:ra:exprg}.
 
-This for one allows for much simpler register allocation schemes, as each phase 
-must be handled separately, which relieves the compiler of the worries of 
-coalescing affecting the spilling. As such, each phase can be optimized more 
-easily and the resulting register allocation phase can be more efficient.
-\todo{finish explanations}
+\begin{figure}[htbp]
+	\begin{center}
+		\subfigure[Example program and live ranges of its variables]{ \includegraphics{figures/prog_lr.pdf} }
+		\qquad
+		\subfigure[Interference graph]{ \includegraphics[scale=1.1]{figures/prog_ig.pdf} }
+	\end{center}
+	\caption{Example program and its interference graph}
+	\label{fig:ra:exprg}
+\end{figure}
 
+In that example, the register pressure is at most~2 at every program point.
+However, the interference graph cannot be colored with~2 colors. 
+Its chromatic number is~3.
+The inequality between \maxlive and the chromatic number is caused by the cycle in the interference graph\footnote{In theory, the gap between the chromatic number and \maxlive can even be arbitrarily large. This can be shown using by applying Chaitin's proof of the NP-completeness of register allocation to Mycielski graphs.}.
 
+This situation changes if we permit \emph{live-range splitting.}
+That is inserting a copy (move) instruction at a program point that creates a new variable and thus allows the old variable's value to change its register. 
+Assume we allowed the value of~$e$ to change its register at the end of the left block by splitting~$e$'s live range into two parts (cf.~the SSA version of the program shown in Figure~\ref{fig:ra:exprgssa}).
+Then, the cycle in the interference graph breaks and its chromatic number equals \maxlive.
 
+% \begin{figure}[htbp]
+% 	\begin{center}
+% 		\subfigure[Example program with live range of~$e$ split]{ \includegraphics{figures/prog_split_lr.pdf} }
+% 		\qquad
+% 		\subfigure[Interference graph]{ \includegraphics[scale=1.1]{figures/prog_split_ig.pdf} }
+% 	\end{center}
+% 	\caption{Example Program with spit live range and its interference graph}
+% 	\label{fig:ra:exprgsplit}
+% \end{figure}
 
+In an extreme setting, one could split the live ranges of all variables after every instruction.
+Then, the interference graph degenerate into several disconnected components and its chromatic number drops to \maxlive.
+Of course such an extreme live-range splitting introduces a lot of shuffle code which degrades the runtime of the compiled program.
+This interplay between live-range splitting and colorability is the key issue in register allocation.
 
-\subsection{Programs under SSA have chordal interference graphs}
-{\sl 
-\begin{itemize}
-  \item Reminder that programs under SSA are chordal
-  \item What difference does it make? Knowing the minimum number of colors is 
-    easy: we know if spilling is mandatory or not
-  \item why are the graphs chordal? View of SSA variables as subtrees of the 
-    dominance tree; made possible because of \phifuns
-  \item \phifuns allows colors to be ``re-arranged'' on incoming edges: this 
-    is implicit shuffle code. For this to work, remember that semantics of 
-    \phifun is they are \emph{parallel copies}. Hence, the SSA-variables of 
-    same initial variable in different branches of dominance tree are 
-    color-independent.
+\subsection{Non-SSA Register Allocators}
+As finding a valid $k$-coloring is NP-complete, assigning registers is performed by some heuristic algorithm.
+If that algorithm fails to find a free register for a variable, spilling is activated to free one.
+The problem here is that the spilling decision is made to revive the coloring heuristic not because the variable is actually a good candidate for spilling. 
+Even more, we might even spill a variable because the heuristic is ``not good enough'' not because we are out of registers.
 
-  \item Fab: the chordality and the parallel semantic of phi have already been considered in the first chapters of parts I (which does not mean that you cannot recall it).
+At the same time, classical techniques perform copy coalescing (i.e.~undoing live-range splitting) during coloring.
+However, if done aggressively, coalescing can make the graph harder to color or make the heuristic fail and thus introduce spills.
+This is of course unacceptable because we never want to access memory in favor of an eliminated copy.
+Thus, existing techniques often apply \emph{conservative} coalescing approaches which do not increase the chromatic number of the graph.
 
-\end{itemize}
-}
+\subsection{Why SSA helps}
 
-It is known since 2005 that, under SSA, the interference graph of a program is 
-chordal \cite{Brisk05,Pereira05:chordal,Hack06}.  Note that the interference 
-graph depends on the interference notion, and we need that two variables alive 
-at the same time interfere even if they have the same value.\footnote{Note that, under 
-SSA, there is only one definition, hence, if variable $b$ is defined as $b\gets 
-a$, it is possible to replace every occurrence of $b$ by $a$ since they will 
-always be equal.
-%Note that this is akin to aggressive coalescing but is safe to 
-%do under  \ssa as it will not increase the coloring number.  Constant 
-%propagation can do this efficiently in a first pass, then it is not worth 
-%considering the interference definition of Chaitin 
-%(Definition~\ref{def:chaitin-interf}) as there is no remaining copy in the 
-%program.
-}
-This chordal property was already mentioned in 
-Chapter~\ref{chap:properties-and-flavours}. We recall here the theorem since it 
-is a vital property for register allocation:
+The live ranges in an SSA-form program all have a certain property:
+SSA requires that all uses of a variable are dominated by its definition.
+Hence, the whole live range is dominated by the variable's definition.
+Dominance, however, induces a tree on the control flow graph.
+Thus, the live ranges of SSA variables are all tree-shaped~\cite{bouchez,brisk:2006:poly,HGG:2006:RA_SSA}.
+They can branch downwards the dominance tree but have a single root: the program point of the variable's definition.
+Hence a situation like in Figure~\ref{fig:ra:exprg} where the live range of~$e$ has two ``roots'' can no longer occur.
+The live range of~$e$ is split by a \phifun in the corresponding SSA program.
+The result variable of that \phifun constitutes a new live range.
+The register allocator now has more freedom:
+The two operands of the \phifun and its result variable can be assigned to different registers.
 
-\begin{theorem}
-  \label{thm:ssa-chordal}
-  The interference graph~$G$ of a program under \ac{SSA} with dominance 
-  property is chordal.
-\end{theorem}
+\begin{figure}[htbp]
+	\begin{center}
+		\subfigure[example program in SSA]{ \includegraphics{figures/prog_ssa_lr.pdf} }
+		\qquad
+		\subfigure[Interference graph]{ \includegraphics[scale=1.1]{figures/prog_ssa_ig.pdf} }
+	\end{center}
+	\caption{SSA version of the example program}
+	\label{fig:ra:exprgssa}
+\end{figure}
 
-The major impact for register allocation is that, while coloring a general graph 
-with the minimum number of colors in NP-complete, it is polynomial in the case 
-of chordal graphs. Since register allocation amounts to coloring the 
-interference graph of a program, this means that, under SSA, we can have an
-algorithm that answers in polynomial time whether $R$ registers are sufficient 
-or not to allocate all variables, i.e., \emph{whether spilling is mandatory 
-or not.} This is a fundamental breakthrough as, up to know, register 
-allocation algorithms all depend on coloring \emph{heuristics} to decide 
-whether to spill or not.
-
-
-
-
-\subsubsection{Why so chordal?}
-
-The key observation leading to this theorem was that the dominance graph of a 
-program under SSA is a tree, and since every definition of a variable dominates  
-its uses, the live-ranges of variables are subtrees of the dominance tree. This 
-is a characterisation of chordal graphs (see \cite[Thm.~4.8]{Golumbic} and 
-Appendix~\ref{app:chordal-graphs}).
-
-
-Since Chaitin et al.'s NP-completeness proof on register allocation in 
-1981~\cite{Chaitin81}, we know that the interference graphs of programs are 
-general, i.e., any graph can be the interference graph of a program. The 
-question is: Why, under SSA form, the interference graph of a program is not 
-general anymore but instead becomes chordal? The answer of course lies in the 
-element that modify the program structure: the \phifuns.
-
-To visualize how the \phifuns transform a general graph into a chordal graph, 
-let us take the dominance tree of a program under SSA. Before going to SSA, the 
-live-ranges of at least some variables are not subtrees of this tree,
-spanning across multiple branches and not following only paths on 
-the tree. These other paths are in fact all control-flow edges leading to basic 
-blocks with multiple predecessors (hence, not ``dominance edges''). This means 
-that when going to SSA, every variable crossing these edges (and being 
-different on other incoming edges) will be ``cut'' there by the insertion of a 
-\phifun. The parallel semantics of \phifuns means indeed that these variables 
-are now ``split'' into at least two parts: one before the control-flow edge and 
-one after. These two live-ranges can be allocated to different registers and do 
-not ``cross'' the control-flow edge anymore. At runtime, this means that when 
-removing the \phifun, shuffle code will be inserted on the edge to move 
-variables that have sub-parts colored differently on their right registers.
-
-
+This special structure of the live ranges leads to a special class of interference graphs:
+Gavril~\cite{gavril:1974:trees} showed, that the intersection graphs of subtrees are the \emph{chordal graphs}.
+Chordal graphs can be optimally colored in linear a time with respect to the number of edges in the graph.
+Furthermore, they are \emph{perfect} which means that for every subgraph, the clique number equals the chromatic number. 
+This is a very important property for register allocation because it means that \maxlive equals the chromatic number of the graph\footnote{
+This also implies that chordal graphs do not have ``holes'' like the interference graph in Figure~\ref{fig:ra:exprg}.
+Every cycle is spanned by \emph{chords.}
+}:
+Even more, one can show~\cite{bouchez,HGG:2006:RA_SSA} that for every clique in the interference graph, there is one program point where all the variables of that clique are live.
+This decouples spilling from coloring:
+First, we lower the register pressure to~$k$ everywhere in the program.
+Then, we can color the interference graph with~$k$ colors in polynomial time.
 
 \subsection{Maxlive and colorability of graphs}
 
@@ -343,6 +297,11 @@ basic-block~\cite{Liberatore00}.
     can be generalized). But what you want to point it here is the fact that 
     the disadvantages seem more important than advantages.
   \item Fab: the LCTES spill everywhere article does not discuss practical issues (such as the fact that it might insert a load or a store inside a loop...). It is more algorithmical issues.
+  \item Seb: Want do we want to say here?
+  	  I think the title of the section is too negative. 
+  	  Perhaps we should merge the section with the last.
+  	  I think it would be good to first talk about different definitions for spilling,
+  	  then give an overview over your results (LCTES paper).
 \end{itemize}
 }
 
@@ -352,6 +311,7 @@ advantage of allowing the spilling of SSA variables, i.e., sub-variables of the
 initial variables. One major disadvantage is the added complexity when spilling
 variables defined in \phifuns \todo{explain the problem if not all args are 
 spilled, or if spilled in $\neq$ locations}.
+\todo{Seb: complexity? perhaps slight complications :)}
 
 {\sl Examples by Quentin}
 \begin{minipage}{.45\textwidth}
@@ -430,6 +390,7 @@ Still, we give a possibility to perform spilling under SSA
   \item \`a la Belady following dominance tree?
 
   \item Fab: The last Algorithm from Sebastian is Belady like. So yes try to simplify it, provide the pseudo code and give the intuitions on how the full version improves it.
+  \item Seb: I think it's ok to briefly outline the approaches that are out there and refer to the papers.
 
 \end{itemize}
 \todo{Ask Sebastian to do it.}
