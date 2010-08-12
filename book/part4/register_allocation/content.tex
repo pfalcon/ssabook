@@ -17,6 +17,7 @@ was still TODO macros: \the\todocount.^^J}\fi}
 \def\dom{\preceq}
 \def\ssa{SSA\xspace}
 \def\maxlive{\ensuremath{\mathrm{Maxlive}}\xspace}
+\def\regs{\ensuremath{R}\xspace}
 \def\irc{Iterated Register Coalescing\xspace}
 
 \graphicspath{{register_allocation/}{part4/register_allocation/}}
@@ -165,7 +166,63 @@ This decouples spilling from coloring:
 First, we lower the register pressure to~$k$ everywhere in the program.
 Then, we can color the interference graph with~$k$ colors in polynomial time.
 
+
+\section{Spilling}
+
+The term spilling is heavily overloaded:
+In the graph-coloring setting it often means to spill a node of the interference graph and thus the \emph{entire} live range of a variable.
+This implies inserting load instructions in front of every use and a store instructions after each definition of the (non-SSA) variable.
+Other approaches, like some linear scan allocators, are able to keep parts of the live range of a variable in a registers such that multiple uses can potentially reuse the same reload.
+
+\subsection{Spilling on the SSA Form}
+
+As stated above, for SSA programs lowering \maxlive to~\regs ensures that a register allocation with \regs registers can be found in polynomial time.
+Thus, spilling takes place before registers are assigned \emph{and} and should yield a program in SSA-form.
+For the moment, let us ignore \emph{how} the decision of what to spill where is made and concentrate on the implications of spilling to SSA programs.
+Because many compilers use SSA heavily it is a reasonable assumption that the program was in SSA before spilling.
+Hence, we consider spilling as a SSA program transformation that establishes $\maxlive\le\regs$ by inserting loads and stores into the program.
+
+The most 
+
+\subsection{Finding Spilling Candidates}
+
+How do we actually find program points to place loads and stores such that $\\maxlive\le\regs$?
+Let us start with a simplistic setting:
+We do not try to be clever about the location of loads and stores:
+we require that loads can only placed directly in front of uses and stores only directly after the variable's definition.
+Further, we require that a variable is either spilled completely or not:
+The variable's live range degenerates into small pieces: one per use and definition.
+This is often called the \emph{spill everywhere} setting.
+\todo{figure?}
+Gavril and Yannakakis{gavril:spill} showed that even in this simplistic setting, it is NP-complete to find the minimum number of nodes to establish $\maxlive\le\regs$.
+Bouchez et al.~\cite{lctes} showed that is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive by one.
+Thus, finding spill candidates is not facilitated by SSA.
+
+Formulations like \emph{spill everywhere} are often not appropriate for practical purposes:
+Putting the whole live range to memory is too simplistic.
+A variable might be spilled because at some program point the pressure is too high.
+However that same variable might be used in a loop later on where the register pressure is perfectly fine.
+Spilling everywhere will place a superfluous load into that loop.
+Hence, it is imperative to intelligently split the live range of the variable according to the \emph{program structure} and spill only parts of it.
+Spill everywhere approaches try to simulate such a behavior by adding costs to variables that flow-insensitively try to reflect occurrences of that variable within loops.
+However, such approximations are often too coarse to give good performance.
+
+More promising techniques are based on Belady's algorithm~\cite{belady:1966:storage}.
+Belady's algorithm was developed in the context of page replacement in operating systems.
+When all pages are mapped in and a new one shall be mapped in, the question is which one to evict.
+\todo{say why it is not spill everywhere}
+A problem very similar to register allocation, besides the fact that \emph{putting} a register to memory (evicting a page) also incurs costs in the register allocation setting while it does not in the page replacement setting.
+Belady shows that evicting the page whose next use is farthest in the future leads to the minimum number of page loads. 
+Nevertheless, Farrach and Liberatore~\cite{farach:98:local} showed that Belady's algorithm gives good results on straight-line code.
+
+Braun and Hack~\cite{BH:2009:Spill} extend Belady's algorithm to general control flow graphs in two ways:
+First, they give a data-flow analysis to compute approximate next use values on the control flow graph.
+In this next use calculation, loops are virtually unrolled by a large factor such that code ``behind'' loop appears far away from code in front of the loop.
+This forces the algorithm to prefer variables for eviction that are not used in loops and leave live-range parts in registers that are used within loops.
+Second, they show how and in which order the basic blocks of the CFG have to be processed to determine a reasonable initial register occupation for each block.
+
 \subsection{Maxlive and colorability of graphs}
+\todo{seb: do we need this? doing  a standard liveness analysis does the job. we can also refer to Appel's liveness algo.}
 
 {\sl
 \begin{itemize}
@@ -212,6 +269,7 @@ dominance tree, starting from the root. We only need to know which uses are
   \caption{Pseudo-code for \maxlive}
   \label{code:compute-maxlive}
 \end{figure}
+
 
 
 
