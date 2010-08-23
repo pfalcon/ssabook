@@ -16,7 +16,7 @@
 Some optimizations break the single-assignment property of the SSA form by inserting additional definitions for a single SSA value.
 A common example is live-range splitting by inserting copy operations or inserting spill and reload code during register allocation.
 Other optimizations, such as loop unrolling or jump threading, perform similar operations.
-Let us first go through two examples before we present algorithms to repair SSA.
+Let us first go through two examples before we present algorithms to properly repair SSA.
 
 \subsection{Live-Range Splitting}
 
@@ -28,18 +28,18 @@ The load however is a second definition of $x_0$, hence SSA is violated and has 
 	\centering
 	\subfigure[Original program] {
 		\label{fig:harmless}
-		\includegraphics[width=0.3\textwidth]{spill_orig.pdf}
+		\includegraphics[scale=1.0]{spill_orig.pdf}
 		% \input spill_orig.tikz
 	}
 	\hfill
 	\subfigure[Spilling~$x_0$, SSA violated] {
 		\label{fig:nonssa}
-		\includegraphics[width=0.3\textwidth]{spill_nonssa.pdf}
+		\includegraphics[scale=1.0]{spill_nonssa.pdf}
 	}
 	\hfill
 	\subfigure[SSA reconstructed] {
 		\label{fig:recons}
-		\includegraphics[width=0.3\textwidth]{spill_recons.pdf}
+		\includegraphics[scale=1.0]{spill_recons.pdf}
 	}
 	\label{fig:ex1}
 	\caption{Adding a second definition}
@@ -52,11 +52,11 @@ As there are two definitions reaching the use in the lower block, a \phifun has 
 \begin{figure}[htbp]
 	\centering
 	\subfigure[Original program] {
-		\includegraphics[width=0.3\textwidth]{spill_phi_orig.pdf}
+		\includegraphics{spill_phi_orig.pdf}
 	}
 	\qquad
 	\subfigure[Second definition of~$\var x_0$, \phifun inserted] {
-		\includegraphics[width=0.3\textwidth]{spill_phi.pdf}
+		\includegraphics{spill_phi.pdf}
 	}
 	\caption{SSA repaired}
 	\label{fig:withphis}
@@ -76,15 +76,15 @@ Consider following example and assume that the loop's body is duplicated once, i
 \begin{figure}[htbp]
 	\begin{center}
 		\subfigure[Original loop] {
-			\includegraphics[width=0.3\textwidth]{loop_orig.pdf}
+			\includegraphics{loop_orig.pdf}
 		}
 		\hfill
 		\subfigure[Unrolled loop, code duplicated, SSA broken] {
-			\includegraphics[width=0.3\textwidth]{loop_unroll.pdf}
+			\includegraphics{loop_unroll.pdf}
 		}
 		\hfill
 		\subfigure[SSA repaired] {
-			\includegraphics[width=0.3\textwidth]{loop_unroll_repair.pdf}
+			\includegraphics{loop_unroll_repair.pdf}
 		}
 	\end{center}
 	\caption{Loop Unrolling}
@@ -119,11 +119,11 @@ Then, all uses of the variables in~$D$ are scanned.
 We search the use's block for a definition of the used variable.
 By scanning the block's list from back to front, we find the latest such use if one exists. 
 If the variable has no definition in the block, we have to find the definition that reaches this block from \emph{outside.}
-Here we have to differentiate of the user is a \phifun or not.
-If it is a \phifun the block of the use the corresponding predecessor block.
+Here we have to differentiate whether the user is a \phifun or not.
+If it is a \phifun, the block of the use is the corresponding predecessor block.
 We use two functions \verb|find_def_from_begin| and \verb|find_def_from_end| that find the reaching definition at the beginning and end of a block, respectively. 
 As can seen from Algorithm~\ref{alg:ssaconstr_driver}, \verb|find_def_from_end| can be expressed in terms of \verb|find_def_from_begin|. 
-The only difference is that \verb|find_def_from_end| considers definitions in the block. 
+\verb|find_def_from_end| additionally considers definitions in the block, while \verb|find_def_from_begin| does.
 Our two approaches only differ in the implementation of the function \verb|find_def_from_begin|.
 The differences are described in the next two sections.
 \begin{algorithm}
@@ -175,9 +175,9 @@ This search starts at the block of~$u$.
 If that block is in the IDF of~$D$ a \phifun needs to be placed at its entrance.
 The operands of that \phifun are then (recursively) searched in the predecessors of the block.
 If the block is not in the IDF, the search continues in the block's immediate dominator. 
-This is because in SSA every use of a variable must be dominated by its definition\footnote{The definition of an operand of a \phifun has to dominate the according predecessor block.}.
+This is because in SSA, every use of a variable must be dominated by its definition\footnote{The definition of an operand of a \phifun has to dominate the according predecessor block.}.
 If the block is not in the IDF, the reaching definition is the same for all predecessors and hence for the immediate dominator of this block.
-Note that by re-wiring the usages of several variables, some variables defined by \phifuns may not be used anymore.
+Note that by rewiring the uses of several variables, some variables defined by \phifuns may not be used anymore.
 A dead code elimination pass after SSA reconstruction will remove these. 
 Algorithm~\ref{alg:ssaconstr} shows this procedure in pseudo-code.
 
@@ -209,7 +209,7 @@ Thus it is well suited to be used in transformations that change the control flo
 Its disadvantage is that potentially more blocks have to visited during the reconstruction.
 The principle idea is to start a search from every use to find the corresponding definition inserting \phifuns on the fly while caching the found definitions at the basic blocks.
 This is similar to the implementation of a data-flow analysis, that places the \phifuns.
-As in the last chapter, we only consider the reconstruction for a single variable.
+As in the last section, we only consider the reconstruction for a single variable.
 If multiple variables have to be reconstructed, the algorithm can be applied to each variable separately.
 
 We perform a backward depth-first search in the CFG to collect the reaching definitions at each block. 
@@ -223,7 +223,7 @@ Recursively computing the reaching definitions for a block~\verb|b| can end up a
 To avoid infinite recursion, we create a \phifun without operands in the block before descending to the predecessors. 
 Hence, if a variable has no definition in a loop, the \phifun placed in the header eventually reaches itself (and can later be eliminated). 
 When we return to~\verb|b| we decide whether a \phifun has to be placed in~\verb|b| by looking at the reaching definition for every predecessor.
-If the set of reaching definitions is a subset of $\{a,x\}$ where~$x$ is the \phifun inserted at~\verb|b|, then no \phifun is necessary and we can propagate~$a$ further downwards. 
+If the set of reaching definitions is a subset of $\{a,x\}$ where~$x$ is the \phifun inserted at~\verb|b|, then \phifun is not necessary and we can propagate~$a$ further downwards. 
 Otherwise, we place a \phifun.
 
 \begin{algorithm}
