@@ -1,7 +1,6 @@
 \chapter{Graphs and gating functions \Author{J. Stanier}}
 \numberofpages{15}
 \graphicspath{{img/}{vsdg/img/}{part2/vsdg/img/}}
-%\TODO{note overlap with other predicated sections}
 
 \newcommand{\Gn}{$\gamma$-node}
 \newcommand{\Gns}{$\gamma$-nodes}
@@ -15,70 +14,21 @@
 
 \section{Introduction}
 
-Many compilers represent the input program as some form of graph in order to aid analysis and transformation. A cornucopia of program graphs have been presented in the literature and implemented in real compilers. Therefore it comes as no surprise that a number of program graphs use SSA concepts as the core principle of their representation. These range from very literal translations of SSA into graph form, to more abstract graphs which are implicitly SSA. This section aims to introduce a selection of program graphs which use SSA concepts, and examine how they may be useful to a compiler writer.
+Many compilers represent the input program as some form of graph in order to aid analysis and transformation. A cornucopia of program graphs have been presented in the literature and implemented in real compilers. Therefore it comes as no surprise that a number of program graphs use SSA concepts as the core principle of their representation. These range from very literal translations of SSA into graph form, to more abstract graphs which are implicitly SSA. We aim to introduce a selection of program graphs which use SSA concepts, and examine how they may be useful to a compiler writer.
 
-\subsection{Background concepts}
-
-Before we begin, we will outline some simple graph theoretic concepts. A graph $G$ consists of the pair $(V,E)$ where $V$ is the set of all vertices and $E\subseteq N\times N$ is the set of all edges. An edge is a pair of vertices, representing a relationship between them.  We illustrate this in the simple example in Figure~\ref{fig: simple-example}. The set of vertices $V$ contains the elements $\{v_{1},v_{2},v_{3},v_{4}\}$ and the set of edges $E$ contains the elements $\{(v_{1},v_{2}),(v_{1},v_{3}),(v_{3},v_{4})\}$. We are concerned with \textit{directed} graphs, where an edge $(a,b)$ encodes some relation from $a$ to $b$.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[scale=0.8]{simple-graph-example.pdf}
-\caption{A simple graph.}
-\label{fig: simple-example}
-\end{figure}
-
-Graphs are a natural way of expressing many problems in mathematics and computer science. They are also useful for representing programs internally in a compiler. One of the seminal graph representations is the Control Flow Graph (CFG), which was introduced by Allen \cite{808479} to explicitly represent possible control paths in a program. In the CFG, vertices are called basic blocks and contain straight-line instructions. When control enters a basic block, all instructions must be executed in that block. The directed edges that connect basic blocks together represent transfer of control flow from one block to another. An illustration of a CFG is given in Figure~\ref{fig: example-cfg}, showing a translation between some three-address code and the resulting graph. Traditionally, the CFG is used to convert a program into SSA form \cite{115320}. Additionally, representing a program in this way makes a number of operations simpler to perform, such as identifying loops, discovering irreducibility and performing interval analysis techniques.
-
-\begin{figure}[ht]
-\centering
-\subfigure{
-	\begin{minipage}[b]{0.3\linewidth}
-	\texttt{\begin{tabbing}
-	1: \=a = 0; \\
-	\> b = 0; \\
-	2: \> if x $>=$ y goto 4 \\
-	3: \> a = x; \\
-	\> goto 5; \\
-	4: \> a = y; \\
-	5: \> if a $>=$ y goto 6 \\
-	\> a = a * x;\\
-	\> a = a + b;\\
-	\> b = b + 1;\\
-	\> goto 5; \\
-	6: \> ret a + b; \\
-	\end{tabbing}}
-	\end{minipage}
-}
-\subfigure{\includegraphics[scale=0.55]{cfg-example.pdf}}
-\caption{Some three address code and the resulting CFG after translation.}
-\label{fig: example-cfg}
-\end{figure}
+One of the seminal graph representations is the Control Flow Graph (CFG), which was introduced by Allen to explicitly represent possible control paths in a program. Traditionally, the CFG is used to convert a program into SSA form. Additionally, representing a program in this way makes a number of operations simpler to perform, such as identifying loops, discovering irreducibility and performing interval analysis techniques.
 
 The CFG models control flow, but many graphs model \textit{data flow}. This is useful as a large number of compiler optimizations are based on data flow. The graphs we consider in this section are all data flow graphs, representing the data dependences in a program. We will look at a number of different SSA-based graph representations. These range from those which are a very literal translation of SSA into a graph form to those which are more abstract in nature. An introduction to each graph will be given, along with diagrams to show how sample programs look when translated into that particular graph. Additionally, we will touch on the literature describing the usage of a given graph with the application that it was used for.
 
 \section{The SSA Graph}
 
-We begin our exploration with a graph that is very similar to SSA: the SSA Graph. Many different variations exist in the literature, so we take ours from Cooper et al \cite{504710}. An SSA Graph consists of vertices which represent operations (such as \texttt{add} and \texttt{load}) or $\mathtt{\phi}$-functions, and directed edges connect uses to definitions. The incoming edges to a vertex represent the arguments required for that operation, and the outgoing edge from a vertex represents the propagation of that operation's result after it has been computed. This graph is therefore a \textit{demand-based} representation. In order to compute a vertex, we must first \textit{demand} the results of the operands and then perform the operation indicated on that vertex. The SSA Graph can be constructed from a program in SSA form by adding use-definition chains. We present some sample code in Figure~\ref{fig: ssa-graph-example-code}. This is translated into an SSA Graph in Figure~\ref{fig: ssa-graph-example-graph}. Note that there are no explicit nodes for variables in the graph. Instead, an operator node can be seen as the ``location'' of the value stored in a variable. We have annotated operators with variable names to show the correspondence between the operations in the graph and in the SSA form program.
+We begin our exploration with a graph that is very similar to SSA: the SSA Graph. Many different variations exist in the literature, so we take ours from Cooper et al. An SSA Graph consists of vertices which represent operations (such as \texttt{add} and \texttt{load}) or $\mathtt{\phi}$-functions, and directed edges connect uses to definitions. The edges to a vertex represent the arguments required for that operation, and the edge from a vertex represents the propagation of that operation's result after it has been computed. This graph is therefore a \textit{demand-based} representation. In order to compute a vertex, we must first \textit{demand} the results of the operands and then perform the operation indicated on that vertex. The SSA Graph can be constructed from a program in SSA form by adding use-definition chains. We present some sample code in Figure~\ref{fig: ssa-graph-example-code} which is then translated into an SSA Graph. Note that there are no explicit nodes for variables in the graph. Instead, an operator node can be seen as the ``location'' of the value stored in a variable. We have annotated operators with variable names to show the correspondence between the operations in the graph and in the SSA form program.
 
-% TODO: proper centering of this code? Looks a bit crap at the moment.
 \begin{figure}[ht]
 \centering
 \subfigure{
-	\begin{minipage}[b]{0.3\linewidth}
-	\texttt{\begin{tabbing}
-	begin: \= a = 0; \\
-	\> i = 0; \\
-	loop: \> a = a * i; \\
-	\> i++; \\
-	\> if i < 100 goto loop;\\
-	end: \> print(a + i);
-	\end{tabbing}}
-	\end{minipage}
-}
-\subfigure{
-	\begin{minipage}[b]{0.3\linewidth}
-	\texttt{\begin{tabbing}
+  \begin{minipage}[b]{0.3\linewidth}
+    \texttt{\begin{tabbing}
 	begin: \=$a_{0}$ = 0; \\
 	\> $i_{0}$ = 0; \\
 	loop: \> $a_{1}$ = $\phi$($a_{0}$,$a_{2}$); \\
@@ -89,27 +39,59 @@ We begin our exploration with a graph that is very similar to SSA: the SSA Graph
 	end: \> $a_{3}$ = $\phi$($a_{1}$,$a_{2}$); \\
 	\> $i_{3}$ = $\phi$($i_{1}$,$i_{2}$); \\
 	\> print($a_{3}$ + $i_{3}$);
-	\end{tabbing}}
-	\end{minipage}
+      \end{tabbing}}
+  \end{minipage}
 }
-\caption{Some sample code translated into SSA form.}
+\subfigure{
+  \begin{minipage}[b]{0.3\linewidth}
+    \includegraphics[scale=0.5]{ssa-graph.pdf}
+  \end{minipage}
+}
+\caption{Some SSA code translated into an SSA graph.}
 \label{fig: ssa-graph-example-code}
 \end{figure}
 
-The primary benefit of representing the input program in this form is that the compiler writer is able to apply a wide array of graph-based optimizations by using standard graph traversal and transformation techniques. This can make many optimizations much easier to perform than on the standard linear SSA form, especially when the focus is on loop optimization. It is possible to augment the SSA Graph to model memory dependencies \cite{1375663}. This is achieved by adding additional \textit{state edges} that enforce an order of interpretation. These edges are extensively used in the Value State Dependence Graph, which we will look at later, after we touch on the concept of gating functions.
+The primary benefit of representing the input program in this form is that the compiler writer is able to apply a wide array of graph-based optimizations by using standard graph traversal and transformation techniques. It is possible to augment the SSA Graph to model memory dependencies. This is achieved by adding additional \textit{state edges} that enforce an order of interpretation. These edges are extensively used in the Value State Dependence Graph, which we will look at later, after we touch on the concept of gating functions.
 
-In the literature, the SSA Graph has been used to detect a variety of induction variables in loops \cite{143131,201003}, also for performing instruction selection techniques \cite{1375663,1269857}, operator strength reduction \cite{504710}, rematerialization \cite{143143}, and has been combined with an extended SSA language to aid compilation in a parallelizing compiler \cite{Stoltz_extendedssa}. The reader should note that the exact specification of what constitutes an SSA Graph changes from paper to paper. The essence of the IR has been presented here, as each author tends to make small modifications for their particular implementation.
+In the literature, the SSA Graph has been used to detect a variety of induction variables in loops, also for performing instruction selection techniques, operator strength reduction, rematerialization, and has been combined with an extended SSA language to aid compilation in a parallelizing compiler. The reader should note that the exact specification of what constitutes an SSA Graph changes from paper to paper. The essence of the IR has been presented here, as each author tends to make small modifications for their particular implementation.
+
+\section{Program Dependence Graph}
+
+The Program Dependence Graph (PDG) represents both control and data dependencies together in one graph. The PDG was developed to aid optimisations requiring reordering of instructions and graph rewriting for parallelism, as the strict ordering of the CFG is relaxed and complemented by the presence of data dependence information. The PDG is a directed graph $G=(V,E)$ where nodes $V$ are statements, predicate expressions or region nodes, and edges $E$ represent either control or data dependencies. Thus, the set of all edges $E$ has two distinct subsets: the control dependence subgraph $E_{C}$ and the data dependence subgraph $E_{D}$. $E_{C}$ can be cyclic if a loop is present in the program, since a loop in the PDG is defined by a control back edge forming a strongly connected region. $E_{D}$ is always acyclic, and can be seen as a series of data dependency DAGs for each basic block, which are then connected together based on the data flow through the program. Similar to the CFG, a PDG also has two nodes $\mathtt{ENTRY}$ and $\mathtt{EXIT}$, through which data flow enters and exits the program respectively.
+
+Statement nodes represent instructions in the program. Predicate nodes test a conditional statement and have {\sf true} and {\sf false} edges to represent the choice taken on evaluation of the predicate. Region nodes group all nodes with the same control dependencies together, and order them into a hierarchy. If the control dependence for a region node is satisfied, then it follows that all of its children can be executed. Thus, if a region node has three different control-independent statements as immediate children, then these could potentially be executed in parallel. We show example code translated into a PDG in Figure~\ref{fig:pdg}. Rectangular nodes represent statements, diamond nodes predicates, and circular nodes are region nodes. Filled edges represent data dependence, and dashed edges represent control dependence.
 
 \begin{figure}
 \centering
-\includegraphics[scale=0.5]{ssa-graph.pdf}
-\caption{Our sample program translated into an SSA Graph.}
-\label{fig: ssa-graph-example-graph}
-\end{figure}
+\subfigure{
+  \begin{minipage}[b]{0.3\linewidth}
+    \texttt{\begin{tabbing}
+        a = b + c;\\
+        x = a * d;\\
+        if(x \= == y)\\
+        \> z = e;\\
+        else\\
+        \> z = f;\\
+        y = z + 1;\\
+        return y;\\
+      \end{tabbing}}
+  \end{minipage}
+}
+\subfigure{
+  \includegraphics[scale=0.4]{img/pdg.pdf}
+}
+\caption{Some code translated into a PDG.}
+\label{fig:pdg}
+\end{figure}OA
+
+% TODO: expand this construction section
+Construction of the PDG is tackled in two steps from the CFG: construction of the control dependence subgraph and construction of the data dependence subgraph. Ferrante et al. construct the control dependence subgraph in $O(N^{2})$ time. The data dependence subgraph can be constructed after aliasing, procedure calls and side effects are analysed in the program. This involves constructing a DAG for each basic block and then linking them together. Harrold et al. construct the PDG during parsing.
+
+Ferrante et al. considered the problem of generating linear code from a PDG, showing that generating the {\it minimal size} CFG from a PDG is an NP-Complete problem. Further work has improved on the efficiency and generality of generating sequential code. The PDG's structure has been exploited for generating code for vectorisation, and has also been used in order to perform accurate program slicing and testing.
 
 \section{Gating functions}
 
-In SSA form, $\phi$-functions are used to identify points where variable definitions converge. However, they cannot be directly \textit{interpreted}, as they do not specify the condition which determines which of the variable definitions to choose. By this logic, we cannot directly interpret the SSA Graph. Being able to interpret our IR is a useful property as it gives the compiler writer more information when implementing optimizations, and also reduces the complexity of performing code generation. Gated Single Assignment \cite{93578} form is an extension of SSA with \textit{gating functions}. These gating functions are directly interpretable versions of $\phi$-nodes, and replace $\phi$-nodes in the representation. There are three forms of gating function and we take our definition from Tu and Padua \cite{207115}:
+In SSA form, $\phi$-functions are used to identify points where variable definitions converge. However, they cannot be directly \textit{interpreted}, as they do not specify the condition which determines which of the variable definitions to choose. By this logic, we cannot directly interpret the SSA Graph. Being able to interpret our IR is a useful property as it gives the compiler writer more information when implementing optimizations, and also reduces the complexity of performing code generation. Gated Single Assignment form is an extension of SSA with \textit{gating functions}. These gating functions are directly interpretable versions of $\phi$-nodes, and replace $\phi$-nodes in the representation. There are three forms of gating function and we take our definition from Tu and Padua:
 
 \begin{itemize}
 \item The $\gamma$ function explicitly represents the condition which determines which $\phi$ value to select. A $\gamma$ function is of the form $\gamma(P,V_{1},V_{2})$ where $P$ is a predicate, and $V_{1}$ and $V_{2}$ are the values to be selected if the predicate evaluates to true or false respectively. This can be read simply as \textit{if-then-else}. 
@@ -119,9 +101,8 @@ In SSA form, $\phi$-functions are used to identify points where variable definit
 
 It is easiest to understand these gating functions by means of an example. Figure~\ref{fig: gsa-graph-example} shows how our earlier code in Figure~\ref{fig: ssa-graph-example-code} translates into GSA form. Here, we can see the use of both $\mu$ and $\eta$ gating functions. At the header of our sample loop the $\phi$-functions have been replaced by $\mu$ functions which determines between the initial and iterative values of \texttt{a} and \texttt{i}. After the loop has finished executing, the two $\eta$ functions propagate the correct value from the corresponding $\mu$ function. % TODO: more explanation of the diagram here
 
-These gating functions are important as the concept will form components of the VSDG. GSA has seen a number of uses in the literature. The original usage of GSA was by Ballance et al. \cite{93578} as an intermediate stage in the construction of the Program Dependence Web. Havlak \cite{Havlak93constructionof} presents an algorithm for construction of a simpler version of GSA -- Thinned GSA -- which is constructed from a CFG in SSA form. Tu and Padua \cite{207115} present an algorithm that constructs SSA and GSA simultaneously in a single process. We leave further investigation of the construction algorithms as an exercise to the reader as they are lengthly and beyond the scope of this chapter. % TODO: will they be somewhere else in the book?
+These gating functions are important as the concept will form components of the Value State Dependence Graph later. GSA has seen a number of uses in the literature. The original usage of GSA was by Ballance et al. as an intermediate stage in the construction of the Program Dependence Web IR. Havlak \cite{Havlak93constructionof} presented an algorithm for construction of a simpler version of GSA -- Thinned GSA -- which is constructed from a CFG in SSA form. Tu and Padua presented an algorithm that constructs SSA and GSA simultaneously in a single process.
 
-% TODO: label is wrong when compiled?
 \begin{figure}
 \centering
 \includegraphics[scale=0.55]{gsa-example.pdf}
@@ -131,13 +112,9 @@ These gating functions are important as the concept will form components of the 
 
 By using gating functions it becomes possible to construct IRs based solely on data dependencies. These IRs are sparse in nature compared to the CFG, making them good for analysis and transformation. This is also a more attractive proposition than generating and maintaining both a control flow graph and data flow graph, which can be complex and prone to human error. One approach has been to combine both of these into one representation, as is done in the Program Dependence Graph \cite{24041}. Alternatively, we can utilize gating functions along with a data flow graph for an effective way of representing whole program information using data flow information.
 
-\section{Towards the Value State Dependence Graph}
+\section{Value State Dependence Graph}
 
-The gating functions defined in the previous section were used in the development of a sparse data flow graph IR called the Value Dependence Graph (VDG), which was designed to completely remove the CFG as the basis of optimizations \cite{177907}. The VDG represents programs as data dependencies and does not contain any control flow information. In the VDG, there is an edge $(n,v)$, drawn as an arrow $n\rightarrow v$, if a node $n$ requires the value $v$ in order to compute its own value. The key benefit of this representation is that there is no enforced ordering of operations. 
-
-Selection in the VDG is represented by $\gamma$-nodes, which implement the same behavior as the $\gamma$ gating function. Function calls and loops are represented by $\lambda$-nodes, with loop bodies translated into tail recursive procedures. However, there was a problem with the VDG: failure to preserve the terminating properties of a program. The original paper states that \textit{``Evaluation of the VDG may terminate even if the original program would not...''}. This problem was addressed by the creation of the Value State Dependence Graph (VSDG) \cite{UCAM-CL-TR-607}. We take our definition from Johnson and Mycroft. \cite{Johnson_combinedcode}
-
-The Value State Dependence Graph is a directed graph consisting of operation
+The gating functions defined in the previous section were used in the development of a sparse data flow graph IR called the Value Dependence Graph (VDG), which was then further refined into the Value State Dependence Graph (VSDG). The Value State Dependence Graph is a directed graph consisting of operation
 nodes, loop and merge nodes together with value- and state-dependency edges.
 Cycles are permitted but 
 must satisfy various restrictions.
@@ -175,12 +152,8 @@ int \=fac(int n) \{\\
 \caption{A recursive factorial function, whose VSDG illustrates the key graph
 components---value dependency edges (solid lines), state dependency edges
 (dashed lines), a \instruction{const} node, a \instruction{call} node, two
-\Gns, a conditional node (\instruction{==}), and the function entry and exit
-nodes.
-The left-hand \Gn\ returns the original function argument if the condition is
-true, or that of the expression otherwise. The right-hand \Gn\ behaves
-similarly for the state edges, returning either the state on entry to the
-function, or that returned by the \instruction{call} node.}
+\Gns, a conditional node,and the function entry and exit
+nodes.}
 \label{fig:fac}
 \end{figure}
 
@@ -188,25 +161,18 @@ function, or that returned by the \instruction{call} node.}
 
 \subsection{Definition of the VSDG}
 
-\begin{definition}
 A VSDG is a labelled directed graph $G=(N,E_V,E_S,\ell,N_0,N_\infty)$
 consisting of nodes $N$
 (with unique entry node $N_0$ and exit node $N_\infty$),
 value-dependency edges $E_V \subseteq N \times N$,
 state-dependency edges $E_S \subseteq N \times N$.
 The labelling function $\ell$ associates each node with an operator.
-\end{definition}
 
-VSDGs have to satisfy two well-formedness conditions.
-Firstly $\ell$ and the ($E_V$) arity must be consistent,
-e.g. that a binary arithmetic operator
-must have two inputs; secondly, the VSDG corresponds to a structured program, e.g.
+The VSDG corresponds to a structured program, e.g.
 that there are no cycles in the VSDG except those mediated by $\theta$ (loop)
 nodes.
 
-Value dependency ($E_V$) indicates the flow of values between nodes,
-and must be preserved during
-register allocation and code motion. State dependency ($E_S$), for this paper, represents two things; the first is
+Value dependency ($E_V$) indicates the flow of values between nodes. State dependency ($E_S$) represents two things; the first is
 essential sequential dependency required by the original program, e.g.
 a given load instruction may be required to follow a given store instruction
 without being re-ordered, and a {\tt return} node in general must wait for an
@@ -216,19 +182,6 @@ The second purpose is that
 state-dependency edges can be added incrementally until the VSDG corresponds to
 a unique CFG.
 Such state dependency edges are called {\em serializing} edges.
-
-An edge $(n_1,n_2)$ represents the flow of data or control {\em from} $n_1$ to
-$n_2$, i.e. in the {\em forwards data flow direction}, so we will see
-$n_1$ as a predecessor of $n_2$. ÊSimilarly we will regard $n_2$ as a successor
-of $n_1$. ÊIf we wish to be specific we will write $V$-successors or
-$S$-successors for respectively $E_V$ and $E_S$ successors.
-Similarly, we will write $\mathit{succ}_V(n)$, $\mathit{pred}_S(n)$ and
-the like for appropriate sets of successors or predecessors, and
-$\mathit{dom}(n)$ and $\mathit{pdom}(n)$ for sets of dominators and
-post-dominators respectively.
-We will draw pictures in the VDG form, with arrows following the {\em backwards
-data flow direction}, so that the edge $(n_1,n_2)$ will be represented as an arrow
-{\em from} $n_2$ to $n_1$.
 
 The VSDG inherits from the VDG the property that a program is implicitly
 represented in Static Single Assignment (SSA) form\cite{115320}: a
@@ -249,8 +202,7 @@ a \Tn.
 
 \subsection{Node Labelling with Instructions}
 
-There are four main classes of VSDG nodes, based on those of the \triVM\
-Intermediate Language~\cite{JohnsontriVM}: value nodes (representing pure
+There are four main classes of VSDG nodes: value nodes (representing pure
 arithmetic),
 \Gns\ (conditionals), Ê\Tns\ (loops), and state nodes (side-effects).
 
@@ -271,12 +223,10 @@ The \Gn\ is similar to the $\gamma$ gating function in being dependent on
 a control predicate, rather than the control-independent nature of SSA
 $\phi$-functions.
 %
-\begin{definition}
 
 A \Gn\ $\gamma(C, T, F)$ evaluates the condition dependency $C$, and
 returns the value of $T$ if $C$ is true, otherwise $F$.
 
-\end{definition}
 %
 We generally treat \Gns\ as single-valued nodes (constrast \Tns, which are
 treated as tuples), with the effect that two separate \Gns\ with the same
@@ -323,7 +273,6 @@ notion of an \emph{internal value} which may be updated on each iteration of
 the loop. ÊIt has five specific ports which represent dependencies at various
 stages of computation.
 %
-\begin{definition}
 
 A \Tn\ $\theta(C,I,R,L,X)$ sets its internal value to initial value
 $I$ then, while condition value $C$ holds true, sets $L$ to the current
@@ -331,7 +280,6 @@ internal value and updates the internal value with the repeat value $R$. ÊWhen
 $C$ evaluates to false computation ceases and the last internal value is
 returned through the $X$ port.
 
-\end{definition}
 %
 A loop which updates $k$ variables will have:
 a single condition port $C$,
@@ -393,7 +341,7 @@ loops being isomorphic in the VSDG.
 Loads, stores, and their volatile equivalents, compute a value and/or state
 (non-volatile loads return a value from memory without generating a new
 state). ÊAccesses to volatile memory or hardware can change state independently
-of compiler-aware reads or writes (cf. IO-state~\cite{202534}). 
+of compiler-aware reads or writes. 
 
 The \instruction{call} node takes both the name of the function to call and a
 list of arguments, and returns a list of results; it is treated as a state
@@ -405,7 +353,7 @@ We maintain the simplicity of the VSDG by imposing the restriction that
 \emph{all} functions have \emph{one} return node (the exit node $N_\infty$),
 which returns at least one result (which will be a state value in the case of
 \instruction{void} functions).
-To ensure that function calls and definitions are colourable, we suppose
+To ensure that function calls and definitions are able to be allocated registers easily, we suppose
 that the number of arguments to, and results from, a function is smaller
 than the number of physical registers---further arguments can be passed
 via a stack as usual.
@@ -422,39 +370,3 @@ A compiler's intermediate representation can be a graph, and many different grap
 Gating functions can be used to create directly interpretable $\phi$-functions. These are used in Gated Single Assignment Form \cite{93578,207115}.
 
 We then described the Value State Dependence Graph (VSDG) \cite{UCAM-CL-TR-607}, which is an improvement on the Value Dependence Graph \cite{177907}. It uses the concept of gating functions, data dependencies and state to model a program. Detailed semantics of the VSDG are available \cite{UCAM-CL-TR-607}, as well as semantics of a related IR: the Gated Data Dependence Graph \cite{upton}. Further study has taken place on the problem of generating code from the VSDG \cite{DBLP:conf/pdpta/Upton03,UCAM-CL-TR-705}, and it has also been used to perform a combined register allocation and code motion algorithm \cite{Johnson_combinedcode}.
-
-% Key components
-% Usage/implementation/optimizations using it
-% Further work
-
-%\newpage
-% =================
-% Abstract is below here.
-% =================
-
-%\section*{Abstract}
-
-%\subsection*{Introduction}
-
-%This chapter will explore some approaches to using SSA concepts in graph-based intermediate representations. I'm leaving the abstract here for the time being, although it seems to be changing as I write.
-
-%\subsection*{SSA Graph}
-
-%A literal translation of SSA into a graph. Introduction, examples and uses in the literature are shown.
-
-%\subsection*{The gating function}
-
-%One problem with SSA is the difficulty of directly interpreting $\phi$-functions as there is no way to explicitly tell at compile-time which of the $\phi$-variables will be chosen. This introduces the idea of the gating function -- called the $\gamma$-node -- which was introduced by Tu and Padua \cite{207115} and used by Ballance et al. in the Program Dependence Web\cite{93578} representation. We give some examples for explanation of $\phi$-translation, showing how it translates $\phi$-functions into $\gamma$-functions.
-%We give some construction examples and show how loops are handled with $\mu$ and $\eta$ style representations.
-
-%\subsection*{Value State Dependence Graph}
-
-%The Value State Dependence Graph (VSDG) is an intermediate representation for modeling programs using data dependencies. It can be seen as a spiritual successor to the Value Dependence Graph\cite{177907}, with the addition of ``state" edges to allow only the essential sequential dependences in a program to constrain the ordering of instructions. The IR was introduced by Johnson\cite{UCAM-CL-TR-607}, with further developments by Upton\cite{upton} and Lawrence\cite{UCAM-CL-TR-705}.
-
-%We give an outline of the key features of the VSDG and show how it is implicitly in SSA form. Construction is discussed with reference to Johnson's work. We then explain how the representation lends itself well to optimizations due to the adaptable nature of the graph. Discussion then focuses on the difficulties of generating sequential code from the graph\cite{DBLP:conf/pdpta/Upton03}, and Lawrence's proposed compiler architecture. We conclude with possible directions for ongoing work with the VSDG.
-
-%\subsection*{VSDG application: Combined Code Motion and Register Allocation}
-
-%Johnson and Mycroft \cite{johnson-combined} present an algorithm which performs code motion and register allocation at the same time by using the VSDG, uniting two phases which were traditionally believed to be antagonistic. We explore this algorithm and show how it works.
-
-
