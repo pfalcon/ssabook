@@ -463,6 +463,32 @@ Still, we give a possibility to perform spilling under SSA
 
 
 \section{Coloring and coalescing}
+
+Due to the decoupled register allocation and the use of SSA, the interference graph after spilling has two interesting properties.
+First, it still is chordal, hence easily colorable in polynomial time;
+Second, we know that $R$~colors are sufficient to color it since $\maxlive \leq R$.
+We could be ending the register allocation phase now, but we would be missing the second most important optimization after spilling: \emph{coalescing}.
+
+The goal of coalescing is to minimize the number of register-to-register {\tt move} instructions in the final code.
+While there may not be so many such ``copies'' at the high-level (e.g., instruction ``{\tt a = b;}'' in C)---especially after a phase of copy propagation under SSA (\todo{See chapter X})---%
+many such instructions are added by different compiler phases by the time compilation reaches the register allocation phase.
+For instance, adding copies is a common way to deal with register constraints (see Section~\ref{sec:practical-regalloc}). 
+An even more obvious and unavoidable reason in our case is the presence of \phifuns due to SSA form. 
+Indeed, remember that a \phifun represents in fact parallel copies on incoming edges of basic blocks. 
+For instance, if the function is $a \gets \phi(b,c)$, then it means that instructions $a\gets b$ should be executed on the edge coming from the left, and $a\gets c$ on the one from the right. 
+Suppose now that register allocation decided to put $a$ and $b$ in register $R_1$, but $c$ in register $R_2$.
+Then, the copy $a\gets b$ does not need to be executed anymore, but $a\gets c$ still does:
+the value of variable $c$ will be contained in $R_2$ and needs to transfered to $R_1$, which means the final code will contain an instruction ``{\tt mov $R_1, R_2$}'' or the like. 
+ 
+
+Obviously, it is better to assign variables linked by a \phifun, as definition and argument, to the same register. 
+This concerns for instance all subscripts of the same variable: it is usually better to assign $a_1$, $a_2$, etc.\ to the same register since they come from the same variable $a$. 
+In fact we can define a notion of \emph{affinity}, acting as the converse of the relation of interference, expressing how much two variables ``want'' to have the same color, i.e., share the same register. 
+A metric can be added to this notion, measuring the benefit one could get if the two variables are assigned to the same register. 
+Hence, for two variables $a$ and $b$, count 1 for each time they appear in the same copy instruction ($a\gets b$ or $b\gets a$) or \phifun ($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$). 
+These numbers can of course be weighted using empirically parameters (classically, times ten for each level of nested loop, halved if in a conditional branch, etc.) or using actual execution frequencies based on profiling.
+
+
 \subsection{Chordal property for coloring}
 
 {\sl
@@ -703,39 +729,6 @@ beneficial to bias the choosing of colors so as to perform some coalescing.
 
 \subsubsection{Biased coalescing.}
 
-The goal of coalescing is to minimize the number of register-to-register {\tt 
-move} instructions in the final code. While there may not be so many such 
-``copies'' at the high-level (e.g., instruction {\tt a = b} in C), especially 
-after a phase of copy propagation under SSA (\todo{See chapter X}), there can 
-be much more of these after the register allocation phase. One reason is that 
-it helps treating register constraints, we will explain this point in 
-Section~\ref{sec:practical-regalloc}. One even more obvious and unavoidable 
-reason is the presence of \phifuns due to SSA form. Indeed, remember that a 
-\phifun represents in fact parallel copies on incoming edges of basic blocks. 
-For instance, if the function is $a \gets \phi(b,c)$, then it means that 
-instructions $a\gets b$ should be executed on the edge coming from the left, 
-and $a\gets c$ on the one from the right. Suppose now that register allocation 
-decided to put $a$ and $b$ in register $R_1$, but $c$ in register $R_2$, then 
-the copy $a\gets b$ does not need to be executed anymore, but $a\gets c$ does 
-since the value of variable $c$, will be contained in $R_2$ and needs to 
-transfered to $R_1$, which means the final code will contain instruction {\tt 
-mov $R_1$, $R_2$} or the like.
-
-Obviously, it is better to assign variables linked by a \phifun, as definition 
-and argument, to the same register. This concerns for instance all subscripts 
-of the same variable: it is usually better to assign $a_1$, $a_2$, etc.\ to the 
-same register since they come from the same variable $a$. In fact we can define 
-a notion of \emph{affinity}, acting as the converse of the relation of 
-interference, expressing how much two variables ``want'' to have the same 
-color, i.e., share the same register. A metric can be added to this notion, 
-measuring the benefit one could get if the two variables are assigned to the 
-same register. Hence, for two variables $a$ and $b$, count 1 for each time they 
-appear in the same copy instruction ($a\gets b$ or $b\gets a$) or \phifun 
-($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$). These numbers 
-can of course be weighted using empirically parameters (classically, times ten 
-for each level of nested loop, halved if in a conditional branch, etc.) or 
-using actual execution frequencies based on profiling.
-
 
 Since the number of affinities is sparse compared to the number of possible 
 pairs of variables, we propose to keep for each variable a list affinities, 
@@ -822,13 +815,15 @@ register allocation, usually by restricting the coloring possibilities of
 variables. Some examples are given in Figure~\label{fig:reg-constraints}.
 
 \begin{figure}
-  \begin{tabular}{ccc}
-    Constraint  & Instruction & Effect on reg. alloc. \\
-    Division in registers $R_x$ and $R_y$ & $a / b$ & $a$ in $R_x$, $b$ in $R_y$\\
-    Memory load cannot use $R_z$ & $a = load(b)$ & $b$ cannot be in $R_z$\\
-    Functions arguments in $R_1$, $R_2$\ldots & $a = f(b,c)$ & $b$ in $R_1$, 
+  \begin{center}
+    \begin{tabular}{llcc}
+    Context & Constraint  & Instruction & Effect on reg. alloc. \\
+    x86 & Division in registers $R_x$ and $R_y$ & $a / b$ & $a$ in $R_x$, $b$ in $R_y$\\
+    st200 & Memory load cannot use $R_z$ & $a = load(b)$ & $b$ cannot be in $R_z$\\
+    ABI & Functions arguments in $R_1$, $R_2$\ldots & $a = f(b,c)$ & $b$ in $R_1$, 
     $c$ in $R_2$ \\
   \end{tabular}
+  \end{center}
   \caption{Examples of register constraints.}
   \label{fig:reg-constraints}
 \end{figure}
