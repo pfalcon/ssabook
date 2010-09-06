@@ -465,7 +465,7 @@ Still, we give a possibility to perform spilling under SSA
 \section{Coloring and coalescing}
 
 Due to the decoupled register allocation and the use of SSA, the interference graph after spilling has two interesting properties.
-First, it still is chordal, hence easily colorable in polynomial time;
+First, it still is chordal, hence easily colorable in polynomial time (more details in Section~\ref{sec:greedy-col});
 Second, we know that $R$~colors are sufficient to color it since $\maxlive \leq R$.
 We could be ending the register allocation phase now, but we would be missing the second most important optimization after spilling: \emph{coalescing}.
 
@@ -476,20 +476,16 @@ For instance, adding copies is a common way to deal with register constraints (s
 An even more obvious and unavoidable reason in our case is the presence of \phifuns due to SSA form. 
 Indeed, remember that a \phifun represents in fact parallel copies on incoming edges of basic blocks. 
 For instance, if the function is $a \gets \phi(b,c)$, then it means that instructions $a\gets b$ should be executed on the edge coming from the left, and $a\gets c$ on the one from the right. 
-Suppose now that register allocation decided to put $a$ and $b$ in register $R_1$, but $c$ in register $R_2$.
+Suppose now that register allocation decided to put $a$ and $b$ in register $R_1$, but $c$ in register $R_2$;
 Then, the copy $a\gets b$ does not need to be executed anymore, but $a\gets c$ still does:
 the value of variable $c$ will be contained in $R_2$ and needs to transfered to $R_1$, which means the final code will contain an instruction ``{\tt mov $R_1, R_2$}'' or the like. 
+
+We will first present the traditional graph coloring heuristic of Chaitin et al.\ and then show how it successfully color programs under SSA form.
+We will then introduce the notion of \emph{affinities} between variables and how to use them to drive the coloring so as to remove as much copies as possible.
+
  
 
-Obviously, it is better to assign variables linked by a \phifun, as definition and argument, to the same register. 
-This concerns for instance all subscripts of the same variable: it is usually better to assign $a_1$, $a_2$, etc.\ to the same register since they come from the same variable $a$. 
-In fact we can define a notion of \emph{affinity}, acting as the converse of the relation of interference, expressing how much two variables ``want'' to have the same color, i.e., share the same register. 
-A metric can be added to this notion, measuring the benefit one could get if the two variables are assigned to the same register. 
-Hence, for two variables $a$ and $b$, count 1 for each time they appear in the same copy instruction ($a\gets b$ or $b\gets a$) or \phifun ($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$). 
-These numbers can of course be weighted using empirically parameters (classically, times ten for each level of nested loop, halved if in a conditional branch, etc.) or using actual execution frequencies based on profiling.
-
-
-\subsection{Chordal property for coloring}
+\subsection{Greedy coloring scheme and SSA form}
 
 {\sl
 \begin{itemize}
@@ -508,35 +504,76 @@ These numbers can of course be weighted using empirically parameters (classicall
 }
 
 \subsubsection{The greedy coloring scheme.}
+\label{sec:greedy-col}
 
-In traditional graph coloring register allocation algorithms, the assignment is 
-done by coloring the interference graph using a greedy heuristic. This greedy 
-scheme is based on the observation that, given $R$ registers (colors), if a 
-node in the graph has at most $R-1$ neighbours, there will always be one color 
-available for this node for any coloring of the remaining of the graph. Hence 
-this node can be \emph{simplified}, i.e., removed from the graph and placed on 
-a stack. This process can be iterated with the remaining nodes, and if the 
-graph becomes empty, we know it is possible to color the graph with $R$ colors. 
-Such a coloring can be obtained by assigning colors to nodes in the reverse 
-order of their simplification, i.e., by popping nodes from the stack and, since 
-they have at least $R-1$ colored neighbours assigning them one available color. 
-We call this algorithm the \emph{greedy coloring scheme}. Whenever this scheme 
-gets stuck, i.e., if all remaining nodes have degree at least $R$, we do not 
-know whether the graph is $R$-colorable or not since it is just a heuristic.
+In traditional graph coloring register allocation algorithms, the assignment is done by coloring the interference graph with the greedy heuristic of Chaitin et al.~\cite{Chaitin81}.
+This scheme is based on the observation that given $R$ colors---representing the registers---, if a node in the graph has at most $R-1$ neighbours, there will always be one color available for this node whatever colors the remaining nodes have.
+Such a node node can be \emph{simplified}, i.e., removed from the graph and placed on a stack.
+This process can be iterated with the remaining nodes, whose degree may have decreased if the simplified node was one of their neighbours.
+If the graph becomes empty, we know it is possible to color the graph with $R$ colors; 
+Such a coloring can be obtained by assigning colors to nodes in the reverse order of their simplification, i.e., by popping nodes from the stack and assigning them one available color, which is always possible since they have at most $R-1$ colored neighbours.
+We call this algorithm the \emph{greedy coloring scheme}.
+
+Since it is a coloring heuristic, this scheme can get stuck (whenever all remaining nodes have degree at least $R$).
+In that case, we do not know whether the graph is $R$-colorable or not.
+In traditional register allocation, this is the trigger for spilling some variables so as to unstuck the simplification process.
+However, we will see that under the SSA form, after spilling has already been done so that the register pressure is at most $R$, the greedy coloring scheme can never get stuck.
 
 
-\subsubsection{Greedy-$k$-colorable graphs.}
+\subsubsection{SSA graphs are greedy.}
 
-An interesting fact is that the success or failure of this greedy scheme is 
-independent of the order of simplification. In other words, if the greedy 
-scheme fails at some point, there is no simplification order that could 
-simplify entirely the graph. This is because the remaining nodes have degree 
-greater than~$R$ at all time and there is no way to reduce their degree than 
-simplifying one of them, which is impossible. The side effect is that the 
-greedy scheme defines a class of graphs that we call the 
-\emph{greedy-$k$-colorable} graphs. These are the graphs $k$-colorable using 
-the greedy scheme. The pseudo-code for testing if a graph is 
-greedy-$k$-colorable is given on Figure~\ref{code:is-k-greedy}.
+One of the interesting properties of SSA form for register allocation is that the live-ranges of variables are subtrees of the dominance tree (see Chapter~\ref{chap:properties-and-flavours}, Section~\ref{part1:ssaprop:subtrees}).
+This means the interference graph is chordal and can be represented as the intersection graph of a family of subtrees.
+Let us consider such a representation (see Figure~\ref{fig:regalloc:subtree} TODO) and try to apply the greedy coloring scheme to it.
+%This means we can simplify live-ranges which intersect with at most $R-1$ other live-ranges.
+Let us also consider the ``leaf'' of a branch of the dominance tree, i.e., the live-range, on this branch which starts the last.
+Suppose this leaf intersect with other live-ranges (if not, we can simplify it), then they all start before it and end after its start.
+So, all neighbours of the leaf are live at its starting point (i.e., at the definition of the variable).
+Since spilling has already been done, we know that the register pressure at this point is at most $R$;
+The leaf has at most $R-1$ neighbours and can be simplified.
+Removing the leaf does not change the shape of the graph: the remaining live-ranges are still subtrees of the dominance tree;
+Hence, the process can continue and we are guaranteed that, as long at the graph is not empty, there will still be live-ranges that can be simplified.
+
+
+
+Consider the variables alive at a leaf of the dominance 
+tree (the ``end'' of a branch), they form a clique of the graph and because of 
+the dominance property, the definition of one of them, say $v$, is dominated by 
+the definitions of all the others.  This variable has a ``smaller'' live-range, 
+compared to the other variables, which are all already alive at its definition.  
+This means that every variable interfering with $v$ also interfere with the 
+other variables. In other words, all neighbours of $v$ form a clique, i.e., $v$ 
+is a simplicial node in the interference graph, and it has at most $R-1$ 
+neighbours.  This means that all ``leaf'' variables, i.e., the ones that have 
+their definition the closest to the end of their branch in the dominance tree, 
+are candidate for simplification by the greedy algorithm. Once they are 
+simplified, other variables become leaf variables and the simplification 
+process can continue again, until we reach the root of the dominance tree.
+
+Following the idea of the greedy algorithm, the stack is now filled with 
+variables ordered by appearance of their definition, i.e., if the definition of 
+$a$ appears before the definition of $b$ on the path from the root to $b$, $a$ 
+is higher in the stack, hence will be colored before $b$. In short, it is 
+possible to color all subtrees of the dominance tree by starting at the root 
+and scanning the dominance tree in a top-down fashion, assigning colors to 
+variable as their definition is encountered. This is possible since, under SSA,  
+variables are subtrees hence do not interfere if they belong to different 
+branches. A pseudo-code to assign colors is given in procedure Tree\_Scan,
+Figure~\ref{code:assign-tree-scan}.
+
+
+
+
+
+
+
+
+An interesting fact is that the success or failure of this greedy scheme is independent of the order of simplification.
+In other words, if the greedy scheme fails at some point, there is no simplification order that could simplify entirely the graph.
+This is because the remaining nodes have degree greater than~$R$ at all time and there is no way to reduce their degree other than simplifying one of them, which is impossible.
+The side effect is that the greedy scheme defines a class of graphs that we call the \emph{greedy-$k$-colorable} graphs.
+These are the graphs $k$-colorable using the greedy scheme.
+The pseudo-code for testing if a graph is greedy-$k$-colorable is given on Figure~\ref{code:is-k-greedy}.
 
 
 
@@ -564,18 +601,21 @@ $\mbox{worklist} = \{ v \in V \mid \mbox{degree[$v$]} < k\}$ \;
 
 \begin{figure}
 \begin{verbatim}
-Function Is_kGreedy(G)
+Function Simplify(G)
   Data: Undirected graph G = (V, E);
-  ∀v ∈ V, degree[v] = #neighbours of v in G,
+  For all v, degree[v] = #neighbours of v in G,
   k number of colors
-stack = {} ; worklist = {v ∈ V | degree[v] < k} ;
+stack = {} ;
+worklist = {v in V | degree[v] < k} ;
 while worklist != {} do
   let v in worklist ;
   foreach w neighbour of v do
     degree[w] = degree[w]-1 ;
     if degree[w] = k - 1 then worklist = worklist U {w}
-  push v on stack ; worklist = worklist \ {v} ; /* Remove v from G */
-if V = {} then return TRUE else return FALSE
+  push v on stack ;
+  worklist = worklist \ {v} ; /* Remove v from G */
+if V != {} then Failure ``The graph is not simplifiable''
+return stack ;
 \end{verbatim}
 \caption{Iskgreedy function}
 \label{code:is-k-greedy}
@@ -728,6 +768,14 @@ beneficial to bias the choosing of colors so as to perform some coalescing.
 
 
 \subsubsection{Biased coalescing.}
+
+In the case of SSA, it is for instance obviously better to assign variables linked by a \phifun, to the same register.
+This is in fact true of all subscripts of the same variable ($a_1$, $a_2$, etc.).
+In general we can define a notion of \emph{affinity}, acting as the converse of the relation of interference and expressing how much two variables ``want'' to share the same register. 
+We add a metric to this notion, measuring the benefit one could get if the two variables are assigned to the same register.
+For instancfor two variables $a$ and $b$, count 1 for each time they appear in the same copy instruction ($a\gets b$ or $b\gets a$) or \phifun ($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$). 
+These numbers can of course be weighted using empirically parameters (classically, times ten for each level of nested loop, halved if in a conditional branch, etc.) or using actual execution frequencies based on profiling.
+
 
 
 Since the number of affinities is sparse compared to the number of possible 
