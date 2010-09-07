@@ -311,7 +311,7 @@ variables used inside frequently executed code regions like loops.
 The problem of spilling is a difficult one in the literature, even under one of 
 its simpler forms, the spill everywhere problem, where spilled variables stay 
 so on their entire live-range~\cite{todo}. This spilling is advocated on the 
-first graph-coloring algorithms~\cite{Chaitin81} and even in subsequent 
+first graph-coloring algorithms~\cite{chaitin:1981:register} and even in subsequent 
 algorithms~\cite{IRC} because it fits better the graph-coloring representation. 
 In these schemes, this amounts to removing nodes from a non $R$-colorable graph 
 until it becomes $R$-colorable. Although this node deletion problem is known to 
@@ -465,27 +465,16 @@ Still, we give a possibility to perform spilling under SSA
 \section{Coloring and coalescing}
 
 Due to the decoupled register allocation and the use of SSA, the interference graph after spilling has two interesting properties.
-First, it still is chordal, hence easily colorable in polynomial time (more details in Section~\ref{sec:greedy-col});
+First, it still is chordal, hence easily colorable in linear time;
 Second, we know that $R$~colors are sufficient to color it since $\maxlive \leq R$.
-We could be ending the register allocation phase now, but we would be missing the second most important optimization after spilling: \emph{coalescing}.
-
-The goal of coalescing is to minimize the number of register-to-register {\tt move} instructions in the final code.
-While there may not be so many such ``copies'' at the high-level (e.g., instruction ``{\tt a = b;}'' in C)---especially after a phase of copy propagation under SSA (\todo{See chapter X})---%
-many such instructions are added by different compiler phases by the time compilation reaches the register allocation phase.
-For instance, adding copies is a common way to deal with register constraints (see Section~\ref{sec:practical-regalloc}). 
-An even more obvious and unavoidable reason in our case is the presence of \phifuns due to SSA form. 
-Indeed, remember that a \phifun represents in fact parallel copies on incoming edges of basic blocks. 
-For instance, if the function is $a \gets \phi(b,c)$, then it means that instructions $a\gets b$ should be executed on the edge coming from the left, and $a\gets c$ on the one from the right. 
-Suppose now that register allocation decided to put $a$ and $b$ in register $R_1$, but $c$ in register $R_2$;
-Then, the copy $a\gets b$ does not need to be executed anymore, but $a\gets c$ still does:
-the value of variable $c$ will be contained in $R_2$ and needs to transfered to $R_1$, which means the final code will contain an instruction ``{\tt mov $R_1, R_2$}'' or the like. 
-
-We will first present the traditional graph coloring heuristic of Chaitin et al.\ and then show how it successfully color programs under SSA form.
-We will then introduce the notion of \emph{affinities} between variables and how to use them to drive the coloring so as to remove as much copies as possible.
+In this section, we will first present the traditional graph coloring heuristic of Chaitin et al.\ and show how it successfully color programs under SSA form.
+We will then present a lighter coloring algorithm based on the scanning on the dominance tree.
+Finally, we will then explain how to add \emph{coalescing} to the coloring phase to reduce the number of copies in a program.
 
  
 
-\subsection{Greedy coloring scheme and SSA form}
+\subsection{Greedy coloring scheme}
+\label{sec:greedy-col}
 
 {\sl
 \begin{itemize}
@@ -503,10 +492,8 @@ We will then introduce the notion of \emph{affinities} between variables and how
 \end{itemize}
 }
 
-\subsubsection{The greedy coloring scheme.}
-\label{sec:greedy-col}
 
-In traditional graph coloring register allocation algorithms, the assignment is done by coloring the interference graph with the greedy heuristic of Chaitin et al.~\cite{Chaitin81}.
+In traditional graph coloring register allocation algorithms, the assignment is done by coloring the interference graph with the greedy heuristic of Chaitin et al.~\cite{chaitin:1981:register}.
 This scheme is based on the observation that given $R$ colors---representing the registers---, if a node in the graph has at most $R-1$ neighbours, there will always be one color available for this node whatever colors the remaining nodes have.
 Such a node node can be \emph{simplified}, i.e., removed from the graph and placed on a stack.
 This process can be iterated with the remaining nodes, whose degree may have decreased if the simplified node was one of their neighbours.
@@ -518,64 +505,6 @@ Since it is a coloring heuristic, this scheme can get stuck (whenever all remain
 In that case, we do not know whether the graph is $R$-colorable or not.
 In traditional register allocation, this is the trigger for spilling some variables so as to unstuck the simplification process.
 However, we will see that under the SSA form, after spilling has already been done so that the register pressure is at most $R$, the greedy coloring scheme can never get stuck.
-
-
-\subsubsection{SSA graphs are greedy.}
-
-One of the interesting properties of SSA form for register allocation is that the live-ranges of variables are subtrees of the dominance tree (see Chapter~\ref{chap:properties-and-flavours}, Section~\ref{part1:ssaprop:subtrees}).
-This means the interference graph is chordal and can be represented as the intersection graph of a family of subtrees.
-Let us consider such a representation (see Figure~\ref{fig:regalloc:subtree} TODO) and try to apply the greedy coloring scheme to it.
-%This means we can simplify live-ranges which intersect with at most $R-1$ other live-ranges.
-Let us also consider the ``leaf'' of a branch of the dominance tree, i.e., the live-range, on this branch which starts the last.
-Suppose this leaf intersect with other live-ranges (if not, we can simplify it), then they all start before it and end after its start.
-So, all neighbours of the leaf are live at its starting point (i.e., at the definition of the variable).
-Since spilling has already been done, we know that the register pressure at this point is at most $R$;
-The leaf has at most $R-1$ neighbours and can be simplified.
-Removing the leaf does not change the shape of the graph: the remaining live-ranges are still subtrees of the dominance tree;
-Hence, the process can continue and we are guaranteed that, as long at the graph is not empty, there will still be live-ranges that can be simplified.
-
-
-
-Consider the variables alive at a leaf of the dominance 
-tree (the ``end'' of a branch), they form a clique of the graph and because of 
-the dominance property, the definition of one of them, say $v$, is dominated by 
-the definitions of all the others.  This variable has a ``smaller'' live-range, 
-compared to the other variables, which are all already alive at its definition.  
-This means that every variable interfering with $v$ also interfere with the 
-other variables. In other words, all neighbours of $v$ form a clique, i.e., $v$ 
-is a simplicial node in the interference graph, and it has at most $R-1$ 
-neighbours.  This means that all ``leaf'' variables, i.e., the ones that have 
-their definition the closest to the end of their branch in the dominance tree, 
-are candidate for simplification by the greedy algorithm. Once they are 
-simplified, other variables become leaf variables and the simplification 
-process can continue again, until we reach the root of the dominance tree.
-
-Following the idea of the greedy algorithm, the stack is now filled with 
-variables ordered by appearance of their definition, i.e., if the definition of 
-$a$ appears before the definition of $b$ on the path from the root to $b$, $a$ 
-is higher in the stack, hence will be colored before $b$. In short, it is 
-possible to color all subtrees of the dominance tree by starting at the root 
-and scanning the dominance tree in a top-down fashion, assigning colors to 
-variable as their definition is encountered. This is possible since, under SSA,  
-variables are subtrees hence do not interfere if they belong to different 
-branches. A pseudo-code to assign colors is given in procedure Tree\_Scan,
-Figure~\ref{code:assign-tree-scan}.
-
-
-
-
-
-
-
-
-An interesting fact is that the success or failure of this greedy scheme is independent of the order of simplification.
-In other words, if the greedy scheme fails at some point, there is no simplification order that could simplify entirely the graph.
-This is because the remaining nodes have degree greater than~$R$ at all time and there is no way to reduce their degree other than simplifying one of them, which is impossible.
-The side effect is that the greedy scheme defines a class of graphs that we call the \emph{greedy-$k$-colorable} graphs.
-These are the graphs $k$-colorable using the greedy scheme.
-The pseudo-code for testing if a graph is greedy-$k$-colorable is given on Figure~\ref{code:is-k-greedy}.
-
-
 
 \begin{comment}
 \begin{function}[h]
@@ -621,38 +550,49 @@ return stack ;
 \label{code:is-k-greedy}
 \end{figure}
 
-\subsubsection{Simplification on chordal graphs.}
-
-Chordal graphs are easily colorable using a \emph{simplicial elimination 
-scheme}. There is indeed a property that chordal graph have at least two 
-simplicial vertices, i.e., nodes whose neighbours in the graph are a clique (a 
-complete subgraph) \todo{check if already said in chapter 2, or cf. Appendix}.  
-A simplicial elimination scheme is a particular order of simplification of 
-nodes in which only simplicial nodes may be chosen. Such an order gives the 
-minimum number of colors to the graph in polynomial time, but can be a bit 
-tedious to obtain. In practice, in register allocation, we do not need the 
-minimum number of colors, we just need that at most $R$ colors are used. Since 
-enough spilling has already been done in the previous section, we know that 
-\maxlive is at most $R$, hence that the interference graph is $k$-chordal with 
-$k\leq R$. This means that every simplicial node in the simplicial elimination 
-scheme has a degree at most $k-1$ in the remaining graph, hence any simplicial 
-elimination order is also a valid simplification order for a 
-greedy-$k$-coloring. Hence a $k$-chordal graph is also greedy-$k$-colorable, 
-hence greedy-$R$-colorable and any simplification scheme for $R$ registers will 
-manage to color it with at most $R$ colors.
 
 
-This means we do not need a fancy coloring algorithm tuned for chordal graphs, 
-the original simplification scheme of Chaitin et al.\ does the job, without any 
-modification. Following a call to Is\_k\_Greedy, it is possible to re-use the 
-stack to assign the colors by making a call to Assign\_colors, 
-Figure~\ref{code:assign-color}. Among the good things, this also means that 
-existing register allocators can be easily modified to handle SSA code and that 
-register allocation can benefit from powerful coalescing strategies such as 
-aggressive or conservative ones. Moreover, the fact that register allocation 
-can be decoupled into a phase of spilling first and then a phase of 
-coloring/coalescing allows the writing of more involved coalescing \todo{cite 
-examples}.
+\subsection{SSA graphs are colorable with a greedy scheme}
+
+One of the interesting properties of SSA form for register allocation is that the live-ranges of variables are subtrees of the dominance tree (see Chapter~\ref{chap:properties-and-flavours}, Section~\ref{part1:ssaprop:subtrees}).
+This means the interference graph is chordal and can be represented as the intersection graph of a family of subtrees.
+We will now prove that if the register pressure is at most $R$, the interference graph can be colored with $R$ colors using the greedy scheme.
+
+\begin{proof}
+  Let us consider such a subtree representation of the interference graph (see Figure~\ref{fig:regalloc:subtree} TODO) and try to apply the greedy coloring scheme to it.
+  In this representation, a node candidate for simplification corresponds to a live-range which intersect with at most $R-1$ other live-ranges.
+  Consider the ``leaf'' of a branch of the dominance tree, i.e., the live-range on this branch which starts last, say at point $d$ (the instruction that defines the leaf).
+  If this leaf does not intersect any other live-range, it can be simplified.
+  If it does, then all its neighbour live-ranges start before $d$---by definition of the leaf---and end after $d$---because they intersect.
+  So, all neighbours of the leaf are live at $d$;
+  Since spilling has already been done, we know that the register pressure at $d$ is at most $R$, hence there is at most $R-1$ intersecting live-ranges:
+  the corresponding node in the interference graph has at most $R-1$ neighbours and can be simplified.
+  Removing a live-range does not change the shape of the graph (the remaining live-ranges are still subtrees of the dominance tree):
+  as long at the graph is not empty, there will still be ``leaf'' live-ranges, i.e., nodes that can be simplified.
+  Eventually, the simplification process will empty the whole graph, and colors can be assigned in the reverse order of the simplification.
+\end{proof}
+
+\begin{figure}
+  Insert subtree figure HERE.
+  \caption{Subtree}
+  \label{fig:regalloc:subtree}
+\end{figure}
+
+We just proved that if we are under SSA form and the spilling has already been done so that $\maxlive \leq R$, the classical greedy coloring scheme of Chaitin et al.\ is \emph{guaranteed} to perform register allocation with $R$ without any additional spilling.
+This is practical for instance when working on an existing compiler that uses classical register allocation (for instance, the Iterated Register Coalescing of George and Appel~\cite{george:96:iterated}).
+
+
+The original simplification scheme of Chaitin et al.\ does the job, without any modification. 
+Following a call to Is\_k\_Greedy, it is possible to re-use the stack to assign the colors by making a call to Assign\_colors, Figure~\ref{code:assign-color}. 
+Among the good things, this also means that existing register allocators can be easily modified to handle SSA code and that register allocation can benefit from powerful coalescing strategies such as aggressive or conservative ones. 
+Moreover, the fact that register allocation can be decoupled into a phase of spilling first and then a phase of coloring/coalescing allows the writing of more involved coalescing \todo{cite examples}.
+
+
+However, this algorithm still needs the interference graph, an additional structure that takes time to build and uses memory up.
+We will propose next a lighter coloring algorithm based on the insight given by the greedy coloring scheme.
+
+
+
 
 
 \begin{figure}
@@ -677,9 +617,7 @@ Function Assign_colors(G)
 
 
 
-
-
-\subsection{Fast tree-scan solution}
+\subsection{A light tree-scan coloring algorithm}
 {\sl
 \begin{itemize}
   \item On the dominance tree, possible to scan from top and assign colors to 
@@ -691,64 +629,56 @@ Function Assign_colors(G)
 \end{itemize}
 }
 
-One of the advantages of SSA is to make things simpler, faster, and use less 
-memory. For the register assignment problem, we have seen that the existing 
-greedy scheme based on simplification still works, however, this still requires 
-the construction and maintaining of an interference graph, a structure judged 
-to big and cumbersome to be used in JIT context, where compilation time and 
-memory prints matters more. This is one of the reasons linear-scan allocators 
-are being developed, even if their performance does not equal those of 
-aggressive time-consuming off-line compilers. We will now present a method to 
-perform fast register assignment for SSA programs which does not need more than 
-the dominance tree and def-use chains.
+One of the advantages of SSA is to make things simpler, faster, and use less memory. 
+For the register assignment problem, we have seen that the existing greedy scheme based on simplification still works; 
+However, it requires constructing and maintaining an interference graph, a structure judged to big and cumbersome to be used in a JIT context, where compilation time and memory prints matters more. 
+%This is one of the reasons linear-scan allocators are being developed, even if their performance does not equal those of aggressive time-consuming off-line compilers. 
+We will now present a method to perform a fast register assignment for SSA after spilling which does not need more than the dominance tree and def-use chains. 
 
-Let us get back at the dominance tree representation, with live-ranges being 
-subtrees of this tree. This representation reflects the chordal property of the 
-interference graph. Consider the variables alive at a leaf of the dominance 
-tree (the ``end'' of a branch), they form a clique of the graph and because of 
-the dominance property, the definition of one of them, say $v$, is dominated by 
-the definitions of all the others.  This variable has a ``smaller'' live-range, 
-compared to the other variables, which are all already alive at its definition.  
-This means that every variable interfering with $v$ also interfere with the 
-other variables. In other words, all neighbours of $v$ form a clique, i.e., $v$ 
-is a simplicial node in the interference graph, and it has at most $R-1$ 
-neighbours.  This means that all ``leaf'' variables, i.e., the ones that have 
-their definition the closest to the end of their branch in the dominance tree, 
-are candidate for simplification by the greedy algorithm. Once they are 
-simplified, other variables become leaf variables and the simplification 
-process can continue again, until we reach the root of the dominance tree.
+The algorithm we propose scans the dominance tree, coloring the variables from the root to the leaves in a top-down order.
+The variables are considered in the order of their definitions; A pseudo-code is given in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}.
+Intuitively, this method works because when the scanning arrives at the definition of the variable, the only colored variables are ``above'' it and since there is at most $R-1$ other variables live at the definition, there is always a free color.
+We will now prove that this method always work;
+The key observation is that the order in which variables are considered corresponds to a reverse order of simplification, i.e., a valid order of the nodes on the stack after the greedy simplification scheme.
 
-Following the idea of the greedy algorithm, the stack is now filled with 
-variables ordered by appearance of their definition, i.e., if the definition of 
-$a$ appears before the definition of $b$ on the path from the root to $b$, $a$ 
-is higher in the stack, hence will be colored before $b$. In short, it is 
-possible to color all subtrees of the dominance tree by starting at the root 
-and scanning the dominance tree in a top-down fashion, assigning colors to 
-variable as their definition is encountered. This is possible since, under SSA,  
-variables are subtrees hence do not interfere if they belong to different 
-branches. A pseudo-code to assign colors is given in procedure Tree\_Scan,
-Figure~\ref{code:assign-tree-scan}.
+\begin{proof}
+  \def\order{o}
+  Let us consider an ordering $v_1, v_2, \ldots, v_n$ of the nodes of the nodes based on the dominance:
+  if $v_i$ dominates $v_j$, $v_j$ appear before $v_i$ in the ordering: $j < i$.
+  We will show that this order correspond to a greedy simplification.
+  Suppose $v_1, \ldots, v_{i-1}$ have been simplified by the greedy scheme (for $i=1$, this is the initial graph).
+  If $v_i$ dominates any variable, say $v_j$, then $i < j$ and the node has already been simplified;
+  So, there is no variable defined after $v_i$ on the dominance tree.
+  This means the live-range of $v_i$ is a ``leaf'' of the subtree representation;
+  Based on observation in the previous section, this means $v_i$ can be chosen for simplification.
+  Hence, the ordering $v_1, \ldots, v_n$ is a valid order of simplification and its reverse $v_n, v_{n-1}, \ldots, v_1$ is a valid order for coloring.
+\end{proof}
+
+
+It is important to understand why this method does not work in the general non-SSA case.
+Under SSA, the variables are ``split'' at join points by the use of \phifuns.
+If this was not the case, we would have live-ranges that spans on multiple branches of the dominance tree, creating cycles in the representation.
+In that case, coloring a branch would constrain the coloring on a different branch while under SSA form they are independent.
+See Figure~\ref{TODO} for an example.
 
 
 \begin{figure}
-  The {\tt colors} array is boolean and represent available colors.
-
   \begin{verbatim}
 Tree_Scan(T)
 
-  function assign_color(p,colors)
+  function assign_color(p, available)
     for each v last use at p
-      colors[color(c)] = True   /* colors not used anymore */
+      available[color(c)] = True     /* colors not used anymore */
 
     for each v defined at p
-      choose_color(v,colors)    /* choose available color */
-      colors[c] = False
+      c = choose_color(v, available)  /* choose available color */
+      available[c] = False
       color(v) = c
 
     for each child p' of p
-      assign_color(p', colors)
+      assign_color(p', available)
 
-  color(root(T))
+  assign_color(root(T), [True, True, ..., True])
 
   \end{verbatim}
   \caption{Tree scan coloring algorithm for SSA.}
@@ -756,18 +686,28 @@ Tree_Scan(T)
 \end{figure}
 
 
-This coloring algorithm is really fast as it only needs one traversal of the 
-dominance tree. Since the number of colors is fixed and small, it can be 
-implemented as a bit-set so as to speed-up updates of which colors are 
-available or not. The pseudo-code for function {\tt choose\_color} is 
-deliberately not given yet. A very basic implementation can just scan the 
-color array until it finds one that is not taken (this is assured since we are 
-under SSA and spilling has already been done). We will now see why it might be 
-beneficial to bias the choosing of colors so as to perform some coalescing.
+The tree-scan coloring algorithm is really fast as it only needs one traversal of the dominance tree. 
+Since the number of colors is fixed and small, it can be implemented as a bit-set to speed-up updates of the {\tt available} array.
+The pseudo-code for function {\tt choose\_color} is deliberately not given yet. 
+A very basic implementation could just scan the {\tt available} array until it finds one that is not taken.
+We will see in the next section how to bias the choosing of colors so as to perform some coalescing. 
+ 
 
 
+\subsection{Coalescing under SSA form}
 
-\subsubsection{Biased coalescing.}
+The goal of \emph{coalescing} is to minimize the number of register-to-register {\tt move} instructions in the final code.
+While there may not be so many such ``copies'' at the high-level (e.g., instruction ``{\tt a = b;}'' in C)---especially after a phase of copy propagation under SSA (\todo{See chapter X})---%
+many such instructions are added by different compiler phases by the time compilation reaches the register allocation phase.
+For instance, adding copies is a common way to deal with register constraints (see Section~\ref{sec:practical-regalloc}). 
+An even more obvious and unavoidable reason in our case is the presence of \phifuns due to SSA form. 
+Indeed, remember that a \phifun represents in fact parallel copies on incoming edges of basic blocks. 
+For instance, if the function is $a \gets \phi(b,c)$, then it means that instructions $a\gets b$ should be executed on the edge coming from the left, and $a\gets c$ on the one from the right. 
+Suppose now that register allocation decided to put $a$ and $b$ in register $R_1$, but $c$ in register $R_2$;
+Then, the copy $a\gets b$ does not need to be executed anymore, but $a\gets c$ still does:
+the value of variable $c$ will be contained in $R_2$ and needs to transfered to $R_1$, which means the final code will contain an instruction ``{\tt mov $R_1, R_2$}'' or the like. 
+
+
 
 In the case of SSA, it is for instance obviously better to assign variables linked by a \phifun, to the same register.
 This is in fact true of all subscripts of the same variable ($a_1$, $a_2$, etc.).
@@ -790,22 +730,20 @@ course optimal since the general problem of coalescing is NP-complete
 
 
 \begin{figure}
-  The {\tt colors} array is boolean and represent available colors.
-
   \begin{verbatim}
 global variables
   count = array of size #colors and elements 0
 
-choose_color(v, colors)
-  for each (u,w) in affinity_list(v)
-    count[color(u)] += w
-  max_w = -1
+choose_color(v, available)
+  for each (u,weight) in affinity_list(v)
+    count[color(u)] += weight
+  max_weight = -1
   col = 0
   for each color c
-    if colors[c] = true /* color is not used by a neighbour of v */
-      if count[c] > max_w
+    if available[c] == true /* color is not used by a neighbour of v */
+      if count[c] > max_weight
         col = c
-        max_w = count[c]
+        max_weight = count[c]
     count[c] = 0 /* prepare array for next call to choose_color */
   \end{verbatim}
   \caption{Choosing a color with a bias for coalescing.}
