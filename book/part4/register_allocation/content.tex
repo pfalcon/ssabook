@@ -4,6 +4,12 @@
 
 {
 
+\newenvironment{important}{%
+\bgroup \color{blue!50!black}
+  }{
+\egroup 
+}
+
 %% Local macros for personal use
 \newcount\todocount \todocount=0
 \def\todo#1{\global\advance\todocount by 1 {\color{blue} {\bf TODO:} #1}}
@@ -474,7 +480,7 @@ Finally, we will then explain how to add \emph{coalescing} to the coloring phase
  
 
 \subsection{Greedy coloring scheme}
-\label{sec:greedy-col}
+\label{sec:regalloc:greedy-col}
 
 {\sl
 \begin{itemize}
@@ -553,6 +559,7 @@ return stack ;
 
 
 \subsection{SSA graphs are colorable with a greedy scheme}
+\label{sec:regalloc:ssa-greedy}
 
 One of the interesting properties of SSA form for register allocation is that the live-ranges of variables are subtrees of the dominance tree (see Chapter~\ref{chap:properties-and-flavours}, Section~\ref{part1:ssaprop:subtrees}).
 This means the interference graph is chordal and can be represented as the intersection graph of a family of subtrees.
@@ -631,35 +638,38 @@ Function Assign_colors(G)
 
 One of the advantages of SSA is to make things simpler, faster, and use less memory. 
 For the register assignment problem, we have seen that the existing greedy scheme based on simplification still works; 
-However, it requires constructing and maintaining an interference graph, a structure judged to big and cumbersome to be used in a JIT context, where compilation time and memory prints matters more. 
+However, it requires constructing and maintaining an interference graph, a structure judged to big and cumbersome to be used in a JIT context, where compilation time and memory prints matter more. 
 %This is one of the reasons linear-scan allocators are being developed, even if their performance does not equal those of aggressive time-consuming off-line compilers. 
 We will now present a method to perform a fast register assignment for SSA after spilling which does not need more than the dominance tree and def-use chains. 
 
 The algorithm we propose scans the dominance tree, coloring the variables from the root to the leaves in a top-down order.
-The variables are considered in the order of their definitions; A pseudo-code is given in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}.
-Intuitively, this method works because when the scanning arrives at the definition of the variable, the only colored variables are ``above'' it and since there is at most $R-1$ other variables live at the definition, there is always a free color.
+The variables are colored in the order of their definitions.
+A pseudo-code is given in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}.
+Intuitively, this method works because when the scanning arrives at the definition of a variable, the only colored variables are ``above'' it and since there is at most $R-1$ other variables live at the definition, there is always a free color.
 We will now prove that this method always work;
 The key observation is that the order in which variables are considered corresponds to a reverse order of simplification, i.e., a valid order of the nodes on the stack after the greedy simplification scheme.
 
 \begin{proof}
   \def\order{o}
   Let us consider an ordering $v_1, v_2, \ldots, v_n$ of the nodes of the nodes based on the dominance:
-  if $v_i$ dominates $v_j$, $v_j$ appear before $v_i$ in the ordering: $j < i$.
+  if $v_i$ dominates $v_j$, then $v_j$ appear before $v_i$ in the ordering ($j < i$).
   We will show that this order correspond to a greedy simplification.
   Suppose $v_1, \ldots, v_{i-1}$ have been simplified by the greedy scheme (for $i=1$, this is the initial graph).
-  If $v_i$ dominates any variable, say $v_j$, then $i < j$ and the node has already been simplified;
-  So, there is no variable defined after $v_i$ on the dominance tree.
-  This means the live-range of $v_i$ is a ``leaf'' of the subtree representation;
-  Based on observation in the previous section, this means $v_i$ can be chosen for simplification.
-  Hence, the ordering $v_1, \ldots, v_n$ is a valid order of simplification and its reverse $v_n, v_{n-1}, \ldots, v_1$ is a valid order for coloring.
+  If $v_i$ dominates any variable, say $v_j$, then $j < i$ and the node has already been simplified;
+  So, there is no variable defined after $v_i$ on the dominance tree:
+  the live-range of $v_i$ is a ``leaf'' of the subtree representation (see proof in Section~\ref{sec:regalloc:ssa-greedy}).
+  So, $v_i$ can be chosen for simplification, and by induction the ordering $v_1, \ldots, v_n$ is a valid order of simplification. 
+  As we have seen previously in Section~\ref{sec:regalloc:greedy-col}, this means the reverse order $v_n, v_{n-1}, \ldots, v_1$ is a valid order for coloring.
 \end{proof}
 
 
+\begin{important}
 It is important to understand why this method does not work in the general non-SSA case.
 Under SSA, the variables are ``split'' at join points by the use of \phifuns.
 If this was not the case, we would have live-ranges that spans on multiple branches of the dominance tree, creating cycles in the representation.
-In that case, coloring a branch would constrain the coloring on a different branch while under SSA form they are independent.
+In that case, coloring a branch would constrain the coloring on leaves on a different branch; Under SSA form, such live-ranges are split and their colorings are independent.
 See Figure~\ref{TODO} for an example.
+\end{important}
 
 
 \begin{figure}
@@ -668,7 +678,7 @@ Tree_Scan(T)
 
   function assign_color(p, available)
     for each v last use at p
-      available[color(c)] = True     /* colors not used anymore */
+      available[color(v)] = True     /* colors not used anymore */
 
     for each v defined at p
       c = choose_color(v, available)  /* choose available color */
@@ -697,7 +707,7 @@ We will see in the next section how to bias the choosing of colors so as to perf
 \subsection{Coalescing under SSA form}
 
 The goal of \emph{coalescing} is to minimize the number of register-to-register {\tt move} instructions in the final code.
-While there may not be so many such ``copies'' at the high-level (e.g., instruction ``{\tt a = b;}'' in C)---especially after a phase of copy propagation under SSA (\todo{See chapter X})---%
+While there may not be so many such ``copies'' at the high-level (e.g., instruction ``{\tt a = b;}'' in C)---especially after a phase of copy propagation under SSA (\todo{See chapter X})---,
 many such instructions are added by different compiler phases by the time compilation reaches the register allocation phase.
 For instance, adding copies is a common way to deal with register constraints (see Section~\ref{sec:practical-regalloc}). 
 An even more obvious and unavoidable reason in our case is the presence of \phifuns due to SSA form. 
@@ -709,24 +719,22 @@ the value of variable $c$ will be contained in $R_2$ and needs to transfered to 
 
 
 
-In the case of SSA, it is for instance obviously better to assign variables linked by a \phifun, to the same register.
-This is in fact true of all subscripts of the same variable ($a_1$, $a_2$, etc.).
-In general we can define a notion of \emph{affinity}, acting as the converse of the relation of interference and expressing how much two variables ``want'' to share the same register. 
+In the case of SSA, it is for instance obviously better to assign variables linked by a \phifun, to the same register, so as to remove copies between subscripts of the same variable ($a_1$, $a_2$, etc.).
+This is possible if we are under CSSA, but optimizations can break this property and interferences can appear between subscripted variables with the same origin.
+In order to bypass this problem and also allow for more involved coalescing between SSA variables of different origin, we will define a notion of \emph{affinity}, acting as the converse of the relation of interference and expressing how much two variables ``want'' to share the same register. 
 We add a metric to this notion, measuring the benefit one could get if the two variables are assigned to the same register.
-For instancfor two variables $a$ and $b$, count 1 for each time they appear in the same copy instruction ($a\gets b$ or $b\gets a$) or \phifun ($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$). 
-These numbers can of course be weighted using empirically parameters (classically, times ten for each level of nested loop, halved if in a conditional branch, etc.) or using actual execution frequencies based on profiling.
+Given two variables $a$ and $b$, the weight of the affinity between them is the number of occurrences of copy instructions involving them ($a\gets b$ or $b\gets a$) or \phifuns ($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$). 
+These numbers should of course be weighted as a copy in a loop costs more than one outside a loop for instance.
+We recommend using using actual execution frequencies based on profiling in possible, and empirically parameters if not
+(e.g., $\times 10$ for each level of nested loop, $\times 0.5$ if in a conditional branch, etc.).
 
 
+\subsubsection{Biased coalescing}
 
-Since the number of affinities is sparse compared to the number of possible 
-pairs of variables, we propose to keep for each variable a list affinities, 
-where each element is a pair composed of a variable and the weight of the 
-affinity with this variable. In that case, the function {\tt choose\_color} can 
-be written as in Figure~\ref{code:choose-color}. This is a very simple bias, 
-where at each point the color chosen is the one that maximizes, under the 
-current knowledge, the coalescing for the variable being colored. It is not of 
-course optimal since the general problem of coalescing is NP-complete 
-(\todo{ref}), and biased algorithms are known to be easily misguided.
+Since the number of affinities is sparse compared to the number of possible pairs of variables, we propose to keep for each variable $v$ an ``affinity list'' where each element is a pair $(u,w)$ meaning that $v$ has an affinity with $u$ of weight $w$.
+We propose a version of function {\tt choose\_color} that bias the choosing of colors based on these affinity lists, shown on Figure~\ref{code:choose-color}. 
+The bias is very simple, each choice of color maximizes locally, under the current knowledge, the coalescing for the variable being colored. 
+It is not of course optimal since the general problem of coalescing is NP-complete~\cite{BouchezDR07:coalescing-cplx}, and biased algorithms are known to be easily misguided. 
 
 
 \begin{figure}
@@ -758,6 +766,14 @@ still consider a JIT context where compilation speed is very important.
 \todo{what kind of aggressive? Ask fab\ldots}
 
 
+\subsubsection{More involved coalescing strategies}
+
+It is beyond the scope of this book to describe in details deeply involved strategies for coalescing.
+So we will just give a short overview of other coalescing schemes that might be use in a decoupled register allocator.
+\begin{itemize}
+  \item Iterated Register Coalescing: conservative coalescing that works on the interference graph
+  \item Brute force strategy, working on all ``greedy-$k$-colorable'' graphs
+\end{itemize}
 
 
 
