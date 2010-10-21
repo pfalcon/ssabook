@@ -22,19 +22,15 @@ one definition.
 A $\phi$-function is of the form $x_n = \phi(x_0,x_1, x_2, \ldots, x_{n-1})$,
 where $x_i$'s ($i = 0 \ldots n-1$) are a set of variables with static single assignment. 
 Consider the example control flow graph where we have shown definitions and uses for 
-a variable $x$. The SSA form for the variable $x$ is illustrated in Figure ~\ref{fig:cfg}(a)
-without explict renaming. 
+a variable $x$. The SSA form for the variable $x$ is illustrated in Figure ~\ref{fig:cfg}(a). 
 Notice $\phi$-functions
 have been introduced at certain join (also called merge) nodes in the control flow graph.
 In the rest of this chapter we will present three different approaches  for placing $\phi$-functions
-at appropriate join nodes. We will begin by introducing concepts of dominance frontiers and
-iterated dominance frontiers (IDF). Cytron et al. showed that $\phi$-functions for a set of nodes in the
-control flow graph are
-placed at exactly the IDF of the set of nodes. Next we present Sreedhar and Gao's algorithm for
+at appropriate join nodes. Recall that SSA construction falls into two phases of $\phi$-placement and variable renaming. Here we present different approaches for the first phase for minimal SSA form. We first present Sreedhar and Gao's algorithm for
 placing $\phi$-functions. Sreedhar and Gao's algorithm uses DJ graph representation of a CFG.
 Then we will discuss the notion of merge set and merge relation, and present
-Das and Ramakrishna's algorithm for $\phi$-functions based on merge relation and using DJ graph. Finally
-we describe another approach for placing $\phi$-functions based on loop nesting forest.
+Das and Ramakrishna's algorithm for placing $\phi$-functions based on merge relation and using DJ graph. Finally
+we describe another approach for placing $\phi$-functions based on loop nesting forest proposed by Ramalingam.
 
 \section{Basic Algorithm}
 The original algorithm for placing $\phi$-functions
@@ -42,8 +38,8 @@ was based on first computing the dominance frontier  (DF) set for the given cont
 The dominance frontier $DF(x)$ of a node $x$ is the set of all nodes 
  $z$ such that $x$ dominates a predecessor of $z$, without strictly dominating $z$.
 For example, $DF(8)= \{ 6, 8 \}$ in Figure ~\ref{fig:cfg}(b). A straight forward algorithm for computing
-DF for each node takes $O(N^2)$ since the size of the full DF set in the worst case
-can be $O(N^2)$.Here $N$ is the number of nodes of the CFG. 
+DF for each node takes $O(N^2)$ (where $N$ is the number of nodes in the CFG) since the size of the full DF set in the worst case
+can be $O(N^2)$.
 Cytron et al.'s algorithm for the placement of $\phi$-functions consists of computing
 iterated dominance frontier (IDF) for a set of all definition points (or nodes where
 variables are defined). 
@@ -58,8 +54,7 @@ IDF_{i+1} (S) &=& DF(S \cup IDF_i(S))
 
 A $\phi$-function is then placed at each join node in the  $IDF(N_{\alpha})$ set. 
 Although Cytron et al.'s
-algorithm works very well in practice, in the worst case the time complexity of the
-algorithm is quadratic in the number of nodes in the original control flow graph.
+algorithm works very well in practice, in the worst case the time complexity of $\phi$-placement algorithm for a single variable is quadratic in the number of nodes in the original control flow graph.
 
 
 
@@ -67,62 +62,61 @@ algorithm is quadratic in the number of nodes in the original control flow graph
 \section{Placing $\phi$-functions using DJ graphs}
 Sreedhar and Gao 
 proposed the first linear time algorithm for computing the IDF set without
-the need for explicitly computing the full DF set. Sreedhar and Gao's orginal
+the need for explicitly computing the full DF set. Sreedhar and Gao's original
 algorithm was implemented using the DJ graph representation of CFG. A DJ graph
-is nothing more than a CFG augmented with dominator tree edges. An edge $x \edge{} y$, of the
-CFG, which is not a dominator-tree edge, becomes a join(J) edge The
+is a CFG augmented with dominator tree edges. An edge $x \edge{} y$, of the
+CFG, which is not a dominator-tree edge, becomes a join(J) edge, referred as $x \edge{J} y$. The
 DJ graph for the example CFG is also shown in Figure ~\ref{fig:cfg}(b). The CFG edge
 $10 \edge{} 8$, which is not a dominator-tree edge becomes the J edge, $10 \edge{J} 8$.
 Rather than explicitly
-computing the full DF set, Sreedhar and Gao's algorithm uses a bottom-up and top-down
-traversal of the DJ graph to compute the  $IDF(N_{\alpha})$. Even though
+computing the DF set, Sreedhar and Gao's algorithm uses a DJ graph to compute the  $IDF(N_{\alpha})$ on-the-fly. Even though
  the time complexity of
-Sreedhar and Gao's algorithm is linear, in practice it sometimes performs worse than the Cytron et al.
-algorithm. The main reason for this is that in practice the size of the DF set is linear 
+Sreedhar and Gao's algorithm is linear in the size of the DJ graph, in practice it sometimes performs worse than the Cytron et al.
+algorithm. The main reason for this is that in practice the size of the DF set is linear in the number of nodes in the CFG 
 and sometimes smaller than the size of the DJ graph. 
 
 
 \subsection{Key Observation} 
  
-Let us try to understand how to compute the DF for a single node using DJ graphs. 
-Consider  the DJ graph shown in Figure~\ref{fig:cfg}(b). To compute $DF(3)$ we simply walk down the
-dominator (D) tree edges from node 3 and identify all join (J) edges $x \edge{J} y$ such
-the $y.level \leq 3.level$, where $level$ of a node is the depth of the node from the
+Now let us try to understand how to compute the DF for a single node using DJ graphs. 
+Consider  the DJ graph shown in Figure~\ref{fig:cfg}(b). To compute $DF(8)$ we simply walk down the
+dominator (D) tree edges from node 8 and identify all join (J) edges $x \edge{J} y$ such
+the $y.level \leq 8.level$, where $level$ of a node is the depth of the node from the
 root of the dominator tree. The $level$ of each node is also shown in Figure ~\ref{fig:cfg}(b).
-For our example the only J edge that satifies this 
-condition is $7 \edge{J} 2$. Therefore the $DF(3) = \{2\}$. To generalize the example, we can
+For our example the J edges that satisfy this 
+condition are $9 \edge{J} 6$ and $10 \edge{J} 8$. Therefore $DF(8) = \{6, 8\}$. To generalize the example, we can
 compute the DF of a node $x$ using \\
 \fbox{$DF(x) = \{y | z \in SubTree(x) \; \wedge \; z \edge{J} y \; \wedge \; y.level \leq x.level \}$}\\
 
     \begin{figure}[htb]
     \centerline{\includegraphics[scale=0.4]{cfglive_new.pdf}}
-%    \centerline{\includegraphics[scale=0.4]{cfglive.pdf}}
     \caption{A Motivating Example (a) CFG (b) DJ graph}
     \label{fig:cfg}
     \end{figure} 
 
-Now we can extend the above idea to compute the IDF for a set of nodes, and hence
-the set of $\phi$-functions. Given a set of initial nodes $N_{\alpha}$ to compute the 
-relevant set of $\phi$-functions,
-Sreedhar and Gao  made two key observations: (1) Let $y$ be an ancestor node of a node $x$ 
-on the dominator tree. If $DF(x)$ has
-already been computed before the computation of $DF(y)$,  $DF(x)$ need not
-be recomputed when computing $DF(y)$. However, the reverse may not be
-true, and  therefore the order of the computation of DF is crucial. 
-(2) When computing $DF(x)$ we only need to examine J edges $y\edge{J} z$, where $y \in SubTree(x)$
-and $z$ is a node such that $z.level \leq x.level$.
+Now we can extend the above idea to compute the IDF for a set of nodes, and hence the set of $\phi$-functions. This algorithm does not precompute DF. Given a set of initial nodes $N_{\alpha}$ to compute the relevant set of $\phi$-functions,
+a key observation can be made. Let $y$ be an ancestor node of a node $x$ on the dominator tree. If $DF(x)$ has already been computed before the computation of $DF(y)$,  $DF(x)$ need not
+be recomputed when computing $DF(y)$. This is because nodes reachable from $Subtree(x)$ are already in $DF(x)$. However, the reverse may not be true, and  therefore the order of the computation of DF is crucial.
 
-To illustrate the two key observations consider the example DJ graph in Figure \ref{fig:cfg}(b),
-and let us compute $IDF(\{8,9\})$. Now supposing we start with node 8 and compute 
-$DF(8)$ using the second key observation. The resulting DF set is $DF(8) = \{6,8\}$. 
-Now supposing we next compute the DF set for node 9, and the resulting set is
-$DF(9) = \{6,8\}$. Notice here that we visited the edges $9 \edge{J} 6$ and
-$9 \edge{J} 6$ twice, once during the computation of $DF(8)$ and once again
-during the computation of $DF(9)$. We can avoid such duplicate visits using the
-first key observation by ordering the computation of DF set so that we first compute
-$DF(9)$ and then during the computation of $DF(8)$ we avoid visiting the sub-tree of
-node 9, and use the result $DF(9)$ that was previously computed. In the next section
-we present the Sreedhar and Gao's algorithm based on the above key observations.
+To illustrate the key observation consider the example DJ graph in Figure \ref{fig:cfg}(b),
+and let us compute $IDF(\{3,8\})$. Now supposing we start with node $3$ and compute 
+$DF(3)$. The resulting DF set is $DF(3) = \{2\}$. 
+Now supposing we next compute the DF set for node $8$, and the resulting set is
+$DF(8) = \{6,8\}$. Notice here that we had already visited node $8$ and its subtree as part of visiting node $3$. We can avoid such duplicate visits by ordering the computation of DF set so that we first compute $DF(8)$ and then during the computation of $DF(3)$ we avoid visiting the sub-tree of
+node $8$, and use the result $DF(8)$ that was previously computed. 
+
+Thus, to compute $IDF(x,y)$ where $x$ is an ancestor of $y$ in the DJ graph one needs to compute: 
+
+\begin{flalign*}
+IDF(x,y) & = \{w|w \in DF(y) \wedge w.level \leq x.level\} \cup \\
+          &  \{w|t \in Subtree(x) \setminus Subtree(y) \wedge t \edge{J} w \wedge w.level \leq x.level \}
+%}. 
+\end{flalign*}
+
+Hence, from the equation, $IDF(3,8) = \{w|w \in DF(8) \wedge w.level \leq 3.level \} \cup \{w|t \in Subtree(3)\setminus Subtree(8) \wedge t \edge{J} w \wedge w.level \leq 3.level \}$, where the first part of the right hand side i.e. $\{w|w \in DF(8) \wedge w.level \leq 3.level \}$ is computed first to avoid duplicated effort. Since neither $6.level$ nor $8.level$ is lesser than $3.level$ none of the nodes in $DF(8)$ appear in $IDF(3,8)$. The nodes that appear in $Subtree(3)\setminus Subtree(8)$ are $4, 5, 6, 7$. From these only $7 \edge{J} 2$ has a target node $2$ such that $2.level \leq 3.level$. Hence $IDF(3,8)$ will include only node $2$ without duplicate visits to node $8$.
+
+In the next section
+we present the Sreedhar and Gao's algorithm based on the above key observation.
 
 
 \subsection{Main Algorithm}
@@ -133,7 +127,7 @@ are processed according to the first key observation we use  a simple
  array of sets $OrderedBucket$, and two functions defined over the array of sets:
 (1) InsertNode($n$) that inserts the node $n$ in the set $OrderedBucket[n.level]$, and
 (2) GetNode() that returns a node from the $OrderedBucket$ with highest level number. 
-The complete Sreedhar and Gao's algorithm is shown in Figure~\ref{F:IDFMain}.
+The complete algorithm is shown in Figure~\ref{F:IDFMain}.
 
 \begin{figure}[!ht]
 \centering
@@ -144,14 +138,14 @@ The complete Sreedhar and Gao's algorithm is shown in Figure~\ref{F:IDFMain}.
 Procedure IDFMain(Set $N_{\alpha}$) 
 \{
 \begin{code}
-\x1 $IDF = \{ \}$
+\x1 $IDF = \{ \}$;
 \x1 {\bf foreach} ( node $x \in  N_{\alpha}$) {\bf do}
-\x2    InsertNode($x$)
+\x2    InsertNode($x$);
 \x1 {\bf end for}
 \x1 {\bf while} (($z = GetNode()) \neq NULL$)  \label{C:get}
-\x2   $croot = z$
+\x2   $croot = z$;
  \x2  $z.visited = true$ ;
- \x2  Visit($z$)
+ \x2  Visit($z$);
 \x1 {\bf end while}
 \end{code}
 \} 
@@ -164,18 +158,18 @@ Procedure Visit($x$)
 \x3   {\bf if} ($y.level \leq croot.level$) {\bf then}
 
 \x4     {\bf if} ($y \not \in IDF$) {\bf then}
-\x5        $IDF = IDF \cup {y}$   \label{C:idf}
+\x5        $IDF = IDF \cup {y}$;   \label{C:idf}
 \x5        {\bf if} ($y \not  \in N_{\alpha}$) {\bf then}
-\x6          InsertNode($y$) \label{C:insert}
+\x6          InsertNode($y$); \label{C:insert}
 \x5        {\bf endif}
 \x4     {\bf end if}
 \x3  {\bf end if}
 \x2 {\bf else} // visit D edges 
 \x3   {\bf if} ($y.visited == false $) {\bf then}
-\x4    $y.visited = true$
+\x4    $y.visited = true$;
 \x4    // if($y.boundary == false$)   \label{C:cached}
-\x5     Visit($y$) \label{C:dedges}
-%\x4     Visit($y$) \label{C:dedges}
+\x5     Visit($y$); \label{C:dedges}
+%\x4     Visit($y$); \label{C:dedges}
 \x4 // {\bf end if}
 \x3   {\bf end if}
 \x2  {\bf end if}
@@ -217,25 +211,13 @@ to be visited. However, when node 10 is visited, its successor node which is nod
 corresponds to the J edge $10 \edge{J} 8$, does not result in an update of the $IDF$ set as the level of
 node 8 is higher than that of node 3.
 
-Pingali and Bilardi made one key observation that the DF set 
-can be constructed in space and 
-time proportional to the number of nodes in the CFG and which supports DF query 
-in time proportional to the output size of result of the query.  Pingali and Bilardi used
-a representation called APT(Augmented Postdominator Tree) for representing DF set. 
-The APT representation can be
-thought as cached DJ graph, where J edges are cached at certain points, called 
-``boundary nodes'', in the dominator tree. Given the APT 
-(or cached DJ graph) of a control flow graph, it is straight forward to 
-modify  Sreedhar and Gao's algorithm for computing $\phi$-functions in linear time. 
- The only modification that is needed is to
-ensure that we need not visit all the nodes of a sub-tree rooted at a node
-$y$. At step \ref{C:cached} if a node $y$ is a boundary node, we avoid visiting 
-the subtree rooted at $y$. The reason for this is that at a boundary all the
-required J edges are cached. 
-Finally the time complexity of Sreedhar and Gao's algorithm is linear with respect to the number
-of DJ graph edges, each edge in the DJ graph is visited at most
-once. Details of cached DJ graph can be found in the next section.
+Cytron's approach for $\phi$-placement involves a fully eager approach of constructing the entire DF graph. On the other hand Sreedhar and Gao's approach is a fully lazy approach as it constructs DF on-the-fly only when a query is encountered.
+Pingali and Bilardi \cite{bilardi} suggested a middle-ground by combining both the approaches. They proposed a new representation called ADT(Augmented Dominator Tree). 
+The ADT representation can be
+thought as a DJ graph, where the DF sets are pre-computed for certain nodes called ``boundary nodes'' using an eager approach. For the rest of the nodes, termed ``interior nodes'', the DF needs to be computed on-the-fly as in the Sreedhar-Gao algorithm. The nodes which act as ``boundary nodes'' are detected in a separate pass. A factor $\beta$ is used to determine the partitioning of the nodes of a CFG into boundary or interior nodes by dividing the CFG into zones. $\beta$ is a number that represents space/query-time tradeoff. $\beta << 1$ denotes a fully eager approach where storage requirement for DF is maximum but query-time is faster while $\beta >> 1$ denotes a fully lazy approach where storage requirement is zero but query is slower. 
 
+Given the ADT of a control flow graph, it is straight forward to 
+modify  Sreedhar and Gao's algorithm for computing $\phi$-functions in linear time. The only modification that is needed is to ensure that we need not visit all the nodes of a sub-tree rooted at a node $y$ when $y$ is a boundary node whose DF set is already known. This change is reflected at step \ref{C:cached} of Figure~\ref{F:IDFMain}, where a subtree rooted at $y$ is visited or not visited based on whether it is a boundary node or not.
 
 
 \section{Placing $\phi$-functions using Merge Sets}
@@ -249,30 +231,23 @@ M (merge) graph using DJ graph and then use M graph for placing $\phi$-functions
 
 \subsection{Merge Set and Merge Relation}
 
-Let us
-define first the notion of a {\em join} set $J(S)$
+Let us define first the notion of a {\em join} set $J(S)$
  for a given set of nodes  $S$ in a control flow
 graph.\footnote{In English `join' and `merge' are synonyms, 
 but unfortunately
 in the literature, due to lack of  better terms, these two synonyms are used to mean
 distinct but related concepts.} Consider two nodes $u$ and $v$ and distinct 
 paths from $u \edge{+} w$ and $v \edge{+} w$, where $w$ is some node in the CFG. If the 
-two paths meet only at $w$ then $w$ is in the join set of the nodes $\{r, u, v\}$,
-where  $r$ is the root of the CFG. 
+two paths meet only at $w$ then $w$ is in the join set of the nodes $\{u, v\}$. 
 For instance, consider nodes 1 and 9 in Figure ~\ref{fig:cfg}(a).
 The paths $1 \edge{} 2 \edge{} 3 \edge{} 8$ and $9 \edge{} 10 \edge{} 8$ meet at $8$ 
-for the first time and so $\{8\} \in J(\{1,9\})$. Let $S \subseteq V$ and let
-$S_r = S \cup \{root \}$. 
-we can compute the join set $J(S_r)$ for all possible pairs $u, v \in S_r$ and determine
-all such $w$'s where the two distinct paths $u \edge{+} w$ and $v \edge{+} w$ will
-meet for the first time. 
+for the first time and so $\{8\} \in J(\{1,9\})$. 
 
 Now let us define {\em merge} relation as a relation $v=M(u)$
 that holds between two nodes $u$ and $v$ whenever
 $v \in J(\{root, u\})$. We insert a $\phi$-function at $v$ for a variable that is assigned
-only at $root$ and $u$. One can show that $J(S_r) = \cup_{u \in S_r} M(u)$. It is 
-straight forward to show that for any node $u \in V$, $v \in M(u)$ if and only if
-there is a path $u \edge{+} v$ that does not contain $idom(v)$. This relationship between
+only at $root$ and $u$. One can show that $J(S) = \cup_{u \in S} M(u)$ where $S \subseteq V$. Also, for any node $u \in V$, $v \in M(u)$ if and only if
+there is a path $u \edge{+} v$ that does not contain $idom(v)$.  This relationship between
 dominance and merge can be conveniently encoded using DJ graph and used for placing 
 $\phi$-functions. First we will construct DF (Dominance Frontier) graph using DJ graph.
 For each J edge $u \edge{} v$ in the DJ graph insert a new  $w \edge{J} v$ where
@@ -281,171 +256,44 @@ look at this is to insert a new J edge $w \edge{} v$ if $w = idom(u)$ and
 $w.level \geq v.level$.\footnote{Recall that $w.level$ is the depth of $w$ from
 $root$ of the dominator tree.} We repeatedly insert new J edges in a bottom-up fashion
 over the DJ graph until no more J edges can be inserted. The resulting
-DJ graph is a ``fully cached'' DJ graph, from which we can easily compute
-the dominance frontiers for a set of nodes. We will call the fully cached
-DJ graph as the DF graph. Figure ~\ref{fig:mgraph}(a) shows the DF graph
-that is derived from the DJ graph. Notice that for the J edge $10 \edge{J} 8$, additional
-J edges are inserted for the DF graph. These are $9 \edge{J} 8$ and $8 \edge{J} 8$ respectively.
-Given the DF graph we can compute
-the dominance frontier as $DF(u) = \{ v | u \edge{J} v\}$.
+DJ graph is a ``fully cached'' DJ graph. We will call the fully cached
+DJ graph as the DF graph as the $DF(x) = \{t| x \edge{J} t$\}.
 
-
-Next we can compute the M relation easily from the DF graph. 
+Next we can compute the M relation from the DF graph. 
 Recall that  we insert an edge from a node $u$ to
 a node $v $ if $v \in M(u)$. Using DF graph we compute
 the M graph as transitive closure
-using only the J edges. Now given the M graph of
-a CFG we can place $\phi$-functions to a set $S \subseteq \ V$ at the neighbouring nodes
-of the nodes in $S$. In other words for each node $u \in S$ we place a $\phi$-function
-at $v$ if $u \edge{J} v$ in M graph. Figure ~\ref{fig:mgraph}(d) shows the M graph 
-where the merge sets $M(x)$ for each node $x$ is shown.
-For node 8, $M(8) = \{2,5,6,8\}$, as the transitive closure on the DF graph results in
-the nodes $2, 5, 6$ and $8$ becoming reachable from node 8 via J edges. 
-
-It can also be shown that the merge, join and IDF are equivalent. Thus, for a node $x$,
-$M(x) = IDF(x) = J(x \cup \{root\})$.
-
+using only the DF edges of the DJ graph. Now given the M graph of
+a CFG we can place $\phi$-functions to a set $S \subseteq \ V$ at the neighbouring nodes of the nodes in $S$. In Figure ~\ref{fig:mgraph}, $M(4) = \{2,5,6\}$ as the nodes 2,5 and 6 are the only nodes reachable from node 4 following the DF edges. Similarly, for node 8, $M(8) = \{2,5,6,8\}$ due to these nodes being reachable from node 8 via the DF edges.
 
     \begin{figure}[htb]
     \centerline{\includegraphics[scale=0.4]{mgraph_1.pdf}}
-    \caption{(a)DF-graph/$\omega$-DF graph (b)$\omega$-DJ graph (c) $\gamma$-DJ graph (d)M graph}
+    \caption{DF graph and M sets}
     \label{fig:mgraph}
     \end{figure} 
 
-
-\subsection{Reduced DJ graph}
-
-The algorithm for placing $\phi$-functions based on the construction of DF graph or M graph 
-in the worst case can be quadratic. In this section we will describe an approach for
-computing $\phi$-functions using reduced DJ graph. Recall that
-Sreedhar and Gao's algorithm for computing $\phi$-functions is linear but sometimes perform
-worse than the one based on DF graph. Sreedhar and Gao's algorithm is a fully lazy algorithm
-in the sense it does not require explicit computation of DF relation. On the
-other hand Cytron et al.'s algorithm, which is based on DF graph, explicitly
-computes DF graph and then uses this graph to compute the set of $\phi$-functions. 
-We can first perform a simple preprocessing step to get rid of
-irreducible cycles using DJ graphs as follows: For each J edge $u \edge{} v$
-in the DJ graph we insert a new J edge $w \edge{} v$ such that $w.level = v.level$ and
-$w$ dominates $u$. We will call the resulting graph as $\omega$-DJ graph. 
-Figure ~\ref{fig:mgraph}(a) shows that certain edges are marked $\omega$-DF edges. These are the
-edges that correspond to DF when the source and the target nodes are at the same level as
-defined in \cite{bilardi}. The
-$\omega$-DJ graph shown in Figure ~\ref{fig:mgraph}(b) is an augmented DJ graph with additional 
-edges as described above. It should be noted that the edges marked as $\omega$-DJ edges 
-correspond exactly to the ones marked as $\omega$-DF edges in Figure ~\ref{fig:mgraph}(a). 
-
-
-Now given  the $\omega$-DJ graph we collapse all strongly connected cycles of J edges whose
-source and destination nodes are at the same level. In other words, find all
-strongly connected cycles in the $\omega$-DJ graph at a particular level $l$  and 
-collapse them and create a representative  node $s$ at level $l$. 
-Let $rep(s)$ denote the set of nodes for which $s$ is the representative node at a 
-particular level. Now let $t \in rep(s)$ and consider any outgoing edge
-$t \edge{} x$  (either D or J) edges
-of $t$. We will insert a new corresponding
-(either D or J) edge from $s \edge{} x$. We will process the nodes in the DJ graph
-in a bottom-up fashion to construct a reduced DJ graph, which we will call it
-as $\gamma$-DJ graph. The $\gamma$-DJ graph in
-Figure ~\ref{fig:mgraph}(c) is created by merging the nodes/edges of the $\omega$-DJ graph
-when the strongly connected components are folded to single nodes. 
-In this case, ignoring the
-self-loops for nodes 2 and 8, the nodes 5 and 6 get folded to a single representative 
-node (5,6), as nodes
-5 and 6 form a strongly connected component in the $\omega$-DJ graph.
-Notice that $\gamma$-DJ graph is a reducible graph and so now can efficiently compute
-$\phi$-functions using a simpler approach due to Cytron, Lowry, and Zadeck~\cite{xx}.
-Ramalingam has given a better exposition of this algorithm which can handle 
-reducible graphs. 
- It is important to notice that all nodes in strongly
-connected cycles as being equivalent as far as placement of $\phi$-functions is concerned.
-Notice that one can also now use Sreedhar and Gao's algorithm on the $\gamma$-DJ graph.
-
-
-\section{Fast and Practical $\phi$-placement using Merge Sets and DJ graphs}
-
-In this section we describe Das and Ramakrishna's algorithm for placing $\phi$-functions
-based on merge relation and using DJ graphs. 
-Das and Ramakrishna  made an observation that the $\phi$-functions can be
-placed by storing $M(x)$-sets and using
-an iterative formulation involving a top-down pass over the DJ-graph.
-Empirical observation
-suggests that the space complexity of $M(x)$ sets is comparable to that of $DF$-sets
-and hence can be used instead of DF to drive the $\phi$- placement.
-
-
+The algorithms \cite{} for placing $\phi$-functions based on the construction of DF graph or M relation 
+in the worst case can be quadratic. The merge relation is due to Pingali and Bilardi \cite{}. The DF graph and the M sets for the running example are given in Figure ~\ref{fig:mgraph}.
 
 \subsection{Iterative Merge Set Computation}
+In this section we describe a method to iteratively compute the $merge$ relation using a dataflow formulation. In the previous section we saw that the $merge$ relation can be computed using a transitive closure of the DF graph, which in turn can be computed from the DJ graph. In the algorithm proposed by Das and Ramakrishna \cite[], explicit DF graph construction or the transitive closure formation are not necessary. Instead, the same result can be achieved by formulating the $merge$ relation as a dataflow problem and solving it iteratively. For several applications, this approach has been found to be a fast and effective method to construct $M(x)$ for each node $x$ and the corresponding $\phi$-function placement using the $Mx)$ sets. 
 
-The following definition is needed for explaining Das and Ramakrishna's
-algorithm.
-
-
-\paragraph{Shadow:}
-
-Given a J edge $s\edge{J} t$, $Shadow(s\edge{J} t)$ is the set of nodes on the
-simple path in the dominator tree from node $idom(t)$ to node $s$,
-excluding node $idom(t)$ itself i.e., $\forall x\in Shadow(s\edge{J} t)$,
-$x\, dominates\, s$ but does not strictly dominate $t$. 
-Consider Figure ~\ref{fig:cfg}(b). Let us consider the J edge $9 \edge{J} 6$.
-Here the source node is 9 and the target node is 6. $idom(6)$ is 3. 
-$Shadow(9 \edge{J} 6)$ consists of the path $8 \edge{} 9$. Similarly, for $7 \edge{J} 2$
-the path is $2 \edge{} 3 \edge{} 6 \edge{} 7$, while for $4 \edge{J} 5$ the 
-path consists of only node $5$. Note that the concept of {\it Shadow} is used
-(below) to capture the DF values of the nodes and has similarities with the cached-DJ graph mechanism.
-
-The following property of DJ graphs is important for computing the $M(x)$ values of nodes:\\
-\fbox{$ \forall x \in V, DF(x) = \bigcup_{s \edge{J} t}\{t|x \in Shadow(s \edge{J} t)\}$}\\
-This property points to how the DF value of a node $x$ and the J edges 
-are related. The DF value is nothing else but a conglomeration of the target
-nodes of the J edges in whose shadow node $x$ lies. Also note that for any target node $t$,
-$level(t) \leq level(s)$. Thus, for a node $x$ all the nodes in the $DF(x)$ lie at a level
-equal or lower than $x$.
-In Figure ~\ref{fig:cfg}(b), $DF(6) = \{2,5\}$ as node $6$ belongs to
-$Shadow(7 \edge{J} 2)$ and $Shadow(6 \edge{J} 5)$. Here node $6$ is at the same level as $5$ while
-node $2$ is at a lower level.
-
-Since $M(x) = IDF(x) = DF^{+}(x), x \in V$, we can define the merge set for node $x$ by the
-following recursive definition : \\
-\fbox{$M(x) = DF(x) \bigcup (\cup_{y \in DF(x)} M(y))$ and $level(y) \leq level(x)$} \\
-Here, as $level(y) \leq level(x)$, and since we should enumerate the values of $M(y)$,
-before we can enumerate $M(x)$, we should visit the nodes top-down in the
-DJ graph. Now, we can write, using the above property of $DF(x)$, substituting for $DF(x)$:\\
-\fbox{$M(x) = \bigcup_{s \edge{J} t}(\{t|x \in Shadow(s \edge{J} t) \} \cup M(t))$}
-
-We can build up the $M(x)$ values incrementally for each node $x$ lying in the shadow of J edges - as
-each J edge is encountered. This is done by capturing the $M(t)$ values of the target nodes of those
-J edges and then perforing a union operation with the target nodes for constructing the
-corresponding $M(x)$. Thus, if \\
-$M^{s \edge{J} t}(x)$ is the contribution of a J edge $s \edge{J} t$ to $M(x)$, then we can write: \\
-\fbox{$M^{s \edge{J} t}(x) = \{t\} \cup M(t)$} \\
-As, \fbox{$M(x) = \bigcup_{s \edge{J} t}M^{s \edge{J} t}(x)$ }, substituting from above: \\
-\fbox{$M(x) = \bigcup_{s \edge{J} t}(\{t\} \cup M(t))$}\\
-Thus, $M(9) = \{ 6 \cup M(6) \} \cup \{8 \cup M(8) \}$, since node 9 is in $Shadow(9 \edge{J} 6)$
-and in $Shadow(10 \edge{J} 8)$. The $M(6)$ and $M(8)$ values should reach their fixed-points solutions
-before $M(9)$ can reach its fixed-point solution. Proceeding top-down over the
-dominator tree level by level allows us to compute the $M(x)$ for a node $x$
-in a single pass. However, iterative computation may cause multiple passes for cases where
-cycles of edges appear in the DF graph at the same level - like the ones involving nodes 5 and 6
-in Figure ~\ref{fig:cfg}(b). The cycles are not collapsed( as in the reduced DJ graph case ) as they
-may turn out to be costly in some cases.
-
-The following definition is needed to find out whether multiple passes are required for the algorithm.
+Consider a J edge $u \edge{J} v$. Also consider all nodes $w$ s.t. $w$ dominates $u$ and $w.level \geq v.level$. For every $w$ we can set up the dataflow equation as $M(w) = M(w) \cup M(v) \cup \{v\}$. The set of dataflow equations for each node $n$ in the DJ graph can be solved iteratively using a top-down pass over the DJ graph. To check whether multiple-passes are required over the DJ graph before a fixed-point is reached for the dataflow equations, we devise an ``inconsistency condition'' stated as follows.
 
 \paragraph{Inconsistency Condition:}
 
-If the $source(s)$ and $target(t)$ of a $J$-edge do not satisfy
-$M(s)\supseteq M(t)$, then the nodes in the shadow of the
-$J$-edge are said to be inconsistent. This directly follows from the statement that
-$M(s) = \bigcup_{s \edge{J} t}(\{t\} \cup M(t))$, as $s\in Shadow(s \edge{J} t)$.\\
+For a J edge, $u \edge{J} v$, if $u$ does not satisfy
+$M(u)\supseteq M(v)$, then the node $u$ is said to be inconsistent. 
 
-The algorithm described in the next section is directly based on the above method of building
+The algorithm described in the next section is directly based on the method of building
 up the $M(x)$ sets of the nodes as each J edge is encountered in an iterative fashion by
 traversing the DJ graph top-down. If no node is found to be {\bf inconsistent} after a single 
 top-down pass, all the nodes are supposed to have reached fixed-point solutions. If some node
 is found to be inconsistent, multiple passes are required till fixed-point solutions can be
 reached.
 
-\subsection{TDMSC-I}
+
+\subsubsection{TopDownMergeSetComputation}
 
 %==
 \begin{figure}[!ht]
@@ -455,29 +303,38 @@ reached.
 \noindent{\bf Output:} The merge sets for the nodes.
 
 \setcounter{linectr}{0}
+Procedure TDMSCMain
+\{
+\begin{code}
+\x1 $\forall node x \in$ DJ graph set $M(x) = \{\}$
+\x1 {\it done = false};
+\x1 {\bf while} ( ! {\it done} ) {\bf do}
+\x2     {\it done} = TDMSC-I(DJ graph);
+\x1 {\bf end while}
+\end{code}
+\}
 
-Procedure TopDownMergeSetComputation\_TDMSC-I(DJ graph)
+Procedure TDMSC-I(DJ graph)
 \{
 \begin{code}
 %\textbf{Algorithm: Top Down Merge Set Computation (TDMSC-I)}
 %Input: $DJ$-graph
-%Outputs: a. Partial/Complete Merge Sets for every node of the DJ graph
-%b. A boolean value to indicate whether a subsequent pass is required
+%Outputs: Complete Merge Sets for every node of the DJ graph
 
-\x1 $RequireAnotherPass=False$;
+\x1 $RequireAnotherPass=false$;
 
-\x1 {\bf while} (in B(readth) F(irst) S(earch) order) {\bf do} \label{C:bfs}
+\x1 {\bf while} (in B(readth) F(irst) S(earch) order of DJ graph) {\bf do} \label{C:bfs}
 \x2      $n$ $=$ Next Node in BFS list
 \x2      {\bf for} (all incoming edges to $n$) {\bf do} \label{C:jedge}
 
 \x3          Let $e = s \edge{J} n$ , be an incoming J edge
-\x3          {\bf if} ($e$ not visited) {\bf then}
-\x4              Visit($e$) 
+\x3          {\bf if} ($e$ not marked visited) {\bf then}
+\x4              Mark $e$ as visited 
 \x4              $tmp$ $=$ $s$;
 \x4              $lnode$ $=$ $NULL$;
-\x4              {\bf while} $(level(tmp)\ge level(t))$ {\bf do} \label{C:mwhiles}
+\x4              {\bf while} $(level(tmp)\ge level(n))$ {\bf do} \label{C:mwhiles}
 
-\x5                   $M(tmp)=M(tmp)\cup M(tnode)\cup \{t\}$;
+\x5                   $M(tmp)=M(tmp)\cup M(n)\cup \{n\}$;
 \x5                   $lnode=tmp$;
 \x5                   $tmp=parent(tmp)$; //dominator tree parent
 \x4              {\bf end while} \label{C:mwhilee}
@@ -485,7 +342,7 @@ Procedure TopDownMergeSetComputation\_TDMSC-I(DJ graph)
 \x5                  Let $e'$ $=$ $s^{'} \edge{J} lnode$, be an incoming J edge
 \x5                  {\bf if} ($e'$ visited) {\bf then}
 \x6                     {\bf if} $(M(s') \not\supseteq M(lnode))$ {\bf then} //Check inconsistency
-\x7                         $RequireAnotherPass = True$;
+\x7                         $RequireAnotherPass = true$;
 \x6                     {\bf end if}
 \x5                  {\bf end if}
 \x4              {\bf end for}
@@ -500,71 +357,58 @@ Procedure TopDownMergeSetComputation\_TDMSC-I(DJ graph)
 \label{F:tdmsc}
 \end{figure} 
 
-TDMSC-I works by scanning the DJ graph in a top-down fashion as shown in step ~\ref{C:bfs}
-using a breadth-first traversal mechanism. This implies that the DJ graph is visited
-level-by-level. During this process, for each node $n$ encountered, if there are {\bf incoming}
-J edges to $n$ as in step ~\ref{C:jedge}, then a separate bottom-up pass starts at 
-step ~\ref{C:mwhiles}. This bottom-up pass traverses the nodes in the $Shadow(s \edge{J} n)$
-updating the $M(x)$ values of these nodes. This follows from the contribution of each
-J edge $M^{s \edge{J} t}(x)$ to $M(x)$ as discussed earlier. step ~\ref{C:lnode} is used for
+The first and direct variant of the approach laid out above is termed TDMSC-I. This variant works by scanning the DJ graph in a top-down fashion as shown in step ~\ref{C:bfs}
+of Figure~\ref{F:tdmsc}. All $M(x)$ sets are set to the null set before the initial pass of TDMSC-I. The $M(x)$ sets computed in a previous pass are carried over if a subsequent pass is required. 
+
+The DJ graph is visited
+level-by-level. During this process, for each node $n$ encountered, if there is an {\bf incoming}
+J edge $s \edge{J} n$ to $n$ as in step ~\ref{C:jedge}, then a separate bottom-up pass starts at 
+step ~\ref{C:mwhiles}. This bottom-up pass traverses all nodes $w$ s.t. $w$ dominates $s$ and $w.level \geq s.level$,
+updating the $M(w)$ values using the aforementioned dataflow equation. Step ~\ref{C:lnode} is used for
 inconsistency check. $RequireAnotherPass$ is set to true only if a fixed point is not reached
 and the inconsistency check succeeds for some node.
 
-There are some subtleties in the algorithm that should be noted. step ~\ref{C:lnode} of the algorithm
-visits incoming edges to $lnode$ only as the the incoming edges to $lnode$'s posterity are at
-a level greater than that of node $n$ and are unvisited yet. 
+There are some subtleties in the algorithm that should be noted. Step ~\ref{C:lnode} of the algorithm visits incoming edges to $lnode$ only as $lnode$ is at the same level as $n$, which is the current level of inspection and the incoming edges to $lnode$'s posterity are at a level greater than that of node $n$ and are unvisited yet. 
 
-Here, we will briefly walk through TDMSC-I using the DJ graph of Figure ~\ref{fig:cfg}(b).
-Moving top-down over the graph, the first J edge encountered is $7 \edge{J} 2$.
-As a result, a bottom-up climbing of the nodes happen, starting at node $7$ and
-ending at node $2$ and the merge sets of these nodes are updated so that
-$M(7) = M(6) = M(3) = M(2) = \{2\}$. The next J edge
-to be visited can be any of $4 \edge{J} 5$, $5 \edge{J} 6$ or $6 \edge{J} 5$. Assume it is $5 \edge{J} 6$. This
-results in $M(5) = M(6) \cup \{6\} = \{2,6\}$. Now, let $6 \edge{J} 5$ be
-visited. Hence, $M(6) = M(5) \cup \{5\} = \{2,5,6\}$. At this point, 
-the {\bf inconsistency check} comes into picture for the edge $6 \edge{J} 5$ as $5 \edge{J} 6$
-is another J edge that is already visited and is an incoming edge of node $6$.
-Checking for $M(5) \supseteq M(6)$ fails, implying that the $M(5)$ needs to 
-be computed again. This is done in a separate pass as suggested by the {\it RequireAnotherPass}
-value of true. In a second iterative pass, the J edges are visited in the same
-order. Now, when $5 \edge{J} 6$ is visited, $M(5) = M(6) \cup \{6\} = \{2,5,6\}$. The
-$M(5)$ value is different in this pass as $M(6)$ has become $\{2,5\}$ instead
-of just $\{2\}$ in the first pass. On a subsequent visit of $6 \edge{J} 5$, $M(6)$ is
-also set to $\{2,5,6\}$. The inconsistency does not appear any more and the algorithm 
-proceeds to handle the edges $4 \edge{J} 5$, $9 \edge{J} 6$ and $10 \edge{J} 8$ which have
-also been visited in the earlier pass. {\bf TDMSC-I} is invoked repeatedly by a different function
-which calls it in a loop till {\it RequireAnotherPass} is returned as $false$.
-
-The algorithm of TDMSC-I is enclosed in another algorithm that repeatedly
-calls it till {\bf RequireAnotherPass} is false.
-
+Here, we will briefly walk through TDMSC-I using the DJ graph of Figure ~\ref{fig:cfg}(b). Moving top-down over the graph, the first J edge encountered is $7 \edge{J} 2$. As a result, a bottom-up climbing of the nodes happen, starting at node $7$ and
+ending at node $2$ and the merge sets of these nodes are updated so that $M(7) = M(6) = M(3) = M(2) = \{2\}$. The next J edge
+to be visited can be any of $4 \edge{J} 5$, $5 \edge{J} 6$ or $6 \edge{J} 5$ at $level = 3$. Assume it is $5 \edge{J} 6$. This results in $M(5) = M(5) \cup M(6) \cup \{6\} = \{2,6\}$. Now, let $6 \edge{J} 5$ be visited. Hence, $M(6) = M(6) \cup M(5) \cup \{5\} = \{2,5,6\}$. At this point, the {\bf inconsistency check} comes into picture for the edge $6 \edge{J} 5$ as $5 \edge{J} 6$ is another J edge that is already visited and is an incoming edge of node $6$. Checking for $M(5) \supseteq M(6)$ fails, implying that the $M(5)$ needs to be computed again. This is done in a separate pass as suggested by the {\it RequireAnotherPass} value of true. In a second iterative pass, the J edges are visited in the same order. Now, when $5 \edge{J} 6$ is visited, 
+$M(5) = M(5) \cup M(6) \cup \{6\} = \{2,5,6\}$ as 
+the current $M(5) = \{2,6\}$ 
+and $M(6) = \{2,5,6\}$. On a subsequent visit of $6 \edge{J} 5$, $M(6)$ is also set to $\{2,5,6\}$. The inconsistency does not appear any more and the algorithm proceeds to handle the edges $4 \edge{J} 5$, $9 \edge{J} 6$ and $10 \edge{J} 8$ which have
+also been visited in the earlier pass. TDMSC-I is invoked repeatedly by a different function
+which calls it in a loop till {\it RequireAnotherPass} is returned as $false$ as shown in the procedure TDMSCMain.
 
 \subsubsection{TDMSC-II}
 
-Das and Ramakrishna term as TDMSC-II, an improvement to algorithm
-TDMSC-I. This improvement is fueled by the observation that for an
-inconsistent J edge, the merge sets of all nodes in the shadow
-of that edge can be locally corrected for some special cases. This
-heuristic works very well for certain class of problems -- especially
-for CFGs with DF graphs having cycles consisting of a few edges. This
-eliminates an extra pass as an inconsistent node is made consistent
-immediately on being detected. 
+TDMSC-II is an improvement to algorithm TDMSC-I. This improvement is fueled by the observation that for an inconsistent node $u$, the merge sets of all nodes $w$ s.t. $w$ dominates $u$ and $w.level \geq u.level$,
+can be locally corrected for some special cases. This
+heuristic works very well for certain class of problems -- especially for CFGs with DF graphs having cycles consisting of a few edges. This eliminates extra passes as an inconsistent node is made consistent immediately on being detected. For details of this algorithm refer to \cite{}.
 
-Das and Ramakrishna's TDMSC-II has this additional step immediately
-after the inner while loop of TDMSC-I.
+\subsubsection { Final $\phi$-function placement using Merge Sets }
+Once the $Merge$ relation is computed for the entire CFG, placing $\phi$ is a straightforward application of the $M(x)$ values for a given $N_{\alpha}$, as shown in Figure ~\ref{F:phip}.
+\begin{figure}[!ht]
+\centering
+\begin{minipage}[t]{5in}
+\noindent{\bf Input:} A CFG with Merge sets computed and $N_{\alpha}$.
+\noindent{\bf Output:} Blocks augmented by $\phi$-functions for the given $N_{\alpha}$.
 
+\setcounter{linectr}{0}
 
-%\subsection{Complexity}
-%
-%A single pass of TDMSC-I can be shown to have a complexity of $O(|V|+|E|)+O(h^{avg}*|J|)+O(e^{avg}*|J|)$.
-%For total running time, this has to be multiplied by an additional
-%factor of $P$, where $P$ is the number of passes that are needed
-%to reach fixed points for merge sets. On average, this overall complexity
-%drops down to linear time, if the following factors are taken into
-%account: CFGs usually are sparse, both $h^{avg}*|J|$ and $e^{avg}*|J|$
-%are of the order of $O(|V|)$, and $P$ is a small constant.
-
-
+Procedure $\phi$-placement for $N_{\alpha}$
+\{
+\begin{code}
+\x1 {\bf for} ($\forall n \in N_{\alpha}$) {\bf do}
+\x2   {\bf for} ($\forall n^{'} \in M(n)$) {\bf do}
+\x3       Add a $\phi$ for $n$ in $n^{'}$ if not placed already
+\x2   {\bf end for}
+\x1 {\bf end for}
+\end{code}
+\}
+\end{minipage}
+\caption{$\phi$-placement using $Merge$ sets}
+\label{F:phip}
+\end{figure} 
 
 \section{Computing Iterated Dominance Frontier Using Loop Nesting Forests}
     This section illustrates the use of {\bf loop nesting forests} for construction of the iterated
@@ -573,7 +417,7 @@ after the inner while loop of TDMSC-I.
 
     \subsection{Loop nesting forest}
      Loop nesting forest is a data structure that respresents the loops in a CFG
-    and the containment relation between them. However, while there is a fairly accepted notion of
+    and the containment relation between them. Loop nesting forest has been defined formally in [tobequoted]. However, while there is a fairly accepted notion of
     loop nesting forest in a reducible graph \cite{morgan_book}, there is less agreement about their
     definition in arbitrary graphs. Steensgard \cite{steensgard}, Sreedhar \cite{sreedhar} and Havlak
     \cite{havlak} all provide different definitions which have merits under different situations. 
@@ -583,31 +427,23 @@ after the inner while loop of TDMSC-I.
     The loop with header node $2$ contains the loop with header node $9$.
 
     \begin{figure}[htb]
-    \centerline{\includegraphics[scale=0.25]{lnfred.pdf}}
+    \centerline{\includegraphics[scale=0.3]{lnfred.pdf}}
     \caption{An example (a) CFG and (b) IDF Computation Using Loop Nesting Forest }
     \label{fig:lnf}
     \end{figure} 
 
 
     \subsection{Main Algorithm}
-    The IDF for a set of vertices $X$ in an acyclic graph $G_{ac}$, where a certain
-    variable $v$ is ``defined'', can be computed as the set of nodes where multiple ``definitions'' of $v$
-    reach. Let us say that a definition node $d$ ``reaches'' another node $u$ if there is a path in
-    the graph from $d$ to $u$ which does not contain any definition node ( for $v$ ) other than $d$ or $u$.
-    Hence, at least one definition node must reach any vertex $u \neq entry(G)$ 
-    \footnote{Here $entry(G)$ is a dummy node for all those nodes without predecessors}. If at least two
-    definitions reach a node $u$, then $u$ belongs to $IDF(X \cup entry(G))$. 
-    This suggests the algorithm in Figure ~\ref{F:ramaIDF} which visits nodes of $G_{ac}$ in
-    toplogical order and computes their reaching definitions ( for a variable $v$ ) in step ~\ref{C:rdf}
-    or step ~\ref{C:urdf}. If the number of reaching definitions is unique as in step ~\ref{C:onerd},
-    then the reaching definition set of the node is updated with the single reaching definition.
-    Vertices with more
-    than one reaching definition are added to $IDF(X \cup entry(G))$. It should be noted that a 
-    vertex is either a definition node or has a unique reaching definition 
-    if it is not in $IDF(X \cup entry(G))$.  
+    
+Let us say that a definition node $d$ ``reaches'' another node $u$ if there is a path in the graph from $d$ to $u$ which does not contain any definition node ( for variable $v$ ) other than $d$. If at least two definitions reach a node $u$, then $u$ belongs to $IDF(X)$ where $X$ consists of these definition nodes. This suggests the algorithm in Figure ~\ref{F:ramaIDF}. According to the algorithm, for a given $N_{\alpha}$, we can compute $IDF(N_{\alpha})$ as follows:
+\begin{itemize}
+\item { Initialize IDF to empty set }
+\item { Using topological order compute the subset of $IDF(N_{\alpha})$ that can reach a node using forward dataflow }
+{\item} {Add a node to IDF if it is reachable from multiple nodes}
+\end{itemize}  
 
-    For Figure ~\ref{fig:lnf}, the $G_{ac}$ is formed by dropping
-    the backedges $11 \rightarrow 9$ and $12 \rightarrow 2$. Also, $entry(G) = entry$.
+    For Figure ~\ref{fig:lnf}, the acyclic version of the graph $G$ termed $G_{ac}$ is formed by dropping
+    the backedges $11 \rightarrow 9$ and $12 \rightarrow 2$. Also, $entry(G) = \{entry\}$ where $entry$ is a specially designated node that is root of the CFG.
     For the definitions of $v$ in nodes $4,5,7$ and $12$ in Figure ~\ref{fig:lnf}, 
     the subsequent nodes where multiple definitions reach turn out to be at $6$ and $8$. For node $6$
     any one of two definitions in nodes $4$ or $5$ can reach. For node $8$, it can be either the
@@ -635,7 +471,7 @@ after the inner while loop of TDMSC-I.
     \{
     \begin{code}
 
-    \x1 $IDF = \{ \}$; 
+    \x1 $IDF = \{\}$; 
     \x1 $\forall$ $node$ of $V(G)$, $UniqueReachingDefs(node)$ = \{ \};
     \x1 {\bf for} $\forall u$ of $V(G) - entry(G)$ in topological sort order {\bf do} \{ 
     \x2    $ReachingDefs = \{ \}$; 
@@ -663,7 +499,7 @@ after the inner while loop of TDMSC-I.
   \end{figure}
 
     We will walk through some of the steps of this algorithm for $IDF(\{4,5,7,12\})$. We will start at
-    vertex 4. For this vertex, ${\it predecessors} = \{3\}$. But as $3 \notin IDF \cup X \cup \{entry\})$, 
+    vertex 4. For this vertex, ${\it predecessors} = \{3\}$. But as $3 \notin IDF \cup X \cup \{entry\}$, 
     ${\it ReachingDefs} = {\it UniqueReachingDefs}(3)$ according to step ~\ref{C:urdf}. Hence, 
     ${\it ReachingDefs} = \{entry\}$. As $\|{\it ReachingDefs}\|$ equals 1, 
     ${\it UniqueReachingDefs}(4) = \{entry\}$.
@@ -700,7 +536,7 @@ after the inner while loop of TDMSC-I.
  
     Now that we have shown how IDF can be computed for graphs with reducible loops using 
     loop nesting forests, we will briefly touch
-    upon how graphs containing irreducible loops can be handled. The trick behind the implementation
+    upon how graphs containing irreducible loops can be handled. The insight behind the implementation
     is to transform the irreducible loop in such a way that an acyclic graph is created from the loop
     without changing the dominance properties of the nodes. Referring to Figure ~\ref{fig:irred}, we see 
     that the irreducible loop comprising of nodes $v$ and $w$ in (a) can be transformed to the acyclic
