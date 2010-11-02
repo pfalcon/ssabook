@@ -262,7 +262,10 @@
        \par
        \vskip 20\p@
      \fi
-     \Huge \bfseries #2\par}%
+     \Huge \bfseries #2\par
+     \vskip 30\p@
+     \Large
+     \progressbaraverage{part\arabic{part}}\par}%
     \@endpart}
 \def\@spart#1{%
     {\centering

@@ -357,7 +357,11 @@ passing it to article class \MessageBreak
      \partname\ \thepart %\llap{\smash{\lower 5pt\hbox to\textwidth{\hrulefill}}}
     \par
     \vskip 2\p@ \fi
-    \partsize\partstyle #2\par}\@endpart}
+    \partsize\partstyle #2\par
+    \vskip 30\p@
+     \large
+     \progressbaraverage{part\arabic{part}}\par
+    }\@endpart}
 %
 % \@endpart finishes the part page
 %
