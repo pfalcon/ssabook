@@ -52,14 +52,18 @@ relevant for program analysis that occurs inside a
 compiler, prior to execution.
 The term \textit{single} refers to the uniqueness property of
 variable names that SSA imposes. As illustrated above, this enables
-more accurate analysis.
+a greater degree of precision.
 The term \textit{assignment} means variable definitions. For
 instance, in the code 
 \begin{verbatim}
 x := y+1
 \end{verbatim}
 the variable $x$ is being assigned the value of expression $(y+1)$.
-This is a definition, or assignment, of $x$.
+This is a definition, or assignment statement, for $x$.
+A compiler engineer would interpret the above assignment statement
+to mean that the lvalue of
+$x$ (i.e.\ the memory address labelled as $x$) should be modified to store
+the value $(y+1)$.
 
 %%%%%%%%%%%%%%%%%%%%%
 
@@ -73,10 +77,12 @@ definition as follows:
 %% \index{SSA, informal definition of}
 
 \begin{quotation}
+\textit{
 A program is defined to be in SSA
 form if each variable is a target of
 exactly one assignment statement in the
 program text.
+}
 \end{quotation}
 
 % Informally, static means `program text.'
@@ -97,23 +103,29 @@ pseudo-functions at control-flow merge points.
 % definition, and def dominates all uses.
 % Perhaps require implicit defs of all vars at entry,
 % implicit uses of all vars at exit?
-Each distinct SSA flavour has specific characteristics---many of
-these are discussed in Chapter \ref{FIXME} 2.
+Each distinct SSA variety has specific characteristics---many of
+these are discussed in
+Chapter \ref{chap:properties-and-flavours}.
+
 % forward links to Philip's discussion of
 % SSA flavours and properties here
 
-One important property that holds for all forms of SSA,
-including the simple definition above, is 
+One important property that holds for all varieties of SSA,
+including the simplest definition above, is 
 \emph{referential transparency}.
 Since there is only a single definition for each variable
 in the program text, a variable's value
 is \textit{independent of
 its position} in the program.
-(We may refine our knowledge about a particular variable
+We may refine our knowledge about a particular variable
 based on branching conditions, e.g.\ we know the value of $x$ in the
-\texttt{then} branch following a \texttt{if (x==0)} statement; however the
+\texttt{then} branch following a statement such as:
+\begin{verbatim}
+if (x==0)
+\end{verbatim}
+however the
 \textit{underlying value} of $x$
-does not change at this \texttt{if} statement.)
+does not change at this \texttt{if} statement.
 Programs written in pure functional languages
 are referentially transparent.
 
@@ -133,18 +145,19 @@ x := 2;
 z := x + 1;
 \end{verbatim}
 A naive (and incorrect) analysis may assume that the values
-of $y$ and $z$ are equivalent, since they have identical 
-assignments of $(x+1)$. 
+of $y$ and $z$ are equal, since they have identical 
+definitions of $(x+1)$. 
 However the value of variable $x$ depends on whether
-the current code position is before or after the second assignment
-to $x$, i.e.\ variable values depend on their \textit{context}.
+the current code position is before or after the second definition
+of $x$, i.e.\ variable values depend on their \textit{context}.
 
 When a compiler transforms this program fragment to SSA code,
 it becomes referentially transparent. The translation process
 involves renaming to  
-eliminate multiple assignments to the same variable. Now it is
-apparent that $y$ and $z$ are only equivalent if $x1$ and $x2$
-are equivalent.
+eliminate multiple assignment statements for the same variable.
+Now it is
+apparent that $y$ and $z$ are equal if and only if $x1$ and $x2$
+are equal.
 \begin{verbatim}
 x1 := 1;
 y  := x1 + 1;
@@ -260,31 +273,42 @@ print(y3);
 
 
 
-At the start of a block of code, the $\phi$-function has
-$n$ parameters if there are $n$ incoming control-flow paths to this block.
-The behaviour of the $\phi$-function is to select the value
-of the parameter associated with the actually executed control-flow path.
-This value is assigned to the fresh variable name, on the left-hand-side
-of the $\phi$-function.
+In terms of their position, 
+$\phi$-functions are always placed at the head of basic blocks.
+A $\phi$-function at block $b$ has
+$n$ parameters if there are $n$ incoming control-flow paths to $b$.
+The behaviour of the $\phi$-function is to select dynamically
+the value of the parameter associated with the actually executed
+control-flow path into $b$.
+This parameter value is assigned to the fresh variable name,
+on the left-hand-side of the $\phi$-function.
 Such pseudo-functions are required to maintain the SSA property
 of unique variable definitions,
-in the presence of non-sequential control flow.
+in the presence of branching control flow.
+% I want to say _non-sequential_ control flow, but people
+% associate non-sequential with PARALLEL, rather than
+% non-straight-line...
+%%% Maybe stick with "branching" as a suitable adjective for now...
 
-\textit{FIXME - I'm worried about the order of information
-presented in these paragraphs. I think it all needs to be there,
-but maybe it could be organized more intuitively... -jsinger}
+%% \textit{FIXME - I'm worried about the order of information
+%% presented in these paragraphs. I think it all needs to be there,
+%% but maybe it could be organized more intuitively... -jsinger}
 
 It is important to note that, if there are multiple $\phi$-functions
 at the head of a basic block, then these are executed simultaneously,
 \textit{not} sequentially.
 This distinction becomes important if the target of a $\phi$-function
 is the same as the source of another $\phi$-function, perhaps after
-optimizations such as copy propagation. \textit{(ref later chapters?)}
+optimizations such as copy propagation
+(see Section \ref{novillo:sec:copy-prop}).
+
+\textit{(FIXME ref later chapters?)}
 When $\phi$-functions are eliminated in the SSA destruction phase,
-they are replaced by parallel copy operations.
+they are replaced by parallel copy operations,
 % at the end of predecessor control flow nodes.
-(forward note to Fabrice's section on this,
-in later chapter).
+as described in Section \ref{sec:classical_destruction}.
+% (forward note to Fabrice's section on this,
+% in later chapter).
 
 Strictly speaking, $\phi$-functions are not directly executable,
 since the dynamic control-flow path leading to the $\phi$-function
@@ -295,29 +319,69 @@ before any program interpretation or execution takes place.
 There are various executable extensions of $\phi$-functions, 
 such as $\gamma$-functions, which take
 an extra parameter to specify which source value to assign to the
-target variable. (forward ref to VSDG chapter?)
+target variable. 
+Section \ref{sec:gating_functions}
+presents further information on these advanced
+extensions.
 
-\textit{FIXME - I would like an example of how to transform a 
-while loop into SSA, showing how the $\phi$-function
-must be placed at the loop header. Fabrice doesn't think this
-example is necessary, but it would be helpful for beginners, I feel...
--jsinger}
-
+%% I would like an example of how to transform a 
+%% while loop into SSA, showing how the $\phi$-function
+%% must be placed at the loop header. Fabrice doesn't think this
+%% example is necessary, but it would be helpful for beginners, I feel...
+%% - jsinger
+%% Feedback from a reviewer:
 %% loop illustrates difference between static and dynamic single/multiple
-%% assignments -cck
+%% assignments - chris@cs.man.ac.uk
 
-example 3. while loop? (iteration)
+%% example 3. while loop? (iteration)
+
+We present one further example in this section,
+to illustrate how the \texttt{while} loop
+control-flow structure appears in SSA.
+Here is the non-SSA version of the program:
 
 \begin{verbatim}
-x = 0;
-y = 0;
-while (x< 10) {
-  y = y + x;
-  x++;
+x := 0;
+y := 0;
+while (x < 10) {
+  y := y + x;
+  x := x + 1;
 }
 print(y)
 \end{verbatim}
 
+In the SSA version below,
+we abuse conventional C/Java style loop syntax to 
+enable better program comprehension.
+We require initial variable assignments to be
+executed before each evaluation of the loop 
+conditional test.
+These $\phi$-functions in the loop hearder
+merge incoming definitions from before the loop
+for first iteration,
+and from the loop body for subsequent iterations.
+(Obviously 
+a syntactically correct transformation would rely on
+\texttt{goto} statements to achieve the same effects.)
+
+\begin{verbatim}
+x1 := 0;
+y1 := 0;
+while ( x2 := \phi(x1, x3);
+        y2 := \phi(y1, y3); 
+        x2 < 10
+      ) {
+  y3 := y2 + x2;
+  x3 := x2 + 1;
+}
+print(y2)
+\end{verbatim}
+
+It is important to note that the static single assignment 
+property does not prevent multiple assignments to a variable
+during program execution. For instance, in the SSA code fragment above,
+variables $y_3$ and $x_3$ in the loop body are defined with fresh values 
+at each loop iteration.
 
 
 %%%%%%%%%%%
@@ -326,6 +390,7 @@ print(y)
 %%%%%%%%%%%
 
 \section{Comparison with Classical Data Flow Analysis}
+\label{sec:vanilla:dfa}
 
 % Very simple. Discuss lattice-based data flow analysis.
 % Propagating facts around control-flow points in a CFG.
@@ -337,7 +402,8 @@ variables. Static analysis captures
 this behaviour by propagating \textit{abstract} information,
 or data flow facts,
 using an operational representation of the 
-program such as the CFG. This is the approach used in 
+program such as the control flow graph (CFG).
+This is the approach used in 
 classical data flow analysis.
 
 Often, data flow information can be propagated more efficiently
@@ -354,7 +420,7 @@ this is exactly the set of program points where data flow
 facts may change.
 Thus it is possible to associate data flow facts directly with 
 variable names, rather than
-maintaining a vector of data flow facts, indexed over all variables
+maintaining a vector of data flow facts indexed over all variables,
 at each program point.
 % Talk about SSA simplification - rename whenever data flow
 % facts can change (for a certain class of data flow problems?)
@@ -366,9 +432,9 @@ change at points that are not variable definitions.
 These problems can be accommodated in a sparse analysis framework
 by inserting additional pseudo-definition functions at appropriate 
 points
-to induce additional variable renaming. \emph{FIXME - forward pointers to
-appropriate chapters?}
-
+to induce additional variable renaming. 
+See Chapter \ref{chap:static_single_information}
+for one such example.
 
 % Variables carry values.
 % Analysis compute diverse information about those values.
@@ -404,7 +470,7 @@ it only shows definition
 statements relating to variable $x$.
 Figure \ref{fig:part1-vanilla-cfgexample}(b) shows the SSA version of this
 example program. Full details of the SSA construction algorithm are given in 
-Chapter \emph{FIXME - 3}. For now, it is sufficient to see that:
+Chapter \ref{chap:classical_construction}. For now, it is sufficient to see that:
 \begin{enumerate}
 \item Integer subscripts have been used to rename
 variable $x$ from the original program.
@@ -472,9 +538,10 @@ $x_3$ & maybe 0 \\ \hline
 \end{table}
 
 
-This illustrates several key advantages of the SSA-based analysis.
-First, data flow
-\textit{information propagates directly}
+This illustrates some key advantages of the SSA-based analysis.
+\begin{enumerate}
+\item Data flow information
+\textit{propagates directly}
 from definition statements to uses, via
 the def-use links implicit in the SSA naming scheme. 
 In contrast, the 
@@ -482,15 +549,16 @@ classical data flow framework
 propagates information throughout the program,
 including points such as node 2 where the information 
 about $x$ does not change, or is not relevant.
-Second, the results of the SSA data flow analysis are
+\item The results of the SSA data flow analysis are
 \textit{more succinct}.
 There are four data flow facts (one for each SSA version of $x$)
 versus six facts for the non-SSA program (one fact about variable $x$
 per CFG node).
+\end{enumerate}
 
 Part II 
 \emph{FIXME - forward ref}
-of this book gives a more comprehensive treatment of 
+of this textbook gives a comprehensive treatment of 
 SSA-based data flow analysis.
 
 
@@ -521,22 +589,22 @@ enabling efficient propagation of data-flow information.
 % and vice versa.
 Example IRs include the program dependence graph \cite{ferrante87program}
 and program dependence web \cite{ottenstein90program}.
-Chapter \ref{vsdg} VSDG? gives further details on dependence graph
+Chapter \ref{chap:vsdg} gives further details on dependence graph
 style IRs.
 
 % Talk about early developments at IBM in 1980s.
 % Talk about eventual emergence of SSA.
 
 Static single assignment form was one such IR, 
-which was developed at IBM Research, and publicly announced
+which was developed at IBM Research, and announced publicly
 in several research papers in the late 1980s
 \cite{rosen88global,alpern88detecting,cytron89efficient}.
-SSA rapidly gained popularity due to its 
+SSA rapidly acquired popularity due to its 
 intuitive nature and straightforward
 construction algorithm.
 The SSA property gives a 
 standardized shape for variable def-use chains,
-which can simplify data flow analysis techniques.
+which simplifies data flow analysis techniques.
 
 \subsection{Current Usage}
 
@@ -549,17 +617,19 @@ is fairly expensive, and only required for optimization).
 Similarly for just-in-time compilers, only the \textit{hot} 
 methods will be recompiled with SSA-based optimizations.
 
-All modern optimizing compiler infrastructures, e.g.\ LLVM, 
+Recent optimizing compiler infrastructures, e.g.\ LLVM, 
 use SSA from the ground up.
 Other compilers, e.g.\ GCC, began
 development before SSA was well-characterized or
 widely known.
-In such cases, SSA support can be backported into 
-the original optimization infrastructure.
+In such cases, SSA support can be back-ported into 
+the original optimization framework.
 For instance, GCC uses SSA as of version 4.0
 \cite{novillo03tree,novillo04design}.
-\textit{perhaps give forward pointer to Diego's chapter on the advantages
-of SSA in gcc?}
+% Can we give a forward pointer to Diego's chapter on the advantages
+% of SSA in gcc? - Is this chapter present in the latest version?
+
+%%%
 
 \subsection{SSA for High-Level Languages}
 
@@ -571,11 +641,12 @@ The SISAL language is defined in such a way that
 programs automatically have referential transparency, since
 multiple assignments are not permitted to variables.
 Other languages allow the SSA property to be
-applied on a per-variable basis, using facilities like
-Java \texttt{final} variables
-and C\# \texttt{const} and \texttt{readonly} modifiers. 
+applied on a per-variable basis, using special annotations
+like
+\texttt{final} in Java, or 
+\texttt{const} and \texttt{readonly} in C\#.
 
-The motivation for allowing the programmer to enforce
+The main motivation for allowing the programmer to enforce
 SSA in an explicit manner in high-level programs is that
 \textit{immutability simplifies concurrent programming}.
 Read-only data can be shared freely between multiple threads,
@@ -588,7 +659,7 @@ referential transparency as one of the
 cornerstones of their programming paradigm.
 Thus functional programming supports the SSA property
 implicitly.
-Chapter \ref{} \textit{intro-semantics} details the 
+Chapter \ref{chap:semantics} explains the 
 dualities between SSA and functional programming.
 
 % However in general,
@@ -607,29 +678,44 @@ We now conclude by enumerating some of the benefits
 that it provides.
 
 SSA imposes a strict discipline on variable naming in programs,
-so that each variable has a unique definition point.
-New names are introduced at variable assignments, and at control-flow
-merge points.
+so that each variable has a unique definition.
+Fresh variable names are introduced at assignment statements,
+and control-flow merge points.
 This serves to simplify variable def-use relationships,
 which underpin data flow analysis.
-There are three main advantages that SSA enables:
+There are three major advantages that SSA enables:
 \begin{description}
 \item[Program runtime benefit]
 Certain compiler optimizations can be more effective
 when operating on programs in SSA form. These include the
-class of \textit{control-flow insensitive analyses}.
+class of \textit{control-flow insensitive analyses}, e.g.\
+\cite{hasti98using}.
 \item[Compile time benefit]
 Certain compiler optimizations can be more efficient
 when operating on SSA programs, since
 referential transparency means that data flow information
 can be associated directly with variables, rather than with variables
-at each program point.
+at each program point. We have illustrated this simply with the
+non-zero value analysis in Section \ref{sec:vanilla:dfa}.
 \item[Compiler development benefit]
 Program analyses and transformations can be easier
 to express in SSA. This means that compiler engineers
 can be more productive, in writing new compiler passes,
 and debugging existing passes.
-\texttt{FIXME - Any anecdotal experience from GCC - ask Diego?}
+%% anecdotal experience from GCC - check with Diego.
+For example, the \textit{dead code elimination} pass
+in GCC 4.x, which relies on an underlying SSA-based intermediate
+representation, takes only 40\% as many lines of code
+as the equivalent pass in GCC 3.x, which does not use SSA.
+The SSA version of the pass is simpler, since it
+relies on the general-purpose, factored-out, data-flow propagation
+engine.
+% flow.c - in GCC 3.4
+%%qamea:~ jsinger$ wc -l flow.c 
+%%   4118 flow.c
+% tree-ssa-dce.c - in GCC 4.x
+%%qamea:~ jsinger$ wc -l tree-ssa-dce.c 
+%%    1566 tree-ssa-dce.c
 \end{description}
 
 
