@@ -1,4 +1,5 @@
 \chapter{Classical construction/update/destruction algorithm \Author{J. Singer, F. Rastello}}
+\label{chap:classical_construction}
 \inputprogress
 
 {
@@ -21,23 +22,32 @@ been performed, and prior to code generation. (However note that there are
 specialized code generation techniques that work directly on SSA-based
 intermediate representations. \emph{FIXME - forward ref})
 
-The algorithms presented in this chapter are simple and pragmatic, hence they
-are the most widely implemented in current compilers. Note that more
+The algorithms presented in this chapter are simple and pragmatic.
+They were originally reported in the seminal SSA research
+papers \cite{cytron89efficiently,cytron91efficiently}.
+For all of these reasons, they are
+widely implemented in current compilers.
+Note that more
 efficient, albeit more complex, alternative algorithms have been devised.
-These are reviewed in \emph{FIXME - forward refs to subsequent chapters}.
+These are described further in Chapters \ref{chap:alternative_construction}
+and \ref{chap:alternative_destruction}.
 
 \section{Simple programming language model}
 
 Throughout this chapter,
 we assume that a `program' is represented as an
-intraprocedural control flow graph,
+intraprocedural control flow graph (CFG)
 with a single entry node $r$, from which every other
 node is reachable.
 \emph{FIXME - precise definition of CFG in appendix?}
 Data flow occurs through definitions and uses of 
-local variables, with no pointer indirection.
-\emph{FIXME - forward references to chapters dealing with
-SSA extensions for complex features like memory, concurrency, etc}
+global variables, with no pointer indirection.
+%% FIXME - forward reference to Part II ...
+(Part II of this textbook contains chapters dealing with
+SSA extensions for high-level features like
+pointer-based aliasing, arrays, compound data structures, concurrency, etc.)
+We further assume that
+all global variables have an implicit definition at $r$.
 % No constraints on control-flow structures in CFG
 % (unlike in syntax-directed SSA construction algorithms).
 
@@ -64,8 +74,11 @@ The resulting live-ranges have the property of having a single definition, which
 \item \textbf{variable renaming} assigns a unique variable name to each live-range. This second phase rewrites variable names in program statements such that the program text contains only one definition of each variable, and every use refers to its corresponding unique reaching definition.
 \end{enumerate}
 
-As already outlined in Chapter \emph{FIXME - 2}, there are different flavors of SSA with distinct properties. In this chapter, we focus on the \textit{minimal} SSA form. Construction of minimal SSA 
-(which is not completely minimal as we will see further) 
+As already outlined in Chapter \ref{chap:properties-and-flavours},
+there are different flavors of SSA with distinct properties.
+In this chapter, we focus on the \textit{minimal} SSA form.
+Construction of minimal SSA 
+%%%%%% (which is not completely minimal as we will see further) 
 requires the insertion of \phiops\ at \textit{join nodes},
 i.e.\ nodes in the CFG that can be reached by two or more distinct definitions of the same variable using disjoint paths. 
 %% jsinger - is the disjoint paths qualification necessary, if we define "reaching definitions" carefully?
@@ -78,24 +91,53 @@ We end up with a straightforward algorithm that places \phiops\ on a per-variabl
 For a given variable $v$, we place \phiops\ at the iterated dominance frontier $DF^{+}(S)$ of the set of definition points $S$ for $v$. 
 If we assume, not unreasonably, that the dominance frontier of each CFG node is precomputed, then the \phiops\ can be inserted iteratively using a worklist of definition points, and flags (to avoid multiple insertions). 
 This gives the following pseudo-code for the \phiop\ insertion algorithm:
-\begin{verbatim}
-proc phi_insertion
-// places phi functions at the iterated dominance frontier
-  foreach global variable v
-    let Worklist:=definitions(v)
-        typeof(Worklist) == CFGNode List
-    let Inserted:=emptyset
-        typeof(Inserted) == CFGNode List
-    foreach D in Worklist
-        typeof(D) == statement
-      foreach I in DF(D) \ Inserted
-        typeof I == CFGNode
-        insert "v=phi(v,...,v)" @ beginning of node I
-        Inserted += {I}
-\end{verbatim}
-\emph{jsinger - Hi Fabrice, I think it would be helpful to include
-types for variables in this algorithm. At the moment, there is some confusion
-over CFG nodes and individual statements. We need to resolve this...}
+% \begin{verbatim}
+% proc phi_insertion
+% // places phi functions at the iterated dominance frontier
+%   foreach global variable v
+%     let Worklist:=definitions(v)
+%         typeof(Worklist) == CFGNode List
+%     let Inserted:=emptyset
+%         typeof(Inserted) == CFGNode List
+%     foreach D in Worklist
+%         typeof(D) == statement
+%       foreach I in DF(D) \ Inserted
+%         typeof I == CFGNode
+%         insert "v=phi(v,...,v)" @ beginning of node I
+%         Inserted += {I}
+% \end{verbatim}
+% \emph{jsinger - Hi Fabrice, I think it would be helpful to include
+% types for variables in this algorithm. At the moment, there is some confusion
+% over CFG nodes and individual statements. We need to resolve this...}
+
+\begin{figure}
+
+\begin{algorithmic}[1]
+\STATE $W \leftarrow \{ \}$ : set of basic blocks
+\STATE $I \leftarrow \{ \}$ : set of basic blocks
+\FORALL{$v$ : variable names in original program}
+  \FORALL{$d$ : definition statements of variable $v$}
+    \STATE \textbf{let} $B$ be the basic block containing $d$
+    \STATE $W \leftarrow W \cup \{ B \}$
+    \STATE $I \leftarrow I \cup \{ B \}$
+  \ENDFOR
+  \WHILE{$W \neq \{\}$}
+    \STATE remove a basic block $X$ from $W$
+    \FORALL{$Y : \mbox{basic block} \in \mathrm{DomFrontier}(X)$}
+      \IF{$Y$ does not contain a $\phi$-function for $v$}
+        \STATE add $v \leftarrow \phi(...)$ at start of $Y$
+        \IF{$Y \notin I$}
+          \STATE $W \leftarrow W \cup \{ Y \}$
+          \STATE $I \leftarrow I \cup \{ Y \}$
+        \ENDIF
+      \ENDIF
+    \ENDFOR
+  \ENDWHILE
+\ENDFOR
+\end{algorithmic}
+\caption{\label{fig:classical_construction:phi_insertion}Standard algorithm for inserting $\phi$-functions}
+\end{figure}
+
 
 Once \phiops\ have been inserted using this algorithm, the program may still contain several definitions per variable, however there is a static single definition statement that reaches each use. Moreover, with the following semantics for \phiops\ where its variable uses are considered to be on the corresponding predecessor basic blocks, then use-def chains are aligned with the CFG dominance tree. In other word the unique definition that reaches each use dominates that use.
 
