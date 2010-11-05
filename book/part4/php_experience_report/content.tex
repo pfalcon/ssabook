@@ -1,0 +1,311 @@
+\chapter{php experience report \Author{P. Biggar}}
+\numberofpages{12}
+
+\providecommand{\phc}{PHC}
+\providecommand{\php}[1]{\textsf{#1}}
+\providecommand{\pbterm}[1]{\textsf{#1}}
+\providecommand{\chref}[1]{Chapter~#1}
+\providecommand{\secref}[1]{Chapter~#1}
+\providecommand{\figref}[1]{Figure~#1}
+
+\section{Abstract (0.5 pages)}
+
+Constructing SSA form for static languages is a well-studied problem.
+Techniques exist to handle the most common features of static languages, and these solutions have been tried and tested in production level compilers over many years.
+
+In our study of optimizing dynamic scripting languages, specifically PHP, we find this is not the case.
+The information required to build SSA form---that is, some conservatively complete set of unaliased scalars, and the locations of their uses and definitions---is not available directly from the program source, and can not be derived from a simple analysis.
+Instead, we find a litany of features whose presence must be ruled out, or heavily analysed, in order to obtain a non-pessimistic estimate.
+
+Scripting languages commonly feature run-time code generation, built-in functions, and variable-variables, all of which may alter arbitrary unnamed variables.
+Less common---but still possible---features include the existence of object handlers which have the ability to alter any part of the program state, most dangerously a function's local symbol-table.
+
+Ruling out the presence of these features requires precise, inter-procedural, whole-program analysis.
+We discuss the futility of the pessimistic solution, the analyses required to provide a precise SSA form, and how the presence of variables of unknown types affect the precision of SSA.
+
+\section{Motivation}
+
+Dynamic scripting languages such as PHP, Python and Javascript are among the most widely-used and fastest growing programming languages.
+
+Scripting languages provide flexible high-level features, a fast modify-compile-test environment for rapid prototyping, strong integration with traditional programming languages, and an extensive standard library.
+Scripting languages are widely used in the implementation of many of the best known web applications of the last decade such as Facebook, Wikipedia, Gmail and Twitter.
+Many prominent web sites make use significant of scripting, not least because of strong support from browsers and simple integration with back-end databases.
+
+One of the most widely used scripting languages is PHP, a general-purpose language that was originally designed for creating dynamic web pages.
+PHP has many of the features that are typical of dynamic scripting languages.
+These include simple syntax, dynamic typing, interpreted execution and run-time code generation.
+These simple, flexible features facilitate rapid prototyping, exploratory programming, and in the case of many non-professional websites, a copy-paste-and-modify approach to scripting by non-expert programmers.
+
+Building SSA form for programs in languages like C/C++ and Java is reasonably straightforward.
+In these traditional languages it is not difficult to identify a set of scalar variables that can be safely renamed.
+Better analysis may lead to more such variables being identified, but significant numbers of such variables can be found with very simple analysis.
+
+In PHP, however, simply finding the variables that which may be renamed into SSA is difficult, and in fact, requires the kind of analysis that we would like to do in SSA form.
+The rest of this chapter describes our experiences with building SSA in \phc, our open source compiler for PHP.
+We identify the features of PHP that make building SSA difficult, outline the solutions we found to these some of these challenges, and draw some lessons about the use of SSA in analysis frameworks for PHP.
+
+
+
+\section{SSA form in ``traditional'' languages}
+
+In traditional, non-scripting languages, such as C, C++ and Java, it is straightforward to identify which variables may be converted into SSA form.
+In Java, all scalars may be renamed.
+In C and C++, any scalar variables which do not have their address taken may be renamed.
+Figure 1 shows a simple C function, whose local variables may all be converted into SSA form.
+In Figure 1, it is trivial to convert each variable into SSA form.
+For each statement, the list of variables which are used and defined are immediately obvious from a simple syntactic check.
+
+By contrast, Figure 2 contains variables which cannot be trivially converted into SSA form.
+On line 2, $x$ has its address taken.
+As a result, to convert $x$ into SSA form, we must know that line 3 modifies $x$, and change $x$'s subscript accordingly.
+\chref{hssa} describes HSSA form, a powerful way to represent \textit{indirect} modifications to scalars in SSA form.
+
+To discover the modification of $x$ on line 3 requires an \textit{alias analysis}.
+Alias analyses detect when multiple program names (\textit{aliases}) represent the same memory location.
+In Figure 2, $x$ and $*y$ alias each other.
+
+There are many forms of alias analysis, of varying complexity.
+The most complex analyse the entire program text, taking into account control-flow, function calls, and multiple levels of pointers.
+However, it is not difficult to perform a very simple alias analysis.
+\textit{Address-taken alias analysis} identifies all variables whose addresses are taken by a referencing assignment.
+All these variables in the program are considered to alias each other (that is, all address-taken variables are in the same \textit{alias set}).
+
+When building SSA form with address-taken alias analysis, variables in the alias set are not renamed into SSA form.
+All other variables are converted.
+Variables not in SSA form do not possess any SSA properties, and pessimistic assumptions must be made.
+
+As a result of address-taken alias analysis, it is straight-forward to convert any C program into SSA form, without sophisticated analysis.
+In fact, this allows more complex alias analyses to be performed on the SSA form.
+
+\subsection{PHP}
+
+\subsubsection{Aliases}
+
+In PHP, it is not possible to perform an address-taken alias analysis.
+The syntactic clues that C provides---notably as a result of static typing---are not available in PHP.
+Indeed, statements which may appear innocuous may perform complex operations behind the scenes, affecting any variable in the function.
+
+In addition, it is not possible to syntactically identify scalars in PHP.
+PHP variables may be references at one point in the program, and stop being references a moment later.
+PHP's dynamic typing makes it difficult to simply identify when this occurs, and a sophisticated whole program analysis is essential to building a conservative SSA form.
+
+Consider the PHP program in \figref{3}.
+% function snd ($x, $y) { $x += 5; return $y; }
+Superficially, it resembles the C function in \figref{4}.
+% int snd (int x, int y) { x += 5; return y; }
+In the C version, we know that $y$ is a scalar which does not alias $x$, so the addition operation has no effect on the result.
+
+In the PHP version, $\$x$ may alias $\$y$ upon function entry.
+The addition operation may therefore change the value of $\$y$.
+It therefore more closely resembles the C function in \figref{5}.
+% int* snd (int* x, int* y) { *x += 5; return y; }
+
+In the PHP version, there are no syntactic clues that the variables may alias.
+As a result, a conservative aliasing estimate---like C's address-taken alias analysis---would need to place all variables in the alias set.
+This would leave no variables available for conversion to SSA form.
+
+
+\subsection{Whole-program analysis}
+
+PHP's dynamic typing means that program analysis cannot be performed a fucntion at a time.
+As function signatures do not indicate whether parameters are references, this information must be determined by program analysis.
+Furthermore, each function must be analysed with full knowledge of its calling context.
+This requires a whole-program analysis.
+
+We present an overview of the analysis below.
+A full description is beyond the scope of this chapter, and can be found elsewhere\cite{thesis}.
+
+The analysis is structured as a symbolic execution.
+This means the program is analysed by processing each statement in turn, and modelling the affect of the statement on the program state.
+This is similar in principle to the SCCP algorithm presented in \secref{sccp}.\footnote{The analysis is actually based on a variation, CCP \cite{pioli}.}
+
+The SCCP algorithm models a function at a time.
+Instead, our algorithm models the entire program.
+The execution state of the program begins empty, and the analysis begins at the first statement in the program, which is placed in a worklist.
+The worklist is then processed a statement at a time.
+
+For each analysed statement, the results of the analysis are stored.
+If the analysis results change, the statements successors (in the control-flow graph) are added to the worklist.
+The first time a statement is processed, its results are considered to always change.
+This is similar to CFG-edges in the SCCP algorithm.
+There is no parallel to the SSA edges, since the analysis is not performed on the SSA form.
+Instead, loops must be fully analysed if their header's change.
+
+This analysis is therefore less efficient than the SCCP algorithm, in terms of time.
+It is also less efficient in terms of space.
+As described in \figref{gcc}, SSA form allows results to be compactly stored in a single array, using the SSA index as an array index.
+This is very space efficient.
+In our analysis, we must instead store a table of variable results at all points in the program.
+
+Upon reaching a function or method call, the analysis begins analysing the callee function, pausing the caller's analysis.
+A new worklist is created, and initialized with the first statement in the callee function.
+The worklist is then run until it is exhausted.
+If another function call is analysed, the process recurses.
+
+Upon reaching a callee function, the analysis results are copied into the scope of the callee.
+Once a worklist has ended, the analysis results for the exit node of the function are copied back to the calling statement's results.
+
+\subsection{Analysis results}
+
+Our analysis stores a number of kinds of results.
+Each kind of result is stored at each point in the program.
+
+The first models the alias relationships in the program in a \textit{points-to graph} \cite{emami}.
+The graph contains variable names as nodes, and the edges between them indicate aliasing relationships.
+An aliasing relationship indicates that two variables either \textit{must}-alias, or \textit{may}-alias.
+Two unconnected nodes cannot alias.
+A points-to graph is stored for each point in the program.
+Graphs can be merged at CFG join points.
+
+It is also important to store the types of variables in the program.
+Since PHP is an object-oriented language, polymorphic method calls are possible, and they must be analysed.
+As such, the set of types of each variable is stored at each point in the program.
+This portion of the analysis closely resembles using SCCP for type propagation \cite{lenartsadler}, as described in \secref{sccp}.
+
+Finally, like the SCCP algorithm, constant are recorded.
+The phc compiler creates many statically-resolvable branches during early stages of compilation.
+Resolving these branches statically eliminates unreachable paths, leading to significantly more precise results.
+
+
+
+\subsection{Object handlers}
+
+PHP's reference implementation allows classes to be partially written in C.
+Objects which are instantiations of these classes have special behaviour in certain cases.
+For example, the objects may be dereferenced using array syntax, or a special handler may be called when the variable holding the object is read or written to.
+
+The handlers for these special cases are generally unrestricted.
+Being written in C, they are given access to the entire program state, including all local and global variables.
+
+There two characteristics of handlers make them very powerful, but break any attempts at function-at-a-time analysis.
+If one of these objects is passed in to a function, and is read, it may overwrite all variables in the local symbol table.
+The overwritten variables might then have the same handlers.
+These can then be returned from the function, or passed to any other called functions (indeed it can also call any function).
+This means that a single unconstrained variable in a function can propagate to any other point in the program.
+
+
+\subsection{Building def-use chains}
+
+Def-use chains are required to build SSA form.
+Since we cannot create these syntactically, we build them as we analyse the program.
+Using the alias analysis, any variables which may be written to or read from during a statement's executation, are added to a set of defs and uses for that statement.
+These are then used during construction of the SSA form.
+
+For an assignment by copy, \php{\$x = \$y}:
+
+\begin{enumerate}
+
+	\item
+		\php{\$x}'s value is defined.
+
+	\item
+		\php{\$x}'s reference is used (by the assignment to \php{\$x}).
+
+	\item
+		for each alias \php{\$x'} of \php{\$x}, \php{\$x'}'s value is defined.
+		If the alias is \pbterm{possible}, \php{\$x'}'s value is may-defined instead of defined.
+		In addition, \php{\$x'}'s reference is used.
+
+	\item
+		\php{\$y}'s value is used.
+
+	\item
+		\php{\$y}'s reference is used.
+
+\end{enumerate}
+
+For an assignment by reference, \php{\$x =\& \$y}:
+
+\begin{enumerate}
+
+	\item
+		\php{\$x}'s value is defined.
+
+	\item
+		\php{\$x}'s reference is defined (it is not used---\php{\$x} does not maintain its previous reference relationships).
+
+	\item
+		\php{\$y}'s value is used.
+
+	\item
+		\php{\$y}'s reference is used.
+
+\end{enumerate}
+
+
+
+\subsection{HSSA}
+
+After building def-use chains, SSA form can be build in the normal way.
+However, may-definitions must be represented.
+Many of PHP's features appear as may-definitions: indirect assignments through references, variable-variables, special function calls.
+As such, we use a variation of HSSA, described in \secref{hssa}, to build our SSA form.
+
+We add CHI nodes, as in HSSA, to model may-definitions.
+In the phc compiler, we did not implement any further features of HSSA form, such as zero versioning or global value numbering.
+However, there is no reason these could not be used to reduce the memory consumption of our SSA form.
+
+The final distinction from traditional SSA form is that we do not only model variables.
+All names in the program, such as fields of objects or the contents of arrays, can be represented in SSA form.
+
+
+\subsubsection{Run-time symbol tables}
+
+
+\figref{6} shows a program which accesses a variable indirectly.
+% $x = 5; $var_name = readline(); $$var_name = 6; print $x;
+On line 2, a string value is read from the user, and stored in the variable $\$var_name$.
+On line 3, some variable---whose name is the value in $\$var_name$---is set to 5.
+That is, any variable can be updated, and the updated variable is chosen by the user at run-time.
+It is not possible to know whether the user has provided the value $"x"$, and so know whether $\$x$ has the value $5$ or $6$.
+
+This feature is known as \textit{variable-variables}.
+They are possible because a function's symbol-table in PHP is available at run-time.
+Variables in PHP are not the same as variables in C.
+A C local variable is a name which represents a memory location on the stack.
+A PHP local variable is the domain of a map from strings to values.
+The same run-time value may be the domain of multiple string keys (references, discussed above).
+Similarly, variable-variables allow the symbol-table to be accessed dynamically at run-time, allowing arbitrary values to be read and written.
+
+Upon seeing a variable-variable, all variables may be written to.
+In HSSA form, this creates a CHI node for each variable in the program.
+In order to avoid this, the variable-variable may be modelled using string analysis \ref{wassermann}.
+String analysis models the structure of strings.
+For example, we may know that the variable begins with the letter ``x''.
+In this case, all variables which do not begin with ``x'' do not require a CHI node, leading to a more precise SSA form.
+
+Variable-variables are not the only PHP feature which can affect the local symbol-table.
+\figref{7} shows a function call which can affect the variables in the scope of the caller.
+% $x = 5; extract (readline()); print $x;
+\figref{8} shows the use of an $eval$ statement, which executes an arbitrary string.
+Both of these may be modelled using the same string analysis techniques as above \cite{wassermann}.
+The $eval$ statement may also be handled using profiling \cite{furr}, which restricts the set of possible $eval$ statements to those which actually are used in practice.
+
+
+
+
+
+
+
+
+
+\subsection{Implications}
+\begin{itemize}
+   \item SSA cannot be used as end-to-end IR.
+	\begin{itemize}
+	\item propagation algorithms do not benefit from the sparse form
+	\end{itemize}
+\end{itemize}
+
+
+The use of HSSA form means that optimizations which lead to overlapping live-ranges, are not possible.
+Since the phc compiler does not perform register allocation, this is not a problem.
+
+The implications of needing whole-program analysis are more severe, however.
+As this analysis is not performed on the SSA form, it is not possible to have an end-to-end SSA-based compiler for PHP.
+
+The whole program analysis described above is based on the CCP form.
+It would be more efficient, in terms of both space and time, to use SCCP to perform the analysis.
+
+
+
