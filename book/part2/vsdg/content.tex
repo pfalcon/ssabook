@@ -29,7 +29,7 @@ Whereas the CFG imposes a total ordering on instructions, the DFG has no such co
 
 \section{The SSA Graph}
 
-We begin our exploration with a graph that is very similar to SSA: the SSA Graph. Many different variations exist in the literature, so we take ours from Cooper et al. An SSA Graph consists of vertices which represent operations (such as \texttt{add} and \texttt{load}) or $\mathtt{\phi}$-functions, and directed edges connect uses to definitions of values. The edges to a vertex represent the arguments required for that operation, and the edge from a vertex represents the propagation of that operation's result after it has been computed. This graph is therefore a \textit{demand-based} representation. In order to compute a vertex, we must first \textit{demand} the results of the operands and then perform the operation indicated on that vertex. The SSA Graph can be constructed from a program in SSA form by adding use-definition chains. We present some sample code in Figure~\ref{fig: ssa-graph-example-code} which is then translated into an SSA Graph. Note that there are no explicit nodes for variables in the graph. Instead, an operator node can be seen as the ``location'' of the value stored in a variable. We have annotated operators with variable names to show the correspondence between the operations in the graph and in the SSA form program. 
+We begin our exploration with a graph that is very similar to SSA: the SSA Graph. Many different variations exist in the literature, so we take ours from Cooper et al. An SSA Graph consists of vertices which represent operations (such as \texttt{add} and \texttt{load}) or $\mathtt{\phi}$-functions, and directed edges connect uses to definitions of values. The edges to a vertex represent the arguments required for that operation, and the edge from a vertex represents the propagation of that operation's result after it has been computed. This graph is therefore a \textit{demand-based} representation. In order to compute a vertex, we must first \textit{demand} the results of the operands and then perform the operation indicated on that vertex. The SSA Graph can be constructed from a program in SSA form by \textit{explicitly} adding use-definition chains. We present some sample code in Figure~\ref{fig: ssa-graph-example-code} which is then translated into an SSA Graph. Note that there are no explicit nodes for variables in the graph. Instead, an operator node can be seen as the ``location'' of the value stored in a variable. We have annotated operators with variable names to show the correspondence between the operations in the graph and in the SSA form program.
 
 \begin{figure}[ht]
 \centering
@@ -109,11 +109,22 @@ In SSA form, $\phi$-functions are used to identify points where variable definit
 \item The $\eta$ function determines the value of a variable when a loop terminates. An $\eta$ function is of the form $\eta(P,V_{final})$ where $P$ is a predicate and $V_{final}$ is the definition reaching beyond the loop.
 \end{itemize}
 
-It is easiest to understand these gating functions by means of an example. Figure~\ref{fig: gsa-graph-example} shows how our earlier code in Figure~\ref{fig: ssa-graph-example-code} translates into GSA form. Here, we can see the use of both $\mu$ and $\eta$ gating functions. At the header of our sample loop the $\phi$-functions have been replaced by $\mu$ functions which determines between the initial and iterative values of \texttt{a} and \texttt{i}. After the loop has finished executing, the two $\eta$ functions propagate the correct value from the corresponding $\mu$ function. % TODO: more explanation of the diagram here
+It is easiest to understand these gating functions by means of an example. Figure~\ref{fig: gsa-graph-example} shows how our earlier code in Figure~\ref{fig: ssa-graph-example-code} translates into GSA form. Here, we can see the use of both $\mu$ and $\eta$ gating functions. At the header of our sample loop the $\phi$-functions have been replaced by $\mu$ functions which determines between the initial and iterative values of \texttt{a} and \texttt{i}. After the loop has finished executing, the two $\eta$ functions propagate the correct value from the corresponding $\mu$ function. 
 
-Assuming that the CFG and SSA have already been constructed, then building GSA proceeds in two steps. Firstly, replacing $\phi$-functions with directed acyclic graphs of $\gamma$ functions, and secondly, building the controlling predicate of loops for use in its $\eta$ functions. The dominator tree is built for a procedure, and for each loop a preheader node and postbody node are added. Wherever the sink of a loop-exit edge has other in-edges, the loop-exit edge is split with the addition of a postexit node.$\mu$ functions are then placed at loop headers instead of $\phi$ functions. Every $\mu$ node added represents a variable modified in the loop, and placeholder $\eta$ functions are placed for the same variable at the postexit node for the loop. These hold the place for later creation of $\eta$ functions with predicates, and ensure proper placement of $\phi$ assignments for merges of values from different exits. Next, the remaining $\phi$ functions are converted to DAGs of $\gamma$ functions, and then other $\gamma$ DAGs are built to represent loop-termination conditions. References to detailed algorithms for the construction of GSA can be found in the chapter summary. % TODO: see Havlak paper?
+These gating functions are important as the concept will form components of the Value State Dependence Graph later. GSA has seen a number of uses in the literature. The original usage of GSA was by Ballance et al. as an intermediate stage in the construction of the Program Dependence Web IR. Havlak presented an algorithm for construction of a simpler version of GSA -- Thinned GSA -- which is constructed from a CFG in SSA form. 
 
-These gating functions are important as the concept will form components of the Value State Dependence Graph later. GSA has seen a number of uses in the literature. The original usage of GSA was by Ballance et al. as an intermediate stage in the construction of the Program Dependence Web IR. Havlak presented an algorithm for construction of a simpler version of GSA -- Thinned GSA -- which is constructed from a CFG in SSA form. Tu and Padua presented an algorithm that constructs SSA and GSA simultaneously in a single process.
+% TODO: replace this para
+%Assuming that the CFG and SSA have already been constructed, then building GSA proceeds in two steps. Firstly, replacing $\phi$-functions with directed acyclic graphs of $\gamma$ functions, and secondly, building the controlling predicate of loops for use in its $\eta$ functions. The dominator tree is built for a procedure, and for each loop a preheader node and postbody node are added. Wherever the sink of a loop-exit edge has other in-edges, the loop-exit edge is split with the addition of a postexit node.$\mu$ functions are then placed at loop headers instead of $\phi$ functions. Every $\mu$ node added represents a variable modified in the loop, and placeholder $\eta$ functions are placed for the same variable at the postexit node for the loop. These hold the place for later creation of $\eta$ functions with predicates, and ensure proper placement of $\phi$ assignments for merges of values from different exits. Next, the remaining $\phi$ functions are converted to DAGs of $\gamma$ functions, and then other $\gamma$ DAGs are built to represent loop-termination conditions. References to detailed algorithms for the construction of GSA can be found in the chapter summary. 
+
+Tu and Padua presented an algorithm that constructs SSA and GSA simultaneously in a single process. Construction of GSA proceeds from the CFG. It uses the concept of \textit{path expressions}. A path expression $P$ of type $(u,v)$ is a simple regular expression over $E$ such that every string in $\sigma(P)$ is a path from node $u$ to node $v$ (where $\sigma(P)$ represents the string generated by the regular expression $P$. These path expressions are represented as \textit{gating functions}:
+
+\begin{itemize}
+\item The symbol $\Lambda$ represents an unconditional edge.
+\item The symbol $\emptyset$ represents an edge not taken at a branch node.
+\item A $\gamma$ expression $\gamma(P,e_{1},e_{2},\ldots,e_{n})$ where only one $e_{i}$ is $\Lambda$ and all the other $e$'s are $\emptyset$ represents the $i$'s edge from an $n$-way branch statement with condition $P$.
+\end{itemize}
+
+Then, these gating functions can be simplified along gating paths. The full algorithm for construction and simplification of gating functions can be found in the Tu and Padua paper in the summary.
 
 \begin{figure}
 \centering
@@ -126,13 +137,11 @@ By using gating functions it becomes possible to construct IRs based solely on d
 
 \section{Value State Dependence Graph}
 
-The gating functions defined in the previous section were used in the development of a sparse data flow graph IR called the Value Dependence Graph (VDG), which was then further refined into the Value State Dependence Graph (VSDG). The Value State Dependence Graph is a directed graph consisting of operation
+The gating functions defined in the previous section were used in the development of a sparse data flow graph IR called the Value State Dependence Graph (VSDG). The Value State Dependence Graph is a directed graph consisting of operation
 nodes, loop and merge nodes together with value- and state-dependency edges.
 Cycles are permitted but 
 must satisfy various restrictions.
-A VSDG represents a single procedure; this matches the classical CFG but
-differs from the VDG in which loops were converted to tail-recursive procedures
-called at the logical start of the loop. 
+A VSDG represents a single procedure: this matches the classical CFG. 
 
 An example VSDG is shown in Figure~\ref{fig:fac}.  In (a) we have the original
 C source for a recursive factorial function.  The corresponding VSDG
@@ -163,8 +172,8 @@ int \=fac(int n) \{\\
 
 \caption{A recursive factorial function, whose VSDG illustrates the key graph
 components---value dependency edges (solid lines), state dependency edges
-(dashed lines), a \instruction{const} node, a \instruction{call} node, two
-\Gns, a conditional node,and the function entry and exit
+(dashed lines), a \instruction{const} node, a \instruction{call} node, a
+\Gn, a conditional node,and the function entry and exit
 nodes.}
 \label{fig:fac}
 \end{figure}
@@ -180,7 +189,7 @@ value-dependency edges $E_V \subseteq N \times N$,
 state-dependency edges $E_S \subseteq N \times N$.
 The labelling function $\ell$ associates each node with an operator.
 
-The VSDG corresponds to a structured program, e.g.
+The VSDG corresponds to a reducible program, e.g.
 that there are no cycles in the VSDG except those mediated by $\theta$ (loop)
 nodes.
 
@@ -195,16 +204,16 @@ state-dependency edges can be added incrementally until the VSDG corresponds to
 a unique CFG.
 Such state dependency edges are called {\em serializing} edges.
 
-The VSDG inherits from the VDG the property that a program is implicitly
+The VSDG is implicitly
 represented in Static Single Assignment (SSA) form\cite{115320}: a
-given operator node, $n$, will have zero or more $E_V$-successors using its
+given operator node, $n$, will have zero or more $E_V$-consumers using its
 value.  Note that, in implementation terms, a single register can hold the
-produced value for consumption at all successors; it is therefore useful to
+produced value for consumption at all consumers; it is therefore useful to
 talk about the idea of an output {\em port} for $n$ being allocated a specific
 register, $r$, to abbreviate the idea of $r$ being used for each edge $(n_1,n_2)$
-where $n_2 \in \mathit{succ}(n_1)$.  Similarly, we will talk about (say) the
-``right-hand input port'' of a subtraction instruction, or of the $R$-input of
-a \Tn.
+where $n_2 \in \mathit{succ}(n_1)$.  %Similarly, we will talk about (say) the
+%``right-hand input port'' of a subtraction instruction, or of the $R$-input of
+%a \Tn.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
@@ -212,24 +221,18 @@ a \Tn.
 %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\subsection{Node Labelling with Instructions}
+\subsection{Nodes}
 
 There are four main classes of VSDG nodes: value nodes (representing pure
 arithmetic),
-\Gns\ (conditionals),  \Tns\ (loops), and state nodes (side-effects).
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-\subsubsection{Value Nodes}
-
-The majority of nodes in a VSDG generate a value based on some computation
+\Gns\ (conditionals),  \Tns\ (loops), and state nodes (side-effects). The majority of nodes in a VSDG generate a value based on some computation
 (add, subtract, etc) applied to their dependent values (constant nodes,
 which have no dependent nodes, are a special case).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\subsubsection{$\gamma$-Nodes}
+\subsection{$\gamma$-Nodes}
 
 The \Gn\ is similar to the $\gamma$ gating function in being dependent on
 a control predicate, rather than the control-independent nature of SSA
@@ -240,12 +243,12 @@ A \Gn\ $\gamma(C, T, F)$ evaluates the condition dependency $C$, and
 returns the value of $T$ if $C$ is true, otherwise $F$.
 
 %
-We generally treat \Gns\ as single-valued nodes (constrast \Tns, which are
+We generally treat \Gns\ as single-valued nodes (contrast \Tns, which are
 treated as tuples), with the effect that two separate \Gns\ with the same
 condition can be later combined into a tuple
 using a single test. 
 Figure~\ref{fig:twinPhis} illustrates two \Gns\ that can be combined in
-this way.
+this way. Here, we also see how two syntactically different programs can map to the same structure in the VSDG.
 
 \begin{figure}[!hb]
 \centering
@@ -278,7 +281,7 @@ b)   if (P) x = 2; else x = 4;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\subsubsection{$\theta$-Nodes}
+\subsection{$\theta$-Nodes}
 
 The \Tn\ models the iterative behaviour of loops, modelling loop state with the
 notion of an \emph{internal value} which may be updated on each iteration of
@@ -348,13 +351,9 @@ loops being isomorphic in the VSDG.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\subsubsection{State Nodes}
+\subsection{State Nodes}
 
-Loads, stores, and their volatile equivalents, compute a value and/or state
-(non-volatile loads return a value from memory without generating a new
-state).  Accesses to volatile memory or hardware can change state independently
-of compiler-aware reads or writes. 
-
+Loads and stores compute a value and state.
 The \instruction{call} node takes both the name of the function to call and a
 list of arguments, and returns a list of results; it is treated as a state
 node as the function body may read or update state.
