@@ -98,7 +98,34 @@ The data dependence subgraph can be constructed after aliasing, procedure calls 
 
 Harrold et al. construct the PDG during parsing. Ferrante et al. considered the problem of generating linear code from a PDG, showing that generating the {\it minimal size} CFG from a PDG is an NP-Complete problem. Further work has improved on the efficiency and generality of generating sequential code. The PDG's structure has been exploited for generating code for vectorisation, and has also been used in order to perform accurate program slicing and testing.
 
-\section{Gating functions}
+\subsection{Detecting parallelism with the PDG}
+
+The structure of the PDG allows for parallelism to be detected easily. In order to discover potential parallelism from the CFG, the if-conversion transformation must first be performed. However, the PDG can \textit{directly} be used to detect parallelism. Any node in the PDG that is not contained in a strongly connected region consisting of \textit{both} control and data dependences can be parallelised. In the example in Figure~\ref{fig:pdgparallel} we have a program containing a loop consisting of multiple assignment statements, and the corresponding PDG. Here, since the statements \texttt{d = e + f} and \texttt{g = h + i} (outlined in bold) in the loop do not form a strongly connected region, so they are parallelisable. The statements \texttt{a = b + c} and \texttt{i = i + a} are not, since the assignment to \texttt{i} is data dependent on the assignment to \texttt{a}.
+
+\begin{figure}
+\centering
+\subfigure{
+  \begin{minipage}[b]{0.3\linewidth}
+    \texttt{\begin{tabbing}
+        begin: \= i = 1;\\
+        loop: \> if i < 100 goto end;\\
+        \> a = b + c;\\
+        \> d = e + f;\\
+        \> g = h + i;\\
+        \> i = i + a;\\
+        \> goto loop;\\
+        end: \> return a * d + g;\\
+      \end{tabbing}}
+  \end{minipage}
+}
+\subfigure{
+  \includegraphics[scale=0.6]{pdgparallel.pdf}
+}
+\caption{Detecting parallelism with the PDG. The statements \texttt{d = e + f} and \texttt{g = h + i} (outlined in bold) are parallelisable.}
+\label{fig:pdgparallel}
+\end{figure}
+
+\section{Gating functions and GSA}
 \label{sec:gating_functions}
 
 In SSA form, $\phi$-functions are used to identify points where variable definitions converge. However, they cannot be directly \textit{interpreted}, as they do not specify the condition which determines which of the variable definitions to choose. By this logic, we cannot directly interpret the SSA Graph. Being able to interpret our IR is a useful property as it gives the compiler writer more information when implementing optimizations, and also reduces the complexity of performing code generation. Gated Single Assignment form is an extension of SSA with \textit{gating functions}. These gating functions are directly interpretable versions of $\phi$-nodes, and replace $\phi$-nodes in the representation. There are three forms of gating function and we take our definition from Tu and Padua:
@@ -112,9 +139,6 @@ In SSA form, $\phi$-functions are used to identify points where variable definit
 It is easiest to understand these gating functions by means of an example. Figure~\ref{fig: gsa-graph-example} shows how our earlier code in Figure~\ref{fig: ssa-graph-example-code} translates into GSA form. Here, we can see the use of both $\mu$ and $\eta$ gating functions. At the header of our sample loop the $\phi$-functions have been replaced by $\mu$ functions which determines between the initial and iterative values of \texttt{a} and \texttt{i}. After the loop has finished executing, the two $\eta$ functions propagate the correct value from the corresponding $\mu$ function. 
 
 These gating functions are important as the concept will form components of the Value State Dependence Graph later. GSA has seen a number of uses in the literature. The original usage of GSA was by Ballance et al. as an intermediate stage in the construction of the Program Dependence Web IR. Havlak presented an algorithm for construction of a simpler version of GSA -- Thinned GSA -- which is constructed from a CFG in SSA form. 
-
-% TODO: replace this para
-%Assuming that the CFG and SSA have already been constructed, then building GSA proceeds in two steps. Firstly, replacing $\phi$-functions with directed acyclic graphs of $\gamma$ functions, and secondly, building the controlling predicate of loops for use in its $\eta$ functions. The dominator tree is built for a procedure, and for each loop a preheader node and postbody node are added. Wherever the sink of a loop-exit edge has other in-edges, the loop-exit edge is split with the addition of a postexit node.$\mu$ functions are then placed at loop headers instead of $\phi$ functions. Every $\mu$ node added represents a variable modified in the loop, and placeholder $\eta$ functions are placed for the same variable at the postexit node for the loop. These hold the place for later creation of $\eta$ functions with predicates, and ensure proper placement of $\phi$ assignments for merges of values from different exits. Next, the remaining $\phi$ functions are converted to DAGs of $\gamma$ functions, and then other $\gamma$ DAGs are built to represent loop-termination conditions. References to detailed algorithms for the construction of GSA can be found in the chapter summary. 
 
 Tu and Padua presented an algorithm that constructs SSA and GSA simultaneously in a single process. Construction of GSA proceeds from the CFG. It uses the concept of \textit{path expressions}. A path expression $P$ of type $(u,v)$ is a simple regular expression over $E$ such that every string in $\sigma(P)$ is a path from node $u$ to node $v$ (where $\sigma(P)$ represents the string generated by the regular expression $P$). These path expressions are represented as \textit{gating functions}:
 
@@ -164,7 +188,7 @@ int \=fac(int n) \{\\
 \end{minipage}
 & \hspace{0.25in} &
 \begin{minipage}[c][\height][b]{2.2in}
-\includegraphics[scale=0.9]{example-fac}
+\includegraphics[scale=0.5]{example-fac}
 \end{minipage}	\\  %\cline{1-1}
 & & \\
 (a) & & (b)	\\ 
@@ -269,7 +293,7 @@ b)   if (P) x = 2; else x = 4;
 \end{minipage}	
 & \hspace {0.2in}
 \begin{minipage}[m][\height][l]{1.6in}
-\includegraphics[scale=0.9]{vsdg-gammanodes}
+\includegraphics[scale=0.5]{vsdg-gammanodes}
 \end{minipage} \\ \cline{1-1}
 \end{tabular}
 
@@ -371,8 +395,48 @@ via a stack as usual.
 
 Note also that the VSDG neither forces loop invariant code into nor out-of loop
 bodies, but rather allows later phases to determine, by adding serializing edges, such
-placement  of loop invariant nodes for later
-phases.
+placement of loop invariant nodes for later phases.
+
+\subsection{Dead node elimination with the VSDG}
+
+By representing a program as a VSDG, many optimisations become trivial. For example, consider dead node elimination (Figure~\ref{fig:dnevsdg}). This combines both dead code elimination and unreachable code elimination. Dead code generates VSDG nodes for which there is no value or state dependency path from the \texttt{return} node, i.e. the result of the function does not in any way depend on the results of the dead nodes. Unreachable code generates VSDG nodes that are either dead, or become dead after some other optimisation. Thus, a \textit{dead node} is a node that is not postdominated by the exit node $N_{\infty}$. To perform dead node elimination, only two passes are required over the VSDG resulting in linear runtime complexity: one pass to identify all of the live nodes, and a seconc pass to delete the unmarked (i.e. dead) nodes. It is safe because all nodes which are deleted are guaranteed never to be reachable from the \texttt{return} node.
+
+\begin{figure}[!ht]
+\centering
+\begin{minipage}[t]{5in}
+\noindent{\bf Input:} A VSDG $G(N,E_V,E_S,N_{\infty})$ with zero or more dead nodes.\\
+\noindent{\bf Output:} A VSDG with no dead nodes.
+\setcounter{linectr}{0}
+
+Procedure DNE($G$) \{
+\begin{code}
+\x1 WalkAndMark($N_{\infty},G$);
+\x1 DeleteMarked($G$);
+\end{code}
+\}
+
+\setcounter{linectr}{0}
+Procedure WalkAndMark($n,G$) \{
+\begin{code}
+\x1 {\bf if} $n$ is marked {\bf then} finish;
+\x1 mark $n$;
+\x1 {\bf foreach} (node $m \in N \wedge (n,m) \in (E_V \cup E_S)$) {\bf do}
+\x2    WalkAndMark($m$);
+\end{code}
+\}
+
+\setcounter{linectr}{0}
+Procedure DeleteMarked($G$) \{
+\begin{code}
+\x1 {\bf foreach} (node $n \in N$) {\bf do}
+\x2    {\bf if} $n$ is unmarked {\bf then} $delete$($n$);
+\end{code}
+\}
+
+\end{minipage}
+\caption{Dead node elimination on the VSDG.}
+\label{fig:dnevsdg}
+\end{figure}
 
 \section{Summary}
 
