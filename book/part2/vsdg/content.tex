@@ -62,6 +62,36 @@ The textual representation of SSA is much easier for a human to read. However, t
 
 In the literature, the SSA Graph has been used to detect a variety of induction variables in loops, also for performing instruction selection techniques, operator strength reduction, rematerialization, and has been combined with an extended SSA language to aid compilation in a parallelizing compiler. The reader should note that the exact specification of what constitutes an SSA Graph changes from paper to paper. The essence of the IR has been presented here, as each author tends to make small modifications for their particular implementation.
 
+\subsection{Finding induction variables with the SSA graph}
+
+Given that a program is represented as an SSA graph, the task of finding induction variables is simplified. A \texttt{basic induction variable} is a variable that appears only in the form:
+
+\begin{figure}[ht]
+\centering
+  \begin{minipage}[b]{0.3\linewidth}
+    \texttt{\begin{tabbing}
+         i = 10\\
+         loop \=\\
+         \> ...\\
+         \> i = i + k\\
+         \> ...
+         endloop
+      \end{tabbing}}
+  \end{minipage}
+\caption{}
+\label{fig:basicinductionvariable}
+\end{figure}
+
+where \texttt{k} is a constant or loop invariant. Wolfe made the observation that each basic linear induction variable will belong to a nontrivial SCR in the SSA graph. Each such SCR must conform to the following constraints:
+
+\begin{itemize}
+\item The SCR contains only one $\phi$-function at the header of the loop.
+\item The SCR contains only addition and subtraction operators, and the right operand of the subtraction is not part of the SCR (no $\mathtt{i=n-i}$ assignments).
+\item The other operand of each addition or subtraction is loop invariant.
+\end{itemize}
+
+This technique can be expanded to detect a variety of other classes of induction variables, such as wrap-around variables, non-linear induction variables and nested induction variables.
+
 \section{Program Dependence Graph}
 
 The Program Dependence Graph (PDG) represents both control and data dependencies together in one graph. The PDG was developed to aid optimisations requiring reordering of instructions and graph rewriting for parallelism, as the strict ordering of the CFG is relaxed and complemented by the presence of data dependence information. The PDG is a directed graph $G=(V,E)$ where nodes $V$ are statements, predicate expressions or region nodes, and edges $E$ represent either control or data dependencies. Thus, the set of all edges $E$ has two distinct subsets: the control dependence subgraph $E_{C}$ and the data dependence subgraph $E_{D}$. $E_{C}$ can be cyclic if a loop is present in the program, since a loop in the PDG is defined by a control back edge forming a strongly connected region. $E_{D}$ is always acyclic, and can be seen as a series of data dependency DAGs for each basic block, which are then connected together based on the data flow through the program. Similar to the CFG, a PDG also has two nodes $\mathtt{ENTRY}$ and $\mathtt{EXIT}$, through which data flow enters and exits the program respectively.
@@ -128,7 +158,7 @@ The structure of the PDG allows for parallelism to be detected easily. In order 
 \section{Gating functions and GSA}
 \label{sec:gating_functions}
 
-In SSA form, $\phi$-functions are used to identify points where variable definitions converge. However, they cannot be directly \textit{interpreted}, as they do not specify the condition which determines which of the variable definitions to choose. By this logic, we cannot directly interpret the SSA Graph. Being able to interpret our IR is a useful property as it gives the compiler writer more information when implementing optimizations, and also reduces the complexity of performing code generation. Gated Single Assignment form is an extension of SSA with \textit{gating functions}. These gating functions are directly interpretable versions of $\phi$-nodes, and replace $\phi$-nodes in the representation. There are three forms of gating function and we take our definition from Tu and Padua:
+In SSA form, $\phi$-functions are used to identify points where variable definitions converge. However, they cannot be directly \textit{interpreted}, as they do not specify the condition which determines which of the variable definitions to choose. By this logic, we cannot directly interpret the SSA Graph. Being able to interpret our IR is a useful property as it gives the compiler writer more information when implementing optimizations, and also reduces the complexity of performing code generation. Gated Single Assignment form (sometimes called Gated SSA) is an extension of SSA with \textit{gating functions}. These gating functions are directly interpretable versions of $\phi$-nodes, and replace $\phi$-nodes in the representation. There are three forms of gating function and we take our definition from Tu and Padua:
 
 \begin{itemize}
 \item The $\gamma$ function explicitly represents the condition which determines which $\phi$ value to select. A $\gamma$ function is of the form $\gamma(P,V_{1},V_{2})$ where $P$ is a predicate, and $V_{1}$ and $V_{2}$ are the values to be selected if the predicate evaluates to true or false respectively. This can be read simply as \textit{if-then-else}. 
@@ -159,6 +189,61 @@ Then, these gating functions can be simplified along gating paths. The full algo
 
 By using gating functions it becomes possible to construct IRs based solely on data dependencies. These IRs are sparse in nature compared to the CFG, making them good for analysis and transformation. This is also a more attractive proposition than generating and maintaining both a control flow graph and data flow graph, which can be complex and prone to human error. One approach has been to combine both of these into one representation, as is done in the Program Dependence Graph \cite{24041}. Alternatively, we can utilize gating functions along with a data flow graph for an effective way of representing whole program information using data flow information.
 
+\subsection{Backwards symbolic analysis with GSA}
+
+GSA is useful for performing symbolic analysis. Traditionally, symbolic analysis is performed by forwards propagation of expressions through a program. However, complete forward substitution is expensive and can result in a large quantity of unused information and complicated expressions. Tu and Padua showed how \textit{backwards}, demand-driven substitution can be performed using GSA which only substitutes \textit{needed} information. Consider the following program, taken from the authors:
+
+\begin{figure*}
+\centering
+\subfigure{
+  \begin{minipage}[b]{0.3\linewidth}
+    \texttt{\begin{tabbing}
+        R: \= JMAX = Expr\\
+        S: \> if(P) \= then J = JMAX - 1\\
+           \> \> else J = JMAX\\
+        T: \> $assert$(J $\mathtt{\leq}$ JMAX)
+      \end{tabbing}}
+  \end{minipage}
+}
+\caption{}
+\label{fig:tupaduaexample}
+\end{figure*}
+
+If forwards substitution were to be used in order to determine whether the assertion is correct, then the symbolic value of \texttt{J} must be discovered, starting at the top of the program in statement \texttt{R}. Forward propagation through this program results in statement \texttt{T} being $\mathtt{assert(}(if $ $\mathtt{P}$ $then$ $\mathtt{Expr-1}$ $else$ $\mathtt{Expr)}$ $\leq$ $\mathtt{Expr}$  $\mathtt{)}$, thus the \texttt{assert} statement evaluates to true. In real, non-trivial programs, these expressions could get unnecessarily long and complicated. 
+
+Using GSA allows for backwards, demand-driven substitution. The program above has the following GSA form:
+
+\begin{figure*}
+\centering
+  \begin{minipage}[b]{0.3\linewidth}
+    \texttt{\begin{tabbing}
+        R: \= $\mathtt{JMAX_1}$ = Expr\\
+        S: \> if(P) \= then $\mathtt{J_1}$ = $\mathtt{JMAX_1}$ - 1\\
+           \> \> else $\mathtt{J_2}$ = $\mathtt{JMAX_1}$\\
+           \> $\mathtt{J_3}$ = $\gamma$(P,$\mathtt{J_1}$,$\mathtt{J_2}$)\\
+        T: \> $assert$($\mathtt{J_3}$ $\mathtt{\leq}$ $\mathtt{JMAX_1}$)
+      \end{tabbing}}
+  \end{minipage}
+\caption{}
+\label{fig:tupaduagsasubs}
+\end{figure*}
+
+Using this backwards substitution technique, we start at statement \texttt{T}, and follow the SSA links of the variables. This allows for skipping of any intermediate statements that do not affect variables in \texttt{T}. Thus the substitution steps are:
+
+\begin{figure*}
+\centering
+  \begin{minipage}[b]{0.3\linewidth}
+    \texttt{\begin{tabbing}
+        $\mathtt{J_3}$ \= $\gamma$(P,$\mathtt{J_1}$,$\mathtt{J_2}$)\\
+        \> = $\gamma$(P,$\mathtt{JMAX_1 - 1}$,$\mathtt{JMAX_1}$)
+      \end{tabbing}}
+  \end{minipage}
+\caption{}
+\label{fig:tuapaduagsaexample}
+\end{figure*}
+
+The backwards substitution then stops because enough information has been found, avoiding the redundant subtitution of $\mathtt{JMAX_1}$ by $\mathtt{Expr}$. In non-trivial programs this can greatly reduce the number of redundant substitutions, making symbolic analysis significantly cheaper.
+
 \section{Value State Dependence Graph}
 
 The gating functions defined in the previous section were used in the development of a sparse data flow graph IR called the Value State Dependence Graph (VSDG). The Value State Dependence Graph is a directed graph consisting of operation
@@ -167,7 +252,7 @@ Cycles are permitted but
 must satisfy various restrictions.
 A VSDG represents a single procedure: this matches the classical CFG. 
 
-An example VSDG is shown in Figure~\ref{fig:fac}. ÊIn (a) we have the original
+An example VSDG is shown in Figure~\ref{fig:fac}. In (a) we have the original
 C source for a recursive factorial function. ÊThe corresponding VSDG
 (b) shows both value and state edges and a selection of nodes.
 
@@ -441,6 +526,8 @@ Procedure DeleteMarked($G$) \{
 \section{Summary}
 
 A compiler's intermediate representation can be a graph, and many different graphs exist in the literature. We can represent the control flow of a program as a Control Flow Graph (CFG) \cite{808479}, where straight-line instructions are contained within basic blocks and edges show where the flow of control may be transferred to once leaving that block. A CFG is traditionally used to convert a program to SSA form \cite{115320}. We can also represent programs as a type of data flow graphs, and SSA can be represented in this way as an SSA Graph \cite{504710}. The SSA Graph has been used to detect a variety of induction variables in loops \cite{143131,201003}, also for performing instruction selection techniques \cite{1375663,1269857}, operator strength reduction \cite{504710}, rematerialization \cite{143143}, and has been combined with an extended SSA language to aid compilation in a parallelizing compiler \cite{Stoltz_extendedssa}.
+
+% TODO: references for worked example papers.
 
 Gating functions can be used to create directly interpretable $\phi$-functions. These are used in Gated Single Assignment Form \cite{93578,207115,Havlak93constructionof}.
 
