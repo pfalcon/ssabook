@@ -9,7 +9,7 @@ TODO: write down algorithms
 
 \section{Overview/Motivations}
 
-We describe in this chapter if-conversion in SSA form, that allows to transform a SSA region into an equivalent region were branches have been removed and instructions transormed into a conditional representation by the target architecture.
+We describe in this chapter if-conversion in SSA form, that allows to transform a regions of basic blocks into an a region were branches have been removed and instructions transormed into a conditional representation by the target architecture.
 
 \subsection{Benefits for ILP/better schedule}
 
@@ -17,11 +17,14 @@ Conditional and direct branches are a major impediment for many compiler optimiz
 
 For Multiple issue processors, Increasing ILP \cite{Rau:2003:IP:1074100.1074489} is necessary to increase the instruction thoughput. In order for the compiler to statically schedule the best sequence of straight instructions to be executed in parallel. Biggest possible sequence of straight code must be generated. Of of the way to do this is removing branches by if-conversion \cite{Schlansker97achievinghigh}.
 
-This is even more true for explicitely scheduled archtectures, such as EPIC (Explicitely Parallel Archtectures), or VLIW (Very Large Instruction World), were the compiler is in charge of statically schedule the instruction flow, to allow parallel execution of instructions on multiple functional units. 
+This is even more true for explicitely scheduled architectures, such as EPIC (Explicitely Parallel Archtectures), or VLIW (Very Large Instruction World), were the compiler is in charge of statically schedule the instruction flow, to allow parallel execution of instructions on multiple functional units. 
 
 If-conversion is the process to transforming a control flow region containing a several basic blocks into a single basic block of straight line of code.
 
 Removing branches improves performance in several ways: by removing the mis-prediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows the static scheduler to schedule earlier long latencies operations and to improve the ILP by merging multiple flows of execution, with an optimized allocation of the different data paths. 
+
+Improve locality
+Triggers other optimisations (unrolling, software pipelining)
 
 As a simple introductory example, here is a simple if-then-else body if-converted
 
@@ -59,6 +62,7 @@ We can see that code than 2 branches have being eliminated, and that the resulti
 \subsection{SSA}
 
 We already noticed that the if-conversion requires a renaming process because each variable must be defined only once, and the insertion of a pseudo instruction to express the merging of the values comming from different paths. This looks like the beginning of SSA isn't it ?
+Only the values that have ma merge point need to be conditionalized, other can be unconditionally executed.
 
 \begin{figure}
 \begin{minipage}[t]{4cm}
@@ -125,7 +129,7 @@ $x = select p \cond t : 0 $ \\
 \label{fig:spec}
 \end{figure}
 
-\subsection{SSA if-conversion overview}
+\section{SSA if-conversion}
 
 Locally, we notice then if-conversion require two problems to be solved.
 \begin{itemize}
@@ -195,21 +199,21 @@ SSA if-convertion works itratively from inner regions to outer regions, using a 
 
 \begin{figure}
 \begin{minipage}[t]{5cm}
-\includegraphics[scale=0.2]{phi_removal.pdf}
+\includegraphics[scale=0.4]{phi_removal.pdf}
 \caption{phi removal}
 \label{fig:phi_rem}
 \end{minipage}
 \begin{minipage}[t]{5cm}
-\includegraphics[scale=0.2]{phi_reduction.pdf}
+\includegraphics[scale=0.4]{phi_reduction.pdf}
 \caption{phi reduction}
 \label{fig:phi_red}
 \end{minipage}
-\begin{minipage}[t]{6cm}
-\includegraphics[scale=0.2]{phi_merge.pdf}
+\begin{minipage}[t]{5cm}
+\includegraphics[scale=0.4]{phi_merge.pdf}
 \caption{predicate merge}
 \end{minipage}
 \begin{minipage}[t]{5cm}
-\includegraphics[scale=0.2]{phi_augmentation.pdf}
+\includegraphics[scale=0.4]{phi_augmentation.pdf}
 \caption{phi augmentation}
 \label{fig:phi_aug}
 \end{minipage}
@@ -243,7 +247,7 @@ Since the algorithm works the control flow in post order mode, the dominator tre
 \end{proof}
 Note that block duplication doesn't necessary implies more code size, since data flow dependencies are broken, noew oportunities for propagation or scalar optimisation arise. Here the local $t$ appears temporary, since $r2$ can be propagated into the $\phi$.
 
-\section{SSA promotion}
+\subsection{SSA promotion}
 
 To know the values that need to be conditionally written, we only need to look at the defining instructions of the $\phi$ instructions. By elimination, all temporaries that do not have a join point into the considered region and that don't have a side effect are unconditionally speculated during the SSA transformations processes. Instructions with a side effect will need to be guarded.
 
@@ -367,16 +371,19 @@ The algorithm to perform SSA block duplication is decomposed into three steps:
 \label{fig:bbdup}
 \end{figure}
 
-\section{Profile support for if-conversion}
-
 \section{Global Framework}
 
-\subsection{Traditional approach}
+\subsection{Profile support for if-conversion}
+
+\subsection{Hyperblocks}
+
 Traditional framework of if-conversion use Hperblocks as the basic predicated region formation. \cite{Mahlke:1992:ECS:144965.144998}. A hyperblock is a region of code with a single entry and multiple exits. Before the predicated code can be generated, the hyperblock excluding basic blocks that are not frequently executed, in order to combine only the common paths into the if-converted region, thus only optimizing the subset of the blocks within a give region (e.g a loop nest) are optimized. 
 
 Several algorithmic or design choices impact the effectiveness of if-conversion. As an optimization, the region to if-convert, e.g hyperblock, must be just large enough to have the largest scope of scheduling framework, but in the same time it must not over-commit the machine resources (registers, CPUs). On the contrary, although if-conversion removes branches, I also add some overhead (new instructions to merge predicates, register pressure for speculative conditional, bigger dependence height because of the presence of new data dependencies on the predicates). The newly formed basic block doesn't have a higher schedule estimation than the one that would have been taken if the code was not if-converted.
 
 For this reason, existing approaches of if-conversion are either limitted to a single conditional branch using peepholes style of pattern matching, intrinsic functions (conditional code is inlined by the compiler in the internal representation), or scoping larger but restricted regions such as loops hyperblocks. Such approaches require that the region is isolated from the rest of the control flow, , and more important requires a complicated estimation of the future if-converted region. So many factor impact this (predicate computation, register pressure, dependence height) that the objective function needs to be very conservative. Traditionally if-conversion cover the following steps:
+
+\subsection{SSA Iterative if-conversion}
 
 If you consider the control flow region from \ref{fig:hyper1} 
 
@@ -410,6 +417,12 @@ Then second, the region {BB2,BB3 is considered}. Then the region composed of {BB
 
 All those operations make the if-conversion process a complex optimization, forcing designers to be extremely conservative, as the objective functions must contain variables not known at the start of the transformation. (such as the complexity of the predicate equations) since moving multiple control paths together can easily exceed processors resources (leading to excessive register pressure) or move infrequently used expensive instruction (memory loads) into the critical path. 
 
+Set of transformations are applied iteratively and aggressively in postorder of the CFG
+Start from first inner regions of basic blocks with a single conditional entry
+Blocks reached on multiple conditions are detected (predicate merge)
+Side entries removed using block duplication (less aggressive than tail duplication)
+Decision to continue reconsidered for each region. ``The whole doesn't' exeed the sum of the parts''' or when hazardeous instructions
+
 The process becomes a succession of local decisions, rather than a global decision. And can stop at anytime when the profitability of convertig a subnest is not established, or if a basic block has hazards. At this time, the decsion to stop to to proceed with tail duplication can be taken.
 
 TODO: demonstrate
@@ -417,6 +430,19 @@ The SSA framework allows the decision functions to be accurate enough to avoid b
 
 These operation are performed iterativelly on post order, consequently one of the propriety of the algorithms is that psi can be predicated. A Partial out of SSA can be iteratively performed on those regions by removing the $\phi$s and maintening a correct SSA internal representation. The algorithm takes SSA as input and produces SSA if a select instruction is available or $\psi$-SSA if predicated instructions are available. 
 
+\subsubsection
+Problem: phis into select was reazing join points
+Transform select into the equivalent predicated instruction
+Not SSA anymore: renaming problem: same variables defined 23 times on different predicatesd
+wait after our of SSA do do a peephole transformation
+Generate exenteded SSA for predication: psi
+
+\section{Conclusion}
+Easier to calculate beneficial optimisation locally and reconsider for each sub-region as the hyperblock grows, rather that globaly and reverse if-conversion
+Only variables that join need to be conditionaliez, other can be speciulated if possible, reducing predicate dependencies
+
+Speculated model: enter in strict SSA and produces strict SSA
+Predicated model enter ins strict SSA and produces psi SSA.
 
 
 
