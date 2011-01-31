@@ -9,47 +9,47 @@ TODO: write down algorithms
 
 \section{Overview/Motivations}
 
-We describe in this chapter if-conversion in SSA form, that allows to transform a regions of basic blocks into an a region were branches have been removed and instructions transormed into a conditional representation by the target architecture.
+We describe in this chapter an if-conversion framework in SSA, that allows to transform a regions of basic blocks into an a region were branches have been removed and instructions transformed into a conditional representation by the target architecture.
+\subsection{Introduction}
 
-\subsection{Benefits for ILP/better schedule}
+In order to increase the instruction throughput, processors tend to increasing the number of instructions that can bin issued simultaneously. In order to fully exploit the parallelism made available by multiple issues processors \cite{Rau:2003:IP:1074100.1074489}, Instruction Level Parallelism techniques are implemented in the hardware, such as-out-of-order execution, or dynamic scheduling, branch prediction. However, a more economical trend delegates to the compiler the task to extract and organize ILP thu the envent of Explicitly scheduled architectures, such as EPIC (Explicitly Parallel Architectures), or VLIW (Very Large Instruction World).
 
-Conditional and direct branches are a major impediment for many compiler optimizations, because they introduce complexity in control and data dependencies and break sequentiality in the program. 
+Conditional branches introduce control dependencies between instructions. An instruction is control dependent on a preceding instruction if the first one determines the execution of the second one \cite{Kennedy:2001:OCM:502981}. They limit the scope of ILP optimizations, because they reduce the number of continuous instructions that are not data dependent and thus can be executed in parallel. By reducing the average size of a basic block, they act as a bottleneck for exposing parallelism.
 
-For Multiple issue processors, Increasing ILP \cite{Rau:2003:IP:1074100.1074489} is necessary to increase the instruction thoughput. In order for the compiler to statically schedule the best sequence of straight instructions to be executed in parallel. Biggest possible sequence of straight code must be generated. Of of the way to do this is removing branches by if-conversion \cite{Schlansker97achievinghigh}.
+If-conversion is the process of transforming a control flow region containing a several basic blocks into a single basic block of straight line of code. Thus removing control branches from this region \cite{Schlansker97achievinghigh}.
 
-This is even more true for explicitely scheduled architectures, such as EPIC (Explicitely Parallel Archtectures), or VLIW (Very Large Instruction World), were the compiler is in charge of statically schedule the instruction flow, to allow parallel execution of instructions on multiple functional units. 
+Removing branches improves performance in several ways: by removing the mis-prediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows the static scheduler to schedule earlier long latencies operations and to improve the ILP by merging multiple control paths into a single flows of execution. Many compiler optimizations are impacted by branches. Software Pipelining for example, can't efficiently schedule loops with conditional branches \cite{Warter:1992:EMS:144953.145796}.
 
-If-conversion is the process to transforming a control flow region containing a several basic blocks into a single basic block of straight line of code.
+As a simple introductory example, here is a simple if-then-else body laid out into sequencial code:
 
-Removing branches improves performance in several ways: by removing the mis-prediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows the static scheduler to schedule earlier long latencies operations and to improve the ILP by merging multiple flows of execution, with an optimized allocation of the different data paths. 
-
-Improve locality
-Triggers other optimisations (unrolling, software pipelining)
-
-As a simple introductory example, here is a simple if-then-else body if-converted
-
-\begin{figure}
-\begin{minipage}[t]{5cm}
-\mbox{original code:} \\
-$ !cond br Label1 $ \\
-$ x = x * 2 $ \\
-$ y = z - 2 $ \\
-$ br label2 $ \\
-$ label1: $ \\
-$ x = x + 1 $ \\
-$ y = y - 1 $ \\
-$ label2: $ \\
-\end{minipage} 
-\begin{minipage}[t]{5cm} 
-\mbox{after if-conversion} \\
-$ x1 = x * 2 $ \\
-$ y1 = z - 2 $ \\
-$ x2 = x + 1 $ \\
-$ y2 = y - 1 $ \\
-$ x = \textit{merge}(x1,x2) $ \\
-$ y = \textit{merge}(y1,y2) $ \\
+\begin{table}[ht]
+\begin{minipage}[t]{.5\linewidth}
+\centering
+ \mbox{original code} \\
+   \begin{tabular}{| l | l | l | l | }
+    \hline
+ALU1 & ALU2 & ALU3 & ALU4 \\
+$ p = cmp a $ & & & \\
+$ p \cond br$ $l1$ & & & \\
+$ x = g - 2 $ & $ y = g + 2 $ & & \\
+$ br$ $ l2 $ & & & \\
+$ l1: x = a + 1 $ & & & \\
+$ l2: $ & & & \\
+    \hline
+    \end{tabular}
 \end{minipage}
-\end{figure}
+\begin{minipage}[t]{.5\linewidth}
+\centering
+\mbox{after speculative if-conversion} \\
+    \begin{tabular}{| l | l | l | l | }
+    \hline
+ALU1 & ALU2 & ALU3 & ALU4 \\
+$ x_1 = g - 2 $ & $ x_2 = a + 1 $ & $y_1 = g + 2 $ & $ p = cmp a $ \\
+$ p \cond x = x_1 : x_2 $ & $ p \cond y = y_1 : y_2 $ & & \\
+    \hline
+    \end{tabular}
+\end{minipage}
+\end{table}
 
 We can see that code than 2 branches have being eliminated, and that the resulting code an now be executed in parallel, since they don't depend on each other. Looking at this simple example, we notice 2 important feature of if-converted code. (we don't say predicated code on purpose, since predication is only a way to conditionalize code, as we will see further).
 
