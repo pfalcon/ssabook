@@ -20,15 +20,16 @@ If-conversion is the process of transforming a control flow region containing a 
 
 Removing branches improves performance in several ways: by removing the mis-prediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows the static scheduler to schedule earlier long latencies operations and to improve the ILP by merging multiple control paths into a single flows of execution. Many compiler optimizations are impacted by branches. Software Pipelining for example, can't efficiently schedule loops with conditional branches \cite{Warter:1992:EMS:144953.145796}.
 
-As a simple introductory example, here is a simple if-then-else body laid out into sequencial code:
+Consider the following example, that represents the execution of a simple if-then-else statement on a 4-issue processor, with all instructions having a one cycle latency.
 
 \begin{table}[ht]
-\begin{minipage}[t]{.5\linewidth}
+\begin{minipage}[t]{.4\linewidth}
 \centering
  \mbox{original code} \\
    \begin{tabular}{| l | l | l | l | }
     \hline
 ALU1 & ALU2 & ALU3 & ALU4 \\
+    \hline
 $ p = cmp a $ & & & \\
 $ p \cond br$ $l1$ & & & \\
 $ x = g - 2 $ & $ y = g + 2 $ & & \\
@@ -38,12 +39,13 @@ $ l2: $ & & & \\
     \hline
     \end{tabular}
 \end{minipage}
-\begin{minipage}[t]{.5\linewidth}
+\begin{minipage}[t]{.4\linewidth}
 \centering
 \mbox{after speculative if-conversion} \\
     \begin{tabular}{| l | l | l | l | }
     \hline
 ALU1 & ALU2 & ALU3 & ALU4 \\
+    \hline
 $ x_1 = g - 2 $ & $ x_2 = a + 1 $ & $y_1 = g + 2 $ & $ p = cmp a $ \\
 $ p \cond x = x_1 : x_2 $ & $ p \cond y = y_1 : y_2 $ & & \\
     \hline
@@ -51,47 +53,19 @@ $ p \cond x = x_1 : x_2 $ & $ p \cond y = y_1 : y_2 $ & & \\
 \end{minipage}
 \end{table}
 
-We can see that code than 2 branches have being eliminated, and that the resulting code an now be executed in parallel, since they don't depend on each other. Looking at this simple example, we notice 2 important feature of if-converted code. (we don't say predicated code on purpose, since predication is only a way to conditionalize code, as we will see further).
+The execution path is 3 cycles, regardless of the branch direction. Once if-converted, the instructions become independent from the test result, and can be executed in the cycle, reducing the execution path to 2 cycles.
+
+We notice some important features with if-converted code. (we don't say predicated code on purpose, since predication is only a way to conditionalize code, as we will see further).
 
 \begin{itemize}
 \item variables have been renamed, 
-\item a \textit{merge} pseudo operation have been introduced. It is necessary to reconstruct the original value of x,y, to express the merge of the 2 variables. We will see later how this operation will be represented into the target machine.
-\item. This \textit{merge} introcudes a data dependency. if-conversion transforms control dependencies into data dependencies \cite{Allen:1983:CCD:567067.567085}. The first consequence is that all registers now live simultaneously, (live range), so the benefits of branch removing and better schedule balanced with increased live range and register pressure : If-conversion must rely on a powerfull decision model
+\item a \textit{merge} pseudo operation have been introduced. It is necessary to reconstruct the original value of $x$ and $y$.
+\item This \textit{merge} introdudcs a data dependency. if-conversion transforms control dependencies into data dependencies \cite{Allen:1983:CCD:567067.567085}. The first consequence is that all registers now live simultaneously, (live range), so the benefits of branch removing and better schedule balanced with increased live range and register pressure : If-conversion must rely on a powerfull decision model
 \end{itemize}
 
-\subsection{SSA}
-
-We already noticed that the if-conversion requires a renaming process because each variable must be defined only once, and the insertion of a pseudo instruction to express the merging of the values comming from different paths. This looks like the beginning of SSA isn't it ?
-Only the values that have ma merge point need to be conditionalized, other can be unconditionally executed.
-
-\begin{figure}
-\begin{minipage}[t]{4cm}
-\mbox{original code in SSA:} \\
-$ !cond br Label1 $ \\
-$ x_1 = x_0 * 2 $ \\
-$ y_1 = z_0 - 2 $ \\
-$ br label2 $ \\
-$ label1: $ \\
-$ x_2 = x_0 + 1 $ \\
-$ y_2 = y_0 - 1 $ \\
-$ label2: $ \\
-$ x = \phi (x_1,x_2) $ \\
-\end{minipage} 
-\begin{minipage}[t]{4cm} 
-\mbox{after if-conversion} \\
-$ x_1 = x * 2 $ \\
-$ y_1 = z - 2 $ \\
-$ x_2 = x + 1 $ \\
-$ y_2 = y - 1 $ \\
-$ x = \textit{merge}(x_1,x_2) $ \\
-$ y = \textit{merge}(y_1,y_2) $ \\
-\end{minipage}
-\end{figure}
-
-Starting from an sequence in SSA, the if-conversion algorithm for a simple region becomes amazingly straightforward: remove branches and replace $\phi$ operations. We must now resolve the problem of the representation of the conditionalized instruction while still in SSA mode, after if-conversion. 
-
 \subsection{Architectural requirements}
-The level of architectural support to execute conditional instructions play an essential role. Basically, two kind of support can exist: predicated execution or  speculive execution my mean of conditional moves.
+In order to emit conditional code, the if-conversin algorithm expect the architecture to provide support for conditional execution of instructions, or to conditionaly commit the result of an instruction.
+Basically, two kind of support can (co-)exist: predicated execution or speculive execution my mean of conditional moves.
 
 Predication \ref{fig:pred} is an architectural features that allows an instruction to be executed conditionally my mean of a predicate (for pipelined architectured, the instruction is always executed, but the results is nullified). 
 
@@ -129,15 +103,47 @@ $x = select p \cond t : 0 $ \\
 \label{fig:spec}
 \end{figure}
 
+Another requirement: he condition code must be visible at the ISA level, to enable boolean optimisation of predicates.
+
 \section{SSA if-conversion}
+
+SSA provides an efficient intermediate representation in which all false data dependencies have been removed, thus removing the need for register renaming needed when merging two definitions into one. Each assignment target (def) is assigned a unique register name. Registers are re-materialized at join nodes using $\phi$ operations. A procedure is in minimal SSA form if the number of $\phi$ instructions at join nodes is as small as possible. SSA-form representation gives the properties that a variable is assigned only once, and their merging point is exposed info $\phi$ operations solves those problems. 
+
+We noticed that the if-conversion requires a renaming process because each variable cannot be redefined when using a speculation model, and the insertion of a pseudo instruction to express the merging of the values comming from different paths. This looks like very much SSA, isn't it ?
+
+\begin{figure}
+\begin{minipage}[t]{4cm}
+\mbox{original code in SSA:} \\
+$ !cond br Label1 $ \\
+$ x_1 = x_0 * 2 $ \\
+$ y_1 = z_0 - 2 $ \\
+$ br label2 $ \\
+$ label1: $ \\
+$ x_2 = x_0 + 1 $ \\
+$ y_2 = y_0 - 1 $ \\
+$ label2: $ \\
+$ x = \phi (x_1,x_2) $ \\
+\end{minipage} 
+\begin{minipage}[t]{4cm} 
+\mbox{after if-conversion} \\
+$ x_1 = x * 2 $ \\
+$ y_1 = z - 2 $ \\
+$ x_2 = x + 1 $ \\
+$ y_2 = y - 1 $ \\
+$ x = \textit{merge}(x_1,x_2) $ \\
+$ y = \textit{merge}(y_1,y_2) $ \\
+\end{minipage}
+\end{figure}
+
+Starting from an sequence in SSA, the if-conversion algorithm for a simple region becomes amazingly straightforward: remove branches and replace $\phi$ operations. We must now resolve the problem of the representation of the conditionalized instruction while still in SSA mode after if-conversion. 
+
+\subsection{A local and a global proble}
 
 Locally, we notice then if-conversion require two problems to be solved.
 \begin{itemize}
 \item A renaming problem to avoid the multiple definitions of a different variables assignment merged into a single path. 
-\item Minimize the number of instructions to be predicated. Only instruction that merge need to be conditionalized inside the predicate set that control the merge. Others can be safely speculated without the need of a special predicate reduction pass. 
+\item Minimize the number of instructions to be predicated. Only instruction that merge need to be conditionalized inside the predicate set that control the merge. Others can be safely speculated without the need of a special predicate reduction pass. Only the values that have ma merge point need to be conditionalized, other can be unconditionally executed.
 \end {itemize}
-
-SSA \cite{BriggsSSA} provides an efficient intermediate representation in which all false data dependencies have been removed, thus removing the need for register renaming needed when merging two definitions into one. Each assignment target (def) is assigned a unique register name. Registers are re-materialized at join nodes using $\phi$ operations. A procedure is in minimal SSA form if the number of $\phi$ instructions at join nodes is as small as possible. SSA-form representation gives the properties that a variable is assigned only once, and their merging point is exposed info $\phi$ operations solves those problems. 
 
 Once the operations to be conditionalized have be isolated. The framework still need to answer two other questions: As a global problem the region to if-convert must be defined, using objective functions and branch probabilities to avoid moving to the hot path less frequently used instruction. Since if-conversion also transforms control flow dependencies into data flow dependencies, register pressure can become significantly high. Such decision function must take into account operations created by the process itself, such as predicate merging or new copies. 
 
@@ -151,7 +157,7 @@ During traditional if-conversion, for each basic block considered into the regio
 \end{minipage}
 \begin{minipage}[b]{4cm}
 \includegraphics[scale=0.2]{nested_01.pdf}
-\label{fig:nest0}
+\label{fig:nest1}
 \end{minipage}
 \caption{non-ssa code}
 \end{figure}
@@ -251,7 +257,7 @@ Note that block duplication doesn't necessary implies more code size, since data
 
 To know the values that need to be conditionally written, we only need to look at the defining instructions of the $\phi$ instructions. By elimination, all temporaries that do not have a join point into the considered region and that don't have a side effect are unconditionally speculated during the SSA transformations processes. Instructions with a side effect will need to be guarded.
 
-If-conversion converts control dependencies into data dependencies by computing a condition for the execution of each operation \cite{Schlansker-predicated}. Using our SSA framework, only operands from $\phi$ operations are considered to be conditional. This is an important advantage over traditional if-conversion algorithms that marks all instructions in a conditional basic block as dependent on the predicate. When considering dependency on a predicate we just walk from the $\phi$ uses to their definition points. All instructions are unconditionally speculated, but only those that are used in $\phi$ merge points that SSA exposes the conditional merging of values and generation of conditional moves.
+If-conversion converts control dependencies into data dependencies by computing a condition for the execution of each operation. Using our SSA framework, only operands from $\phi$ operations are considered to be conditional. This is an important advantage over traditional if-conversion algorithms that marks all instructions in a conditional basic block as dependent on the predicate. When considering dependency on a predicate we just walk from the $\phi$ uses to their definition points. All instructions are unconditionally speculated, but only those that are used in $\phi$ merge points that SSA exposes the conditional merging of values and generation of conditional moves.
 
 Our algorithm is applied iteratively on a control flow in SSA form until no more reductions are possible. The quality of the SSA taken as input does not affect the correctness of the algorithm: if the control flow is in pruned SSA, i.e two paths $x->+z$ and $y->+z$ converge at node z, then a $\phi$ node is inserted at z only if z is alive in or after z. if which case x and y are promoted and no $select$ operation is generated. if the SSA is minimal, a $select$ instruction would be generated and removed by dead code. Inserting dead code from minimal SSA only introduces noise in the local scheduling heuristics because of the false data dependencies.
 
