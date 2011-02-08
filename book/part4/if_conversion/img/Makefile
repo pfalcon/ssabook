@@ -8,9 +8,11 @@ all: pdf
 
 pdf: $(PDF)
 
-%.pdf: %.tikz 
+%.pdf: %.tikz tikz2figure.tex
 	pdflatex --jobname=$* tikz2figure
+	pdfcrop --verbose $*.pdf /tmp/t.pdf
+	mv /tmp/t.pdf $*.pdf
 
 clean:
-	rm -f *.aux *.log *.pdf *~
+	rm -f *.aux *.log *~ *.out
 
