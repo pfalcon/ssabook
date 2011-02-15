@@ -305,10 +305,13 @@ passing it to article class \MessageBreak
 \setcounter{totalnumber}{6}
 %
 % size and style of headings
+\font\partphifont=cmmi10 at 300pt
 \newcommand{\partnumsize}{\LArge}
-\newcommand{\partnumstyle}{\bfseries\boldmath}
+%\newcommand{\partnumstyle}{\bfseries\boldmath}
+\font\partnumstyle=cmbx10 at 40pt
 \newcommand{\partsize}{\LARGE}
-\newcommand{\partstyle}{\bfseries\boldmath}
+%\newcommand{\partstyle}{\bfseries\boldmath}
+\font\partstyle=cmbx10 at 30pt
 \newcommand{\chapnumsize}{\Large}
 \newcommand{\chapnumstyle}{\bfseries\boldmath}
 \newcommand{\chapsize}{\LArge}
@@ -352,11 +355,14 @@ passing it to article class \MessageBreak
    {\raggedleft
     \hyphenpenalty \@M
     \interlinepenalty\@M
+    {\color{gray}%
+    \hbox{\raise1em\hbox{$\textfont1=\partphifont\phi$}}%
+    }%
     \ifnum \c@secnumdepth >-2\relax
       \normalfont\partnumsize\partnumstyle %\vrule height 34pt width 0pt depth 0pt%
      \partname\ \thepart %\llap{\smash{\lower 5pt\hbox to\textwidth{\hrulefill}}}
     \par
-    \vskip 2\p@ \fi
+    \vskip 8\p@ \fi
     \partsize\partstyle #2\par
     \vskip 30\p@
      \large
