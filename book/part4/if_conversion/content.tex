@@ -13,7 +13,7 @@ We describe in this chapter an if-conversion algorithm in SSA representation. If
 
 \subsection{Introduction}
 
-A way to increase the instruction throughput is to increase the number of instructions that are excecuted simultaneously. This can be achieved by multiple issue processors, either with out-or-order expensive superscalar execution models, or with in-order execution model, delegating to the compiler or to the programmer the responsibility to organize the parallel execution of the execution flow \cite{Rau:2003:IP:1074100.1074489}.
+A way to increase the instruction throughput is to increase the IPC (number of instrucion per cycle), either by increasing pipeline depth, or by increasing the number of instructions that are excecuted simultaneously. This can be achieved by multiple issue processors. Out-or-order expensive superscalar execution models use dynamic scheduling. In-order execution model, becoming popular because it's lower hardware complexity, delegate to the compiler or to the programmer the responsibility to organize the parallel execution of the execution flow \cite{Rau:2003:IP:1074100.1074489}.
 
 In order for the compiler to organize the parallelism explicitly, VLIW (Very Lare Instruction World) or EPIC (Explicitly Parallel Architectures) make the parallelism visible to the ISA representation, allowing a static scheduler to organize the assembler such as a maximum number of instructions are issued for each cycle. 
 
@@ -168,18 +168,18 @@ SSA if-conversion works iteratively from inner regions to outer regions, using a
 
 \begin{figure}
   \subfloat[phi removal] {
-  \includegraphics[scale=0.9]{phi_removal}
+  \includegraphics[scale=0.8]{phi_removal}
   \label{fig:phi_rem}}
   \subfloat[phi reduction] {
-  \includegraphics[scale=0.9]{phi_reduction}
+  \includegraphics[scale=0.8]{phi_reduction}
   \label{fig:phi_red}}
 
   \subfloat[phi merge] {
-  \includegraphics[scale=0.9]{phi_merge}
+  \includegraphics[scale=0.8]{phi_merge}
   \label{fig:phi_merge}}
 
   \subfloat[phi augmentation] {
-  \includegraphics[scale=0.9]{phi_augmentation}
+  \includegraphics[scale=0.8]{phi_augmentation}
   \label{fig:phi_aug}}
 \label{fig: phi_operations}
 \end{figure}
@@ -212,7 +212,7 @@ Note that block duplication doesn't necessary implies more code size, since data
 \subsection{SSA representation of conditional instructions}
 
 One problem of the described SSA-speculative framework is that it doesn't fit very well with a predicated model of conditional execution. Since $\phi$ are transformed to realize joint points into conditional moves, we should backwalk to relink the conditional moves into predicated instructions. This process of transforming speculation into predication is not convenient for many reasons:
-- Predication introduces a renaming problem: Since a same register name can have 2 different assignments (under different predicates), this breaks SSA rules. The solution is to re-use the framework to realize join points into and extended SSA representation:el
+- Predication introduces a renaming problem: Since a same register name can have 2 different assignments (under different predicates), this breaks SSA rules. The solution is to re-use the framework to realize join points into and extended SSA representation:
 
 In \cite{Stoutchinin:2001:ESS:563998.564022} $\psi$-SSA was described as a way to express a predicated form of SSA extension. Such representation is usually built from already predicated code, non SSA, originating from inlined assembly, peepholes, intrinsics functions or local transformations of control flow idioms. 
 
@@ -407,9 +407,12 @@ The cost function uses the target's machine interface information for instructio
 \begin{figure}
 \centering
     \includegraphics[scale=0.8]{ssa_freq}
-\caption{register selection}
+\caption{example of profitable if-conversion}
 \label{fig:ssa_freq}
 \end{figure}
+
+In example \ref{fig:ssa_freq} the dependence height of the fallthru path is 4 cycles. The dependence height of the taken path is 2 cycles. So the ponderated estimated cost of the region is 1+2.4+0.2+1=4.6 cycles. The estimated cost of the if-converted region is the schedule height estimation of the instructions without the branches. In this case, 4 cycles. Since the schedule height of the if-converted region is smaller than the profiled ponderated estimation, then it is profitable.
+It should be noted that this heuristic doesn't take into account increased register pressure in the case of speculation, because the variables now interfere. Computing the inteference graph at this stage and simulating a register coalescing process would be extremely expensive at this stage. In the exampe above, a conservative approach would evaluate a register pressure of 4, without counting than $s$ and $t$ coalesce and that in reality the register budget would be 3. Note that this problem is general to every if-conversion algorithm, but might be more easy to deal with in the SSA framework because of the locality of the region.
 
 \subsection{SSA Iterative if-conversion}
 
@@ -431,11 +434,13 @@ Traditional if-conversion algorithms \cite{Schlansker-predicated} cover those st
 
 In contrast, the SSA iterative based if-conversion  brings together region selection and region transformation, The algorithm is to walk the control flow iteratively 
 
-The algorithm creates a list of candidate block having 2 exit edges in postorder traversal of the control flow. Then it iterates on this list. Since inner tests will appear first in the postorder list, the if-conversion will process the regions for inner to outer, and for each iteration will reconsider the cost of if-conversion. 
+The algorithm works on a structed directed control flow. Iterates in postorder traversal the list of candidate conditional blocks of the control flow. Postorder traveral garantees that each inner region will be processed before the regions of larger scopes.
 
-This approach as the advantage that since nested regions are already predicated when evaluation the if-conversion of a branch, all side effects introduced by the if-conversion, such as new predicate merging instructions, new conditional moves merging flow or new data dependencies will be taken into account.
+The bigger adantage on an incremental optimisation of the control flow is that since nested regions are already predicated when evaluation the if-conversion of a branch, all side effects introduced by the if-conversion, such as new predicate merging instructions, new conditional moves merging flow or new data dependencies will be taken into account. Another advantage is that the predicate assignment is not needed, since new predicates are mechanically inserted when merging inner regions containing conditional code.
 
-Consider the control flow transformations for the famous $wc$ program (figure \ref{fig:wc1}).
+The basic region to consider is the Hammock region \cite{Ferrante:1987:PDG:24039.24041}. A Hammock region is a Single Entry Single Exit region. We proposed to a few transformations to convert control flow complex regions into nested Hammocks, such as Basic Block duplication and Predicate merging. The prevalent idea is that inner region once predicated will be viewed as a single basic region by the outer scopes.
+
+Consider for example the control flow transformations for the famous $wc$ program (figure \ref{fig:wc1}).
 (The formation of conditional instructions will be detailed in the next section).
  The postorder list of the basic nested regions is {\em BB11, BB17, BB16, BB14, BB10, BB9, BB6, BB2} (The start of the nested regions are represented by the circle nodes). First, for BB11, BB12 is promoted and BB2 becomes a fall-thru of BB11 . For the region starting at BB17, BB19 cannot be promoted because of the side entry coming from BB15. BB16 is the start of a logical region from the two predicates BB16 BB17. A new predicate is computed from the one defined in BB17 and the one defined in BB16. BB17 is promoted and the registers alive in BB19 are conditionalized with the new predicate. The process continues on BB16. BB19 is duplicated to remove the side edge. BB14 is the head of the newly created region where BB15, BB16 and BB17 can be promoted. From BB9 a logif predicate is computed with the one in BB10. Instructions in BB14 are conditionalized on this new predicate and BB10 promoted, forming a new hammock at BB9 with BB14 and BB11 that can be promoted. The last candidate, BB2 is the start of a region that cannot be promoted, because of the call into BB3. the region is if-converted, leaving a single back-edge, removing 7 branches inside the body loop.
 
@@ -491,7 +496,7 @@ Consider in contrast how tail-duplication is performed in a lazy way, after the 
 \section{Conclusion} 
 We presented in this chapter a novel if-conversion algorithm that takes advantage of the SSA properties to efficiency assign predicates and layout the new control flow in an iterative, bottom up process. As opposed to the other top-down approach, this algorithm is very conservative, since the benefit of if-conversion is reevaluated at each nested transformation.
 We show that we reunified region-formation and if-conversion in a single process, hyperblocks being created lazily, using well known techniques such as tail-duplication or branch coalescing only when the benefits is established.
-Predication and speculation are often presented as two different alternatives for if-conversion. While it is true than they both require different hardware support, they should coexist in an efficient if-conversion process so every model of conditional execution is accepted. Thanks to conditional moves and $\psi$ transformations, they are now generated together in the same framework.
+Predication and speculation are often presented as two different alternatives for if-conversion. While it is true than they both require different hardware support, they should coexist in an efficient if-conversion process so every model of conditional execution is accepted. Thanks to conditional moves and $\psi$ transformations, they are now generated together in the same framework. The algorithm was proven to be efficient in real world context. For example, polynomial evaluation, for which specific ILP algorithm are designed can be fully if-converted in a straight-line of code \cite{JeKnMoRe11}, or we measured speedups up to 30\% on linux-scalar (spec benchs)  or embedded (eembc) application, without code size penalty.
 
 
 
