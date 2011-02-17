@@ -1,6 +1,8 @@
 % SVMONO DOCUMENT CLASS -- version 5.4 (25-Jun-07)
 % Springer Verlag global LaTeX2e support for monographs
 %%
+%% With modifications of style by Florent Bouchez:
+%%   - \part (insert phi letter)
 %%
 %% \CharacterTable
 %%  {Upper-case    \A\B\C\D\E\F\G\H\I\J\K\L\M\N\O\P\Q\R\S\T\U\V\W\X\Y\Z
@@ -686,7 +688,7 @@ passing it to article class \MessageBreak
 }
 \def\fps@figure{htbp}
 \def\fps@table{htbp}
-%
+
 % Frame for paste-in figures or tables
 \def\mpicplace#1#2{%  #1 =width   #2 =height
 \vbox{\hbox to #1{\vrule\@width \fboxrule \@height #2\hfill}}}
