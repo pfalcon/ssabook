@@ -48,7 +48,7 @@ of computer programs.
 % exactly once (hence \textit{single}) in the program text
 % (hence \textit{static}).
 The term \textit{static} indicates that SSA is particularly
-relevant for program analysis that occurs inside a 
+relevant for the analysis of program code that occurs inside a 
 compiler, prior to execution.
 The term \textit{single} refers to the uniqueness property of
 variable names that SSA imposes. As illustrated above, this enables
@@ -95,17 +95,19 @@ This is the simplest,
 least constrained, definition of SSA. However
 there are various, more specialized, varieties of SSA,
 which impose further constraints on programs.
-Such constraints are generally expressed in terms
-of dominance properties of variable definitions, or
-the presence or absence of certain 
-pseudo-functions at control-flow merge points.
+Such constraints may relate to %% are generally expressed in terms
+graph-theoretic properties of variable definitions and uses, or
+the encapsulation of specific control-flow or data-flow information.
 % Formally, in terms of dominance. Each var has a unique
 % definition, and def dominates all uses.
 % Perhaps require implicit defs of all vars at entry,
 % implicit uses of all vars at exit?
-Each distinct SSA variety has specific characteristics---many of
-these are discussed in
+Each distinct SSA variety has specific characteristics. Basic
+varieties
+of SSA are discussed in
 Chapter \ref{chap:properties-and-flavours}.
+Part II \emph{FIXME - forward ref} 
+of this book presents more complex extensions.
 
 % forward links to Philip's discussion of
 % SSA flavours and properties here
@@ -187,8 +189,9 @@ On the other hand, variable names can be used multiple times
 on the right-hand side of any assignment statements, as 
 \textit{source} variables for definitions.
 Throughout this book, renaming is generally performed by 
-adding integer subscripts to original variable names;
-however in general this is an unimportant implementation feature.
+adding integer subscripts to original variable names.
+In general this is an unimportant implementation feature,
+although it can prove useful for compiler debugging purposes.
 
 % Given a simple pseudo-code language, show examples of programs in SSA.
 % (Should I show before/after SSA transformation, or just programs
@@ -274,7 +277,9 @@ print(y3);
 
 
 In terms of their position, 
-$\phi$-functions are always placed at the head of basic blocks.
+$\phi$-functions are generally placed at control-flow merge points,
+i.e.\ at the heads of basic blocks that have multiple predecessors in
+control-flow graphs.
 A $\phi$-function at block $b$ has
 $n$ parameters if there are $n$ incoming control-flow paths to $b$.
 The behaviour of the $\phi$-function is to select dynamically
@@ -303,25 +308,24 @@ optimizations such as copy propagation
 (see Section \ref{novillo:sec:copy-prop}).
 %% \textit{(FIXME ref later chapters?)}
 When $\phi$-functions are eliminated in the SSA destruction phase,
-they are replaced by parallel copy operations,
+they are replaced by %%parallel 
+copy operations,
 % at the end of predecessor control flow nodes.
 as described in Section \ref{sec:classical_destruction}.
 % (forward note to Fabrice's section on this,
 % in later chapter).
 
-Strictly speaking, $\phi$-functions are not directly executable,
+Strictly speaking, $\phi$-functions are not directly executable in software,
 since the dynamic control-flow path leading to the $\phi$-function
 is not explicitly encoded as an input to $\phi$-function.
 This is tolerable, since $\phi$-functions are only 
 used during static analysis of the program. They are removed
 before any program interpretation or execution takes place.
 There are various executable extensions of $\phi$-functions, 
-such as $\gamma$-functions, which take
-an extra parameter to specify which source value to assign to the
+such as $\gamma$-functions (Section \ref{sec:gating_functions}), which take
+an extra parameter to specify the index of the source parameter whose
+value should be assigned to the
 target variable. 
-Section \ref{sec:gating_functions}
-presents further information on these advanced
-extensions.
 
 %% I would like an example of how to transform a 
 %% while loop into SSA, showing how the $\phi$-function
@@ -349,27 +353,32 @@ while (x < 10) {
 print(y)
 \end{verbatim}
 
-In the SSA version below,
-we abuse conventional C/Java style loop syntax to 
-enable better program comprehension.
-We require initial variable assignments to be
-executed before each evaluation of the loop 
-conditional test.
-These $\phi$-functions in the loop hearder
+%% In the SSA version below,
+%% we abuse conventional C/Java style loop syntax to 
+%% enable better program comprehension.
+%%   @jsinger - actually, it is legal in GNU C to have
+%%   compound statements in a while loop condition...
+%%
+The SSA code below has
+% We require initial variable assignments to be
+% executed before each evaluation of the loop 
+% conditional test.
+two $\phi$-functions in the compound loop header
+statement, that
 merge incoming definitions from before the loop
 for first iteration,
 and from the loop body for subsequent iterations.
-(Obviously 
-a syntactically correct transformation would rely on
-\texttt{goto} statements to achieve the same effects.)
+% (Obviously 
+% a syntactically correct transformation would rely on
+% \texttt{goto} statements to achieve the same effects.)
 
 \begin{verbatim}
 x1 := 0;
 y1 := 0;
-while ( x2 := \phi(x1, x3);
+while ({x2 := \phi(x1, x3);
         y2 := \phi(y1, y3); 
         x2 < 10
-      ) {
+      }) {
   y3 := y2 + x2;
   x3 := x2 + 1;
 }
@@ -565,7 +574,7 @@ versus seven facts for the non-SSA program (one fact about variable $x$
 per CFG node).
 \end{enumerate}
 
-Part II 
+Part III
 \emph{FIXME - forward ref}
 of this textbook gives a comprehensive treatment of 
 SSA-based data flow analysis.
@@ -622,7 +631,7 @@ use SSA as a key intermediate representation for
 program analysis.
 SSA is generally enabled with the \texttt{-O}
 flag in ahead-of-time compilers (since SSA construction
-is fairly expensive, and only required for optimization).
+is only required for optimization).
 Similarly for just-in-time compilers, only the \textit{hot} 
 methods will be recompiled with SSA-based optimizations.
 
@@ -680,18 +689,34 @@ dualities between SSA and functional programming.
 
 %%%%%%%%%%%%%%%%
 
-\section{Benefits of SSA}
+\section{About the Rest of this Book}
 
 In this chapter, we have introduced the notion of SSA.
-We now conclude by enumerating some of the benefits 
-that it provides.
+The rest of this book presents various aspects of SSA,
+from the pragmatic perspective of compiler engineers and
+code analysts. The ultimate goals of this book are:
+\begin{enumerate}
+\item To demonstrate clearly the \emph{benefits} of SSA-based analysis.
+\item To dispell the \emph{fallacies} that prevent people from using SSA.
+\end{enumerate}
+This section gives pointers to later parts of the book that deal with
+specific topics.
+
+
+\subsection{Benefits of SSA}
+
+% We now conclude by enumerating some of the benefits 
+% that it provides.
 
 SSA imposes a strict discipline on variable naming in programs,
 so that each variable has a unique definition.
 Fresh variable names are introduced at assignment statements,
 and control-flow merge points.
-This serves to simplify variable def-use relationships,
-which underpin data flow analysis.
+This serves to simplify the structure of variable \emph{def-use}
+relationships and \emph{live ranges},
+which underpin data flow analysis. Parts II and III of this book focus
+on data flow analysis using SSA.
+
 There are three major advantages that SSA enables:
 \begin{description}
 \item[Program runtime benefit]
@@ -727,6 +752,39 @@ engine.
 %%    1566 tree-ssa-dce.c
 \end{description}
 
+
+\subsection{Fallacies about SSA}
+
+Some people believe that SSA is too cumbersome to be an effective
+program representation. 
+This book aims to convince the reader that this concern is
+unnecessary,
+given the application of suitable techniques.
+The table below presents some common myths
+about SSA,
+and references in this book containing material to dispell
+these myths.
+
+\begin{tabular}{p{6cm}|p{6cm}}
+\emph{Myth} & \emph{Reference} \\ \hline
+SSA greatly increases the overall number of program variables &
+Chapter 2 FIXME. \\
+Inserted $\phi$-functions are difficult to eliminate, since they
+introduce many copy operations & Chapters 3 and 4 FIXME. \\
+It is difficult to maintain and update the SSA property when
+optimizing
+transformations are applied to the code. & Chapter 6 FIXME. Part IV.\\
+\end{tabular}
+
+% For instance,
+% effective SSA destruction techniques (Chapters XX and YY) use
+% optimizing compiler coalescing
+% techniques to reduce the number of inserted copy operations when 
+% $\phi$-functions are eliminated.
+% Further, some approaches perform actual register allocation and
+% code generation directly on the SSA code, avoiding the need for an
+% SSA destruction phase altogether. Part IV of this book deals with
+% these advanced topics.
 
 
 %%%%%%%%%%%
