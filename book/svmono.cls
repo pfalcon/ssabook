@@ -1850,6 +1850,9 @@ to\z@{\kern0.55\wd0\vrule\@height0.45\ht0\hss}\box0}}}}
 \def\subtitle#1{\gdef\@subtitle{#1}}
 \def\@subtitle{}
 
+\long\def\frontpageimage#1{\long\gdef\@frontpageimage{#1}}
+\def\@frontpageimage{}
+
 \def\maketitle{\par
  \begingroup
    \def\thefootnote{\fnsymbol{footnote}}%
@@ -1891,7 +1894,9 @@ to\z@{\kern0.55\wd0\vrule\@height0.45\ht0\hss}\box0}}}}
     \par
     \vskip 1.5em               % Vertical space after date.
   \fi
- \vfill
+ \vskip -9cm
+ \@frontpageimage
+ \vskip -1cm
  {\Large Springer\par}
 %\vskip 5\p@
 %\large
