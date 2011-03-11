@@ -23,70 +23,78 @@
 
 %\section{Introduction}
 \label{section:Part1:Semantics:Intro}
-In this chapter we discuss models that underpin the SSA discipline and
-some of the concepts associated with SSA, or embed SSA in alternative
-program representations. Besides complementing the intuitive meaning
-of ``unimplementable'' $\phi$-instructions, the models are motivated
-by the aim
+In this chapter we discuss alternative representations that highlight
+aspects of control and data flow structure that lie at the heart of
+the SSA discipline.  The development of such representations is
+motivated by the following considerations.
 \begin{itemize}
-\item to make syntactic conditions and semantic invariants that are
-  implicit in the definition of SSA more explicit. The introduction of
-  SSA itself was motivated by a similar goal: to represent aspects of
-  program structure, namely the def-use relationships, explicitly in
-  syntax, by enforcing a particular naming discipline. In a similar
-  way, functional representations of SSA explicitly enforce invariants
-  such as ``all $\phi$-functions in a block must be of the same
-  arity'', ``the variables assigned to by the $\phi$-functions in a
-  block must be distinct'', or ``$\phi$-functions are only allowed to
-  occur at the beginning of a basic block''. Reasoning using
-  semantic models helps us to understand why such conditions are
-  required and to identify opportunities for relaxing them;
-\item to have formal criteria with respect to which SSA-based code
-  transformations may be proven correct. For example,
-  Glesner~\cite{DBLP:conf/asm/Glesner04} uses a representation of SSA
-  in terms of abstract state machines to prove the correctness of a
-  code generation transformation, while Chakravarty et
-  al.~\cite{ChakravartyKZ:COCV03} prove the correctness of a
-  functional representation of Wegmann and Zadeck's SSA-based sparse
-  conditional constant propagation
-  algorithm~\cite{WegmannZ:Toplas1991};
-\item to facilitate the implementation of interpreters operating at
-  SSA level. This enables the compiler developer to experimentally
-  validate SSA-based analyses and transformations at their genuine
-  language level, before out-of-SSA-translation is performed;
-\item to provide a formal basis for comparing and integrating variants
-  of SSA (such as the variants discussed elsewhere in this book), for
-  translating between these variants, and for translating into and out
-  of SSA;
-\item to provide conceptual support for the appeal of SSA by relating
-  core concepts to principles well-understood in other domains of
-  compiler and programming language research.
+\item 
+Firstly, the reformulation of the SSA discipline in other formalisms
+complements the intuitive meaning of ``unimplementable''
+$\phi$-instructions and makes syntactic conditions and semantic
+invariants that are implicit in the definition of SSA more
+explicit. The introduction of SSA itself was motivated by a similar
+goal: to represent aspects of program structure, namely the def-use
+relationships, explicitly in syntax, by enforcing a particular naming
+discipline. In a similar way, the functional representations treated
+in this chapter immediately enforce invariants such as ``all
+$\phi$-functions in a block must be of the same arity'', ``the
+variables assigned to by the $\phi$-functions in a block must be
+distinct'', ``$\phi$-functions are only allowed to occur at the
+beginning of a basic block'', or ``each use of a variable should be
+dominated by its (unique) definition''. Consequently, less code is
+required that validates the well-structuredness of programs between
+compiler phases, and the robustness and maintainability of compiler
+frameworks are increased.
+
+\item
+Secondly, alternative representations provide formal criteria with
+respect to which SSA-based code transformations may be proven
+correct. For example, Glesner~\cite{DBLP:conf/asm/Glesner04} uses a
+representation of SSA in terms of abstract state machines to prove the
+correctness of a code generation transformation, while Chakravarty et
+al.~\cite{ChakravartyKZ:COCV03} prove the correctness of a functional
+representation of Wegmann and Zadeck's SSA-based sparse conditional
+constant propagation algorithm~\cite{WegmannZ:Toplas1991}. In the same
+spirit, these representations provide a formal basis for comparing
+variants of SSA -- such as the variants discussed elsewhere in this
+book --, for translating between these variants, and for constructing
+and destructing SSA.
+
+\item
+Thirdly, they facilitate the implementation of interpreters operating
+at SSA level. This enables the compiler developer to experimentally
+validate SSA-based analyses and transformations at their genuine
+language level, prior to SSA destruction.
+
+\item
+Finally, alternative formalisms provide conceptual insight into for
+the appeal of SSA by relating its core ideas to concepts from other
+areas of compiler and programming language research.
 \end{itemize}
 %As the variations on SSA discussed in this book highlights, a compiler
 %writer has considerable elbow room even after subscribing to ``the''
 %SSA discipline. A cross-cutting goal of the semantic models is to
 %provide orientation in this design space.
 
-We categorize the models into two groups. The first group concerns
-representations that emphasize control-flow aspects of SSA by adhering
-to the control flow successor relation inside basic blocks or the
-dominator structure between basic blocks. We discuss aspects of the
-analogy between SSA and functional representations in
-some detail.
+%We categorize the models into two groups. The first group concerns
+%representations that emphasize control-flow aspects of SSA by adhering
+%to the control flow successor relation inside basic blocks or the
+%dominator structure between basic blocks. We discuss aspects of the
+%analogy between SSA and functional representations in
+%some detail.
 %, and summarize a recent type-based representation due to
 %Matsuno and Ohori~\cite{DBLP:conf/ppdp/MatsunoO06}.
 
-The second group of models concerns representations that emphasize
-data flow over control flow. The first model, due to Glesner,
-disregards control flow inside basic block but retains it at basic
-block boundaries, and is phrased in terms of abstract state
-machines~\cite{DBLP:journals/tocl/Gurevich00}.  The second model, due
-to Pop et al.~\cite{PopJS2007}, dispenses with control flow entirely
-and instead views programs as sets of equations that model the
-assignment of values to variables in a style reminiscent of partial
-recursive functions.
-
-We conclude with some brief pointers to additional literature.
+%The second group of models concerns representations that emphasize
+%data flow over control flow. The first model, due to Glesner,
+%disregards control flow inside basic block but retains it at basic
+%block boundaries, and is phrased in terms of abstract state
+%machines~\cite{DBLP:journals/tocl/Gurevich00}.  The second model, due
+%to Pop et al.~\cite{PopJS2007}, dispenses with control flow entirely
+%and instead views programs as sets of equations that model the
+%assignment of values to variables in a style reminiscent of partial
+%recursive functions.
 
 %\begin{enumerate}
 %\item In Section~\ref{section:Part1:Semantics:GlesnerSemantics} we discuss representations of SSA using abstract state machines, term graphs, and partial orders developed
@@ -122,10 +130,29 @@ We conclude with some brief pointers to additional literature.
 %considerable. Indeed, for the sake of readability, we gloss over
 %numerous technical details in the following sections and refer the
 %reader to the literature for more in-depth treatments of the models.
+We first outline representations in functional programming languages.
+Pioneered by O'Donnell, Kelsey, and
+Appel~\cite{ODonnellPhD,Kelsey95,Appel98:SSA}, these representations
+are based on the correspondences between the control flow structure of
+SSA and a functional programming discipline called
+continuation-passing-style (short: CPS), and between the constraints
+on def-use-relationships imposed by $\phi$-nodes and the notion of
+static scope. We examine various aspects of these correspondences in
+detail, outline how the construction and destruction of SSA can be
+mirrored by matching operations on functional programs, and indicate
+how the correspondence may be extended to program analysis frameworks.
 
-\section{Control-flow-based representations}
+We then consider a representation of SSA programs as sets of mutually
+recursive equations $x_i = e_i$ that stresses data flow aspects of SSA
+and was originally introduced by Pop~\cite{PopJS2007}.  Our discussion
+focuses on some principal underlying this representation, preparing
+for a more in-depth discussion of advanced topics in Chapter~\ref{}.
 
-\subsection{Functional interpretations}
+We conclude by discussing some pointers to the literature.
+
+%\section{Control-flow-based representations}
+
+\section{Functional interpretations}
 \label{section:Part1:Semantics:FunctionalLanguages}
 
 Our first model of SSA is provided by functional programming languages
@@ -139,7 +166,7 @@ construction and destruction of SSA code.
 Like the remainder of the book, our discussion concerns code in a
 single procedure.
 
-\subsubsection{Low-level functional program representations}
+\subsection{Low-level functional program representations}
 
 Functional languages represent a procedure by a declaration
 $$\mathtt{function}\ f(x_0, \ldots, x_n) = e$$ where the syntactic
@@ -256,15 +283,16 @@ with $\alpha$-renaming in that they behave equivalently for fragments
 that differ only in their choice of bound variables, and program
 transformations rename bound variables whenever necessary.
 
-A consequence of referential transparency is \emph{compositional
-equational reasoning}, i.e.~the property that replacing a phrase by
-some semantically equivalent phrase leaves the meaning of the
-surrounding code unchanged. Indeed, the compatibility with equational
-reasoning is a central property of functional languages. Of course,
-semantic preservation is a core requirement on transformations
-implemented in a compiler. Under this persepctive, the suitability of
-SSA for formulating and implementing program transformations can be
-explained by the proximity of SSA to functional languages.
+A consequence of referential transparency, and thus a property
+typically enjoyed by functional languages, is \emph{compositional
+equational reasoning}: the meaning of a piece of code is only
+dependent on the meaning of its subexpressions. Hence, languages with
+referential transparency allow one to replace a subexpression by some
+semantically equivalent phrase without altering the meaning of the
+surrounding code. Since semantic preservation is a core requirement of
+program transformations, the suitability of SSA for formulating and
+implementing such transformations can be explained by the proximity of
+SSA to functional languages.
 
 O'Donnell~\cite{ODonnellPhD} and Kelsey~\cite{Kelsey95} observed that
 the correspondence between let-bindings and points of variable
@@ -718,7 +746,7 @@ correspondences between functional and imperative/SSA concepts.
   Correspondence pairs between functional form and SSA (part I)}
 \end{table}
 
-\subsubsection{Functional construction of SSA}
+\subsection{Functional construction of SSA}
 
 The relationship between SSA and functional languages is extended by
 the correspondences shown in
@@ -1376,7 +1404,8 @@ al.~\cite{DBLP:journals/jar/RideauSL08} present an in-depth study of
 this conversion problem, including a verified implementation in the
 proof asistant Coq.
 
-\subsubsection{Program analyses}
+\subsection{Program analyses}
+\footnote{This section still needs polishing/reformulation}
 The correspondence between liveness and free occurrences of names
 manifests itself in the striking structural similarity between the
 liveness-equation for assignments $$\mathsf{LV}([x:=a]^i) =
@@ -1476,106 +1505,113 @@ analyses\footnote{Maybe the author of the chapter on inter-procedural
 analyses can briefly take up this point, allowing me to insert a
 forward-reference here?}.
 
-\subsection{Type-based representations}
-The above functional representations recast the SSA discipline
-\emph{syntactically}. An alternative proposed by Matsuno and
-Ohori~\cite{DBLP:conf/ppdp/MatsunoO06} is to leave the syntax of
-programs in non-SSA form and to model the SSA discipline at the level
-of types. In their analysis, each base type represents the definition
-point of a variable. Contexts $\Gamma$ associate program variables
-with sets of types, modeling the collection of reaching definitions
-for the variables available at a given program point. Noting that the
-sets of definitions reaching the use of a variable form a tree where
-the paths are the control flows from the definitions to the use, the
-authors admit types to be formulated over type variables whose
-introduction and use corresponds to the introduction of $\phi$-nodes
-in SSA.
- 
-Formulated for a language of unstructured control flow, the analysis
-is phrased as a proof theory in sequential sequent calculus
-style~\cite{DBLP:journals/toplas/Ohori07}. Judgements take the form
-$\mathcal{M}, \mathcal{C},
-\Gamma \vdash B$ where context $\Gamma$ associates the free program
-variables of code sequence $B$ (a basic block) with their types,
-$\mathcal{C}$ contains typing specifications for all targets of jumps
-in $B$, and $\mathcal{M}$ contains the (possibly recursive) unfolding
-definitions of all type variables occurring in $\Gamma$ and
-$\mathcal{C}$.
+%\subsection{Type-based representations}
+%The above functional representations recast the SSA discipline
+%\emph{syntactically}. An alternative proposed by Matsuno and
+%Ohori~\cite{DBLP:conf/ppdp/MatsunoO06} is to leave the syntax of
+%programs in non-SSA form and to model the SSA discipline at the level
+%of types. In their analysis, each base type represents the definition
+%point of a variable. Contexts $\Gamma$ associate program variables
+%with sets of types, modeling the collection of reaching definitions
+%for the variables available at a given program point. Noting that the
+%sets of definitions reaching the use of a variable form a tree where
+%the paths are the control flows from the definitions to the use, the
+%authors admit types to be formulated over type variables whose
+%introduction and use corresponds to the introduction of $\phi$-nodes
+%in SSA.
+% 
+%Formulated for a language of unstructured control flow, the analysis
+%is phrased as a proof theory in sequential sequent calculus
+%style~\cite{DBLP:journals/toplas/Ohori07}. Judgements take the form
+%$\mathcal{M}, \mathcal{C},
+%\Gamma \vdash B$ where context $\Gamma$ associates the free program
+%variables of code sequence $B$ (a basic block) with their types,
+%$\mathcal{C}$ contains typing specifications for all targets of jumps
+%in $B$, and $\mathcal{M}$ contains the (possibly recursive) unfolding
+%definitions of all type variables occurring in $\Gamma$ and
+%$\mathcal{C}$.
+%
+%Similar to type systems for functional languages, the hypotheses of
+%typing rules concern the immediate successor of the head instruction
+%of the rules' conclusion. The leaves of a typing derivation are formed
+%by axioms that represent return statements or jumps to successor basic
+%blocks.
+%
+%As each type uniquely identifies a point of definition, typical
+%SSA-related tasks can be represented as algorithms that construct,
+%analyze or modify the type structure of a program, without having to
+%make the program variables themselves syntactically distinct.  In
+%particular, as the SSA discipline is only performed on the type level,
+%out-of-SSA-translation is redundant.  The authors show the precise
+%correspondence of their type-based representation to programs in SSA
+%form, give a type inference algorithm that corresponds to Das and
+%Ramakrishna's algorithm for SSA construction~\cite{DasRamakrishna},
+%and present type-based analoga to SSA-based dead-code elimination and
+%common subexpression elimination.
 
-Similar to type systems for functional languages, the hypotheses of
-typing rules concern the immediate successor of the head instruction
-of the rules' conclusion. The leaves of a typing derivation are formed
-by axioms that represent return statements or jumps to successor basic
-blocks.
+%\section{Dataflow interpretations}
+%\label{section:Part1:Semantics:Dataflow}
+%The second group of interpretations for SSA is formed by models that
+%emphasize dataflow aspects, i.e.~the flow of values along the
+%def-use-chains. Control flow is either disregarded entirely or
+%restricted to the boundaries between basic blocks.
 
-As each type uniquely identifies a point of definition, typical
-SSA-related tasks can be represented as algorithms that construct,
-analyze or modify the type structure of a program, without having to
-make the program variables themselves syntactically distinct.  In
-particular, as the SSA discipline is only performed on the type level,
-out-of-SSA-translation is redundant.  The authors show the precise
-correspondence of their type-based representation to programs in SSA
-form, give a type inference algorithm that corresponds to Das and
-Ramakrishna's algorithm for SSA construction~\cite{DasRamakrishna},
-and present type-based analoga to SSA-based dead-code elimination and
-common subexpression elimination.
+%\subsection{Glesner's intra-block dataflow model}
+%Glesner~\cite{DBLP:conf/asm/Glesner04} presents a model of SSA that
+%retains the control flow structure between basic blocks, and also the
+%phase distinction between the execution of $\phi$-instructions and the
+%execution of ordinary instructions in a basic block. The latter,
+%however, proceed data-driven in that their progress is only governed
+%by the availability of operands.
+%
+%Formally, the model is phrased in terms of \emph{abstract state
+%machines}~\cite{DBLP:journals/tocl/Gurevich00}, an algebraic formalism
+%for transition systems that supports the partitioning of states into
+%\emph{static} components and
+%\emph{dynamic} components. Being invariant under execution, the syntax
+%of a program is encoded using the static features and is modeled as a
+%single first-order algebra over a signature of operations, basic
+%blocks, and predicate symbols which encode the basic-block-level
+%CFG. The dynamic aspects of program execution are encoded using the
+%dynamic features: states are modeled as different first-order algebras
+%over a shared signature. Transition rules model the evolution of
+%states by stipulating how -- given a fixed static algebra -- the
+%dynamic algebras of adjacent states are related.
+%
+%The dynamic language associates with each (static) instruction a slot
+%for the result value. Additional dynamic components include the
+%representations to the current and adjacent basic blocks, and a tag
+%that distinguishes the $\phi$-phase from the phase for non-$\phi$-
+%instructions. The transition rules for instructions are predicated on
+%the existence of values in the result slots of the dataflow
+%predecessor instructions, such that instructions that have all
+%argument positions filled may fire in an arbitrary order, updating
+%their result slots. Conditional and unconditional jumps make their
+%result available in slots that are used to update the current-block
+%data structures.
 
-\section{Dataflow interpretations}
-\label{section:Part1:Semantics:Dataflow}
-The second group of interpretations for SSA is formed by models that
-emphasize dataflow aspects, i.e.~the flow of values along the
-def-use-chains. Control flow is either disregarded entirely or
-restricted to the boundaries between basic blocks.
+%In addition to defining the operational model of SSA, Glesner also
+%defines a similar model for a machine language with unstructured
+%control flow, and then proves the functional correctness of a
+%translation that allocates one register per instruction (holding the
+%result value), eliminates $\phi$-instructions by appropriate copy
+%operations, and linearizes the data flow graphs inside basic blocks by
+%topological sorting. 
 
-\subsection{Glesner's intra-block dataflow model}
-Glesner~\cite{DBLP:conf/asm/Glesner04} presents a model of SSA that
-retains the control flow structure between basic blocks, and also the
-phase distinction between the execution of $\phi$-instructions and the
-execution of ordinary instructions in a basic block. The latter,
-however, proceed data-driven in that their progress is only governed
-by the availability of operands.
-
-Formally, the model is phrased in terms of \emph{abstract state
-machines}~\cite{DBLP:journals/tocl/Gurevich00}, an algebraic formalism
-for transition systems that supports the partitioning of states into
-\emph{static} components and
-\emph{dynamic} components. Being invariant under execution, the syntax
-of a program is encoded using the static features and is modeled as a
-single first-order algebra over a signature of operations, basic
-blocks, and predicate symbols which encode the basic-block-level
-CFG. The dynamic aspects of program execution are encoded using the
-dynamic features: states are modeled as different first-order algebras
-over a shared signature. Transition rules model the evolution of
-states by stipulating how -- given a fixed static algebra -- the
-dynamic algebras of adjacent states are related.
-
-The dynamic language associates with each (static) instruction a slot
-for the result value. Additional dynamic components include the
-representations to the current and adjacent basic blocks, and a tag
-that distinguishes the $\phi$-phase from the phase for non-$\phi$-
-instructions. The transition rules for instructions are predicated on
-the existence of values in the result slots of the dataflow
-predecessor instructions, such that instructions that have all
-argument positions filled may fire in an arbitrary order, updating
-their result slots. Conditional and unconditional jumps make their
-result available in slots that are used to update the current-block
-data structures.
-
-In addition to defining the operational model of SSA, Glesner also
-defines a similar model for a machine language with unstructured
-control flow, and then proves the functional correctness of a
-translation that allocates one register per instruction (holding the
-result value), eliminates $\phi$-instructions by appropriate copy
-operations, and linearizes the data flow graphs inside basic blocks by
-topological sorting. 
-
-\subsection{Pop et al.'s global dataflow model}
+\section{Data flow representation}
 \label{section:Part1:Semantics:PopSemantics}
+\footnote{This section has to be rewritten.}
 %\footnote{Sebastian-Pop-style denotational semantics of SSA form (i.e. as
 %dataflow/Lucid}
-The model introduced by Pop et al.~\cite{PopJS2007} dispenses with the
-control flow structure entirely, by eliminating any tangible forms of
-basic blocks or program order. Programs are represented as collections
+Our second model of SSA dispenses with the control flow structure
+entirely, by eliminating any tangible forms of basic blocks or program
+order. Instead, the model -- introduced by Pop~\cite{PopJS2007} --
+emphasizes dataflow aspects, i.e.~the flow of values along the
+def-use-chains.
+%Control flow is either disregarded entirely or
+%restricted to the boundaries between basic blocks.
+%The model introduced by Pop et al.~\cite{PopJS2007}  
+Programs are represented as collections
 of defining equations,
 \begin{eqnarray*}
 x_1 & = & e_1\\
