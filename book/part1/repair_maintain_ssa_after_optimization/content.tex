@@ -1,6 +1,6 @@
 % vim:spell:spelllang=en
 
-\newcommand{\var}[1]{\mathtt{#1}}
+\newcommand{\var}[1]{\ensuremath{\mathtt{#1}}}
 % \newcommand{\phiop}{$\phi$-function}
 % \newcommand{\phiops}{\phiop s}
 
@@ -96,11 +96,49 @@ Consider following example and assume that the loop's body is duplicated once, i
 \end{figure}
 
 These examples show that naive code duplication and live-range splitting in an SSA program can violate the single assignment property of the SSA form.
-To repair these effects, we seek for a simple, black box like algorithm.
+To repair these effects, we seek for a simple, black-box like algorithm.
 Ideally, we provide a set of definitions and uses of which we claim that they correspond to one single non-SSA variable.
 Afterwards, the algorithm establishes the SSA form for these live ranges.
 This includes re-assigning the uses to the correct definition and inserting \phifuns on demand.
 Next, we investigate an algorithm based on the classical dominance frontier construction algorithm.
+
+\subsection{Jump Threading}
+
+Jump threading is a transformation performed by many popular compilers such as GCC and LLVM.
+Jump threading is applied to enable more expressive optimizations. 
+Consider following situation:
+A block contains a conditional branch that depends on some variable \var x.
+In the example shown in Figure~\ref{fig:threading}, the conditional branch tests, if $\var x> 0$.
+Assume that the block containing that conditional branch has multiple predecessors and \var x can be proven constant for one of the predecessors.
+In the example below, this is shown by the assignment $\var x_1\gets 0$. 
+Jump threading now partially evaluates the conditional branch by directly making the corresponding successor of the branch block a successor of the \emph{predecessor} of the branch.
+To this end, the code of the branch block is duplicated at attached to he predecessor. 
+This also duplicates potential definitions of variables in the branch block.
+Hence, SSA is destroyed for those variables and has to be reconstructed. 
+In contrast to the examples above, the control flow has changed however which poses an additional challenge for an efficient SSA reconstruction algorithm. 
+\begin{figure}[htbp]
+	\begin{center}
+		\subfloat[Original program] {
+			\includegraphics{jump_thread_orig.pdf}
+		}
+		\hfill
+		\subfloat[Jump threaded, SSA broken] {
+			\includegraphics{jump_thread_broken.pdf}
+		}
+		\hfill
+		\subfloat[SSA repaired] {
+			\includegraphics{jump_thread_repair.pdf}
+		}
+	\end{center}
+	\caption{Jump Threading}
+	\label{fig:threading}
+\end{figure}
+
+
+In the following, we will discuss two algorithms.
+The first is an adoption of the classical dominance-frontier based algorithm.
+The second performs a search from the variables' uses to the definition and places \phifuns on demand at appropriate places. 
+In contrast to the first, the second algorithm might not yield minimal SSA form (in Cytron's sense).
 
 \section{General Considerations}
 We consider following scenario:
