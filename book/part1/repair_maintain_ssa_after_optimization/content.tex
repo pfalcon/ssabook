@@ -19,14 +19,16 @@
 
 Some optimizations break the single-assignment property of the SSA form by inserting additional definitions for a single SSA value.
 A common example is live-range splitting by inserting copy operations or inserting spill and reload code during register allocation.
-Other optimizations, such as loop unrolling or jump threading, perform similar operations.
+Other optimizations, such as loop unrolling or jump threading might duplicate code, thus adding additional variable definitions, \emph{and} modify the control flow of the program.
 Let us first go through two examples before we present algorithms to properly repair SSA.
 
 \subsection{Live-Range Splitting}
 
 In Figure~\ref{fig:nonssa}, our spilling pass decided to spill a part of the live range of the variable~$x_0$ in the right block.
 Therefore, it inserted a store and a load instruction. 
+This is indicated by assigning to the memory location $\textbf X$.
 The load however is a second definition of $x_0$, hence SSA is violated and has to be reconstructed as shown in Figure~\ref{fig:recons}.
+Furthermore, This figure shows that maintaining SSA also involves placing \phifuns.
 
 \begin{figure}[htbp]
 	\centering
@@ -49,58 +51,10 @@ The load however is a second definition of $x_0$, hence SSA is violated and has 
 	\caption{Adding a second definition}
 \end{figure}
 
-In a more complicated configuration, adding a second definition to an SSA variable can cause \phifuns to be inserted.
-Figure~\ref{fig:withphis} shows the same program fragment with the left use of~$\var x_0$ being moved to the bottom.
-As there are two definitions reaching the use in the lower block, a \phifun has to be inserted. 
-
-\begin{figure}[htbp]
-	\centering
-	\subfloat[Original program] {
-		\includegraphics{spill_phi_orig.pdf}
-	}
-	\qquad
-	\subfloat[Second definition of~$\var x_0$, \phifun inserted] {
-		\includegraphics{spill_phi.pdf}
-	}
-	\caption{SSA repaired}
-	\label{fig:withphis}
-\end{figure}
 
 Such program modifications are done by many optimizations. 
 Not surprisingly, maintaining SSA is often one of the more complicated and error-prone parts in such optimizations;
 owing to the insertion of additional \phifuns and the correct redirection of the variable's uses.
-
-\subsection{Loop Unrolling}
-
-Loop unrolling is a transformation to increase instruction-level parallelism inside the body of a loop.
-To this end, the body of the loop is duplicated $n$~times. 
-Similar to the example above, this adds several new definitions \emph{and} uses to an existing SSA variable. 
-Consider following example and assume that the loop's body is duplicated once, i.e.~the loop is unrolled once.
-
-\begin{figure}[htbp]
-	\begin{center}
-		\subfloat[Original loop] {
-			\includegraphics{loop_orig.pdf}
-		}
-		\hfill
-		\subfloat[Unrolled loop, code duplicated, SSA broken] {
-			\includegraphics{loop_unroll.pdf}
-		}
-		\hfill
-		\subfloat[SSA repaired] {
-			\includegraphics{loop_unroll_repair.pdf}
-		}
-	\end{center}
-	\caption{Loop Unrolling}
-	\label{fig:unroll}
-\end{figure}
-
-These examples show that naive code duplication and live-range splitting in an SSA program can violate the single assignment property of the SSA form.
-To repair these effects, we seek for a simple, black-box like algorithm.
-Ideally, we provide a set of definitions and uses of which we claim that they correspond to one single non-SSA variable.
-Afterwards, the algorithm establishes the SSA form for these live ranges.
-This includes re-assigning the uses to the correct definition and inserting \phifuns on demand.
-Next, we investigate an algorithm based on the classical dominance frontier construction algorithm.
 
 \subsection{Jump Threading}
 
@@ -112,7 +66,7 @@ In the example shown in Figure~\ref{fig:threading}, the conditional branch tests
 Assume that the block containing that conditional branch has multiple predecessors and \var x can be proven constant for one of the predecessors.
 In the example below, this is shown by the assignment $\var x_1\gets 0$. 
 Jump threading now partially evaluates the conditional branch by directly making the corresponding successor of the branch block a successor of the \emph{predecessor} of the branch.
-To this end, the code of the branch block is duplicated at attached to he predecessor. 
+To this end, the code of the branch block is duplicated and attached to the predecessor. 
 This also duplicates potential definitions of variables in the branch block.
 Hence, SSA is destroyed for those variables and has to be reconstructed. 
 In contrast to the examples above, the control flow has changed however which poses an additional challenge for an efficient SSA reconstruction algorithm. 
@@ -135,12 +89,13 @@ In contrast to the examples above, the control flow has changed however which po
 \end{figure}
 
 
+\section{General Considerations}
 In the following, we will discuss two algorithms.
 The first is an adoption of the classical dominance-frontier based algorithm.
 The second performs a search from the variables' uses to the definition and places \phifuns on demand at appropriate places. 
 In contrast to the first, the second algorithm might not yield minimal SSA form (in Cytron's sense).
+However, it does not need to update its internal data structures when the CFG is modified. 
 
-\section{General Considerations}
 We consider following scenario:
 The program is represented as a control-flow graph (CFG) and is in SSA form.
 For the sake of simplicity, we assume that each instruction in the program only writes to a single variable.
@@ -148,17 +103,17 @@ Due to the single-assignment property of the SSA form, we can then identify the 
 An optimization/transformation now violates SSA by inserting additional definitions for an existing SSA variable, like in the examples above.
 The original variable and the additional definitions can be seen as a single non-SSA variable that has multiple definitions and uses.
 
-In the following, $v$ will be a such a non-SSA variable.
+In the following, $v$ will be such a non-SSA variable.
 $D$~is a set of SSA variables being the definitions of~$v$.
 A use of a variable is a pair consisting of a program point (a variable) and an integer denoting the index of the operand at the using instruction.
 
-Both algorithms which we are going to present share the same driver routine (Figure~\ref{alg:ssaconstr_driver}).
+Both algorithms which we are going to present share the same driver routine (Algorithm~\ref{alg:ssaconstr_driver}).
 First, every basic block~\verb|b| is equipped with a list~\verb|b.defs| that contains all instructions in the block which define one of the variables in~$D$.
 This list is sorted according to the schedule of the instructions in the block from back to front.
 Hence, the latest definition is the first in the list.
 
 Then, all uses of the variables in~$D$ are scanned.
-We search the use's block for a definition of the used variable.
+For every program point~$\ell$ where a variable in~$D$ is used, search locally in $\ell$'s block for a definition of variable in~$D$.
 By scanning the block's list from back to front, we find the latest such use if one exists. 
 If the variable has no definition in the block, we have to find the definition that reaches this block from \emph{outside.}
 Here we have to differentiate whether the user is a \phifun or not.
@@ -211,7 +166,7 @@ proc find_def_from_end(block b, ...):
 \section{Reconstruction based on the Dominance Frontier}
 This algorithm, proposed by Sastry and Ju~\cite{sastry98}, follows the same principles as the classical SSA construction algorithm by Cytron et al.~\cite{cytron:1991:ssa}.
 We compute the iterated dominance frontier (IDF) of $D$ (cf.~Appel's book~\cite{appel:2002:modern} for an algorithm on how to compute the IDF).
-This set is a sound overapproximation on the set where \phifuns must be placed (it might contain blocks where a \phifun would be dead).
+This set is a sound over-approximation of the set where \phifuns must be placed (it might contain blocks where a \phifun would be dead).
 Then, we search for each use the corresponding reaching definition.
 This search starts at the block of~$u$.
 If that block is in the IDF of~$D$ a \phifun needs to be placed at its entrance.
@@ -308,5 +263,5 @@ The presented algorithms differ in the prerequisites and their runtime behavior:
 		Thus, it is well suited for transformations that change the CFG because no information needs to be recomputed.
 		On the other hand, it might find the reaching definitions slower than the first one because they are searched by a depth-first search in the CFG.
 \end{enumerate}
-Both approaches constructed \emph{pruned} SSA (TODO: cite other chapter), i.e.~no \phifun is dead. 
+Both approaches construct \emph{pruned} SSA (TODO: cite other chapter), i.e.~no \phifun is dead. 
 One can also show that the first approach produces minimal SSA in the sense of Cytron et al.~\cite{cytron:1991:ssa} whereas the second approach might create superfluous \phifuns in the case of irregular control flow.
