@@ -96,15 +96,15 @@ The second performs a search from the variables' uses to the definition and plac
 In contrast to the first, the second algorithm might not yield minimal SSA form (in Cytron's sense).
 However, it does not need to update its internal data structures when the CFG is modified. 
 
-We consider following scenario:
-The program is represented as a control-flow graph (CFG) and is in SSA form.
+We consider the following scenario:
+The program is represented as a control-flow graph (CFG) and is in SSA form and the dominance property holds.
 For the sake of simplicity, we assume that each instruction in the program only writes to a single variable.
 Due to the single-assignment property of the SSA form, we can then identify the program point of the instruction and the variable. 
 An optimization/transformation now violates SSA by inserting additional definitions for an existing SSA variable, like in the examples above.
 The original variable and the additional definitions can be seen as a single non-SSA variable that has multiple definitions and uses.
 
 In the following, $v$ will be such a non-SSA variable.
-$D$~is a set of SSA variables being the definitions of~$v$.
+In the pseudocode \verb|v.defs| is the set of all definitions of~$v$.
 A use of a variable is a pair consisting of a program point (a variable) and an integer denoting the index of the operand at the using instruction.
 
 Both algorithms which we are going to present share the same driver routine (Algorithm~\ref{alg:ssaconstr_driver}).
@@ -112,8 +112,8 @@ First, every basic block~\verb|b| is equipped with a list~\verb|b.defs| that con
 This list is sorted according to the schedule of the instructions in the block from back to front.
 Hence, the latest definition is the first in the list.
 
-Then, all uses of the variables in~$D$ are scanned.
-For every program point~$\ell$ where a variable in~$D$ is used, search locally in $\ell$'s block for a definition of variable in~$D$.
+Then, all uses of the variable~$v$ are scanned.
+For every program point~$\ell$ where~$v$ is used, search locally in $\ell$'s block for a definition of~$v$.
 By scanning the block's list from back to front, we find the latest such use if one exists. 
 If the variable has no definition in the block, we have to find the definition that reaches this block from \emph{outside.}
 Here we have to differentiate whether the user is a \phifun or not.
@@ -128,20 +128,18 @@ The differences are described in the next two sections.
 	\label{alg:ssaconstr_driver}
 
 \begin{verbatim}
-proc ssa_reconstruct(set of var D):
-  for d in D:
+proc ssa_reconstruct(var v):
+  for d in v.defs:
     b = d.block
     insert d in b.defs according to schedule
     # latest definition is first in list
 
-  for each use u of D:
-    v = get_used_var(u)
-    b = v.block
+  for each use (u, index) of v:
     d = None
 
     # search for a local definition in the block
-    for e in b.defs:
-      if v == e and is_later(u, e):
+    for e in u.block.defs:
+      if e.order < u.order:
         d = e
         break
         
@@ -150,7 +148,7 @@ proc ssa_reconstruct(set of var D):
       # if the user is a phi we have to start the search 
       # at the end the corresponding predecessor block 
       if u.is_phi():
-        d = find_def_from_end(u.block.pred(u.index), ...)
+        d = find_def_from_end(u.block.pred(index), ...)
       else:
         d = find_def_from_begin(b, ...)
 
@@ -162,14 +160,16 @@ proc find_def_from_end(block b, ...):
   return find_def_from_begin(b, ...)
 \end{verbatim}
 \end{algorithm}
-
+%proposed by Sastry and Ju~\cite{sastry98}, 
 \section{Reconstruction based on the Dominance Frontier}
-This algorithm, proposed by Sastry and Ju~\cite{sastry98}, follows the same principles as the classical SSA construction algorithm by Cytron et al.~\cite{cytron:1991:ssa}.
-We compute the iterated dominance frontier (IDF) of $D$ (cf.~Appel's book~\cite{appel:2002:modern} for an algorithm on how to compute the IDF).
+This algorithm follows the same principles as the classical SSA construction algorithm by Cytron at al.~as described in chapter~(TODO: reference to the chapter).
+We compute the iterated dominance frontier (IDF) of~$v$.
 This set is a sound over-approximation of the set where \phifuns must be placed (it might contain blocks where a \phifun would be dead).
-Then, we search for each use the corresponding reaching definition.
+Then, we search for each use~$u$ the corresponding reaching definition.
 This search starts at the block of~$u$.
-If that block is in the IDF of~$D$ a \phifun needs to be placed at its entrance.
+If that block is in the IDF of~$v$ a \phifun needs to be placed at its entrance.
+This definition will then serve as the reaching definition. 
+The operands of the newly created \phifun will query their reaching definitions by recursive calls to \verb|find_def_from_end|.
 The operands of that \phifun are then (recursively) searched in the predecessors of the block.
 If the block is not in the IDF, the search continues in the block's immediate dominator. 
 This is because in SSA, every use of a variable must be dominated by its definition\footnote{The definition of an operand of a \phifun has to dominate the according predecessor block.}.
@@ -206,18 +206,18 @@ Thus it is well suited to be used in transformations that change the control flo
 Its disadvantage is that potentially more blocks have to visited during the reconstruction.
 The principle idea is to start a search from every use to find the corresponding definition inserting \phifuns on the fly while caching the found definitions at the basic blocks.
 This is similar to the implementation of a data-flow analysis, that places the \phifuns.
-As in the last section, we only consider the reconstruction for a single variable.
+As in the last section, we only consider the reconstruction for a single variable called~$v$ in the following.
 If multiple variables have to be reconstructed, the algorithm can be applied to each variable separately.
 
-We perform a backward depth-first search in the CFG to collect the reaching definitions at each block. 
-To mark a block as visited, the reaching definition of that block is inserted into the \verb|defs| list of that block.
+We perform a backward depth-first search in the CFG to collect the reaching definitions of the variable in question at each block.
+We record the SSA variable that corresponds to the reaching definitions of~$v$ in the field \verb|def| of that block.
 If the CFG is a DAG, all predecessors of a block can be visited before the block itself is processed (post-order traversal).
-Hence, all reaching definitions at a block~\verb|b| can be computed before we decide whether to place a \phifun in~\verb|b| or not.
+Hence, all definitions that reach~\verb|b| can be computed before we decide whether to place a \phifun in~\verb|b| or not.
 If more than one definition reaches the block, we need to place a \phifun.
 
 If the CFG has loops, there are blocks for which not all reaching definitions can be computed before we can decide whether a \phifun has to be placed.
 Recursively computing the reaching definitions for a block~\verb|b| can end up at~\verb|b| itself.
-To avoid infinite recursion, we create a \phifun without operands in the block before descending to the predecessors. 
+To avoid infinite recursion, we create a \phifun \verb|phi| without operands in the block before descending to the predecessors. 
 Hence, if a variable has no definition in a loop, the \phifun placed in the header eventually reaches itself (and can later be eliminated). 
 When we return to~\verb|b| we decide whether a \phifun has to be placed in~\verb|b| by looking at the reaching definition for every predecessor.
 If the set of reaching definitions is a subset of $\{a,x\}$ where~$x$ is the \phifun inserted at~\verb|b|, then \phifun is not necessary and we can propagate~$a$ further downwards. 
@@ -229,20 +229,18 @@ Otherwise, we place a \phifun.
 
 \begin{verbatim}
 proc find_def_from_begin(block b):
-  phi = make_phi()
-  if b.defs.empty():
-    b.defs = [ phi ] 
+  if b.def != None:
+    return b.def
 
+  b.def = make_phi()
   reaching_defs = []
   for p in b.preds:
     reaching_defs += find_def_from_end(p)
   if phi_necessary(reaching_defs):
-    set_arguments(phi, reaching_defs)
-    d = phi
+    set_arguments(b.def, reaching_defs)
   else:
-    reaching_defs.remove(phi)
-    d = reaching_defs[0]
-  return d
+    b.def = reaching_defs[0]
+  return b.def
 \end{verbatim}
 \end{algorithm}
 
