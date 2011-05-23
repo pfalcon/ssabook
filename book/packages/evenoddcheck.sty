@@ -14,9 +14,9 @@
 %%   This package provides two commands:
 %%     - \evenoddcheck{foo} marks the current page as the page where
 %%       'foo' appear.
-%%     - \evenoddendcheck{foo} checks that the current page is either
-%%       the same as where 'foo' appeared, or is the next page and is 
-%%       odd.
+%%     - \evenoddcheck{foo} again (or \evenoddendcheck) checks that
+%%       the current page is either the same as where 'foo' appeared,
+%%       or is the next page and is odd.
 %%
 %% Author: Florent Bouchez
 %% 
@@ -28,25 +28,37 @@
 \makeatletter
 
 \def\evenoddcheck#1{
-  \expandafter\global\expandafter\xdef\csname Checkevenodd@#1@start\endcsname{\thepage}
+  \protected@write\@auxout{}%
+    {\string\auxevenoddcheck{#1}{\thepage}}%
 }
-\def\evenoddendcheck#1{
-  \ifodd\csname Checkevenodd@#1@start\endcsname
-    \ifnum\csname Checkevenodd@#1@start\endcsname=\thepage\else
-      \message{^^JLaTeX Warning: Even-Odd check failed!}
-       \message{LaTeX Warning: #1 started on odd page \csname 
-       Checkevenodd@#1@start\endcsname, end is on \thepage.}
-    \fi
+\let\evenoddendcheck=\evenoddcheck
+
+\def\auxevenoddcheck#1#2{%
+  \expandafter\ifx\csname CheckEvenOdd@#1\endcsname\relax
+    \message{^^JCheck even odd #1 not defined, setting start to page #2}
+    \expandafter\xdef\csname CheckEvenOdd@#1\endcsname{#2}
+    \message{^^JCheck even odd #1, now \csname CheckEvenOdd@#1\endcsname}
   \else
-    {\count2=\thepage
-     \advance\count2 by - \csname Checkevenodd@#1@start\endcsname
-     Count 2 is ``\the\count2''.
-     \ifnum\count2 > 1
-       \message{^^JLaTeX Warning: Even-Odd check failed!}
-       \message{LaTeX Warning: #1 started on even page \csname 
-       Checkevenodd@#1@start\endcsname, end is on \thepage.}
-     \fi
-    }
+    \ifodd\csname CheckEvenOdd@#1\endcsname
+      \ifnum\csname CheckEvenOdd@#1\endcsname=#2
+        \message{^^JCheck Even Odd: success for #1 (both on odd page #2)}
+      \else
+        \message{^^JLaTeX Warning: Even-Odd check failed!}
+        \message{LaTeX Warning: #1 first occured on odd page \csname CheckEvenOdd@#1\endcsname}
+        \message{LaTeX Warning: #1 last occured on page #2}
+      \fi
+    \else{
+      \count2=#2
+      \advance\count2 by - \csname CheckEvenOdd@#1\endcsname
+      %% Don't know why, but need to output \the\count2 or the \ifnum won't work !!
+      \message{^^JCheck Even Odd: #1, pages \csname CheckEvenOdd@#1\endcsname, and #2 (diff \the\count2)}
+      \ifnum\the\count2 < 2\else
+        \message{LaTeX Warning: Even-Odd check failed!}
+        \message{LaTeX Warning: #1 started on even page \csname CheckEvenOdd@#1\endcsname}
+        \message{LaTeX Warning: #1 last occured on page #2}
+      \fi}
+    \fi
   \fi
 }
+
 \makeatother
