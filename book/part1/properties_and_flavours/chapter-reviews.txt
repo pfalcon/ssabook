@@ -1,0 +1,92 @@
+=================================== October 2009
+
+- I guess that you should put "ssa form with dominance property" before "liveness" and "interference graph".
+
+- The liveness part should be very small. Indeed, there will be a chapter dedicated to liveness under SSA. Maybe you can briefly provide some properties (dominance of the live-range by the definition => sub-tree of the dominance tree) and refer to the corresponding chapter.
+
+- Concerning the interference section the important notions are: the intersection graph is chordal, the characterization of live-range intersection, the notion of values (ultimate notion of interference by Chaitin). For this last you can refer of course the value-numbering / copy propagation part but outline the fact that having one value per variable (and not one per variable/program-point) and equivalence classes (transitivity) is the property you want to make the interference check/computation simple.
+
+- Concerning the SSA with dominance property, of course it is interesting to talk about the construction (difference between join set and iterated dominance frontier). But you should talk about why we may want the dominance property. Why we may not want it (example of a double diamond with a def and used on the left and b def and used on the right: no interference). Show why this property might be broken (copy propagation). How can we repair it (maybe this can be done in the maintain part: you should discuss this with Sebastian).
+
+- Concerning the pruned/... section. Maybe you should have a short section about def-use chains, use-def chains (versus non SSA code), and dead-code elimination. This would be before all other parts including dominance property. Because we do not need dominance property for this.
+The discussion here is about having more phis than the minimum required. This is about speed of SSA construction (what about algorithms that first introduce lots of useless variables and then remove them) and number of variables of course. But there is also a relation with iterative algorithm and SSA maintaining (eg loop-closed SSA form). All this can be discussed briefly but I suggest to postpone the technical details for remaining chapters (construction chapter and repair maintain).
+
+- Same remarks for the conventional section. I do agree with you that conventional is required for SSA destruction. Still this property is a requirement in Open64: SSA should stay conventional. This might be also a requirement if we want to perform scheduling under SSA.
+
+The more I go into this chapter, the more I think that it should be very general (provide the big picture) and have a lot of references to further (more technical/precise) chapters. It is a kind of motivating chapter.
+
+
+==============================================June 2010
+
+it took me several days to review your chapter but I finally made it!
+Indeed this was difficult to guess were each details should go (ie in which chapter) and what degree of details you should use.
+
+I suggest that you look at my email on the 10 / 19 / 2009 which is still valid.
+
+You will find attached annotated chapter.pdf.
+I would like also to suggest you a detailed layout at the end of my email.
+I suggest that you read it and we skype to discuss all of it.
+
+==//==
+
+On the whole my recommendations are the following:
+- this is much too long. Put everything that should be in the appendix in the appendix file. Try to summaries and refer to other chapters when  it is already treated in another chapter. Most of the time, one or two sentences are enough. There is one case were clearly you need somehow (but again only with a few sentences) to describe the construction algorithm. This is for the minimality since it is meaningless for a renamed code.
+- on the other hand I would like to see an example for each flavor/property to illustrate it: minimality (I would prefer an example that is minimal and that is not without dominance property); dominance property (with and without); pruned (and not pruned); conventional (and TSSA). For dominance and conventional you can provide the example with the property and apply copy-propagation to break it.
+- most of the time, provide the definition of a flavor, not the way we obtain it. Refer to other chapters for algorithms.
+- for algorithms to enforce a flavor you can refer to:
+   - semi-pruned => pruned: construction chapter
+   - non-strict => strict: maintain chapter
+   - non-minimal => (possibly non-strict) minimal (using def-use chains): construction
+   - non-conventional => conventional: advanced SSA destruction
+
+I think that you should not be more than 8 pages (including figures).
+
+
+==//==
+
+
+proposed layout:
+================
+
+You should first give a raw definition of SSA (remind that it has already been defined in the previous chapter so be brief here) and stress that many variants are possible because SSA enforces some properties but not all (such as the minimality). There are several considerations that may lead to one flavor or another. The number of phi functions (we want the graph to be sparse don't we?), of variables, the use (eg dominance propertythe construction (eg DF+ easier than J; non-minimal can be done at parse time), the maintain, the destruction (how far is it from the final generated code)...
+I propose a layout that lists the properties that the definition enforces and that it does not.
+
+* Def-use & use-def chains:
+ - UD chains are explicit under SSA: backward propagation easy along the SSA graph (eg dead-code elimination. refer to propagation engine)
+ - Even without DU chains some forward propagations algos are efficient using UD chains as soon as most of the defs are treated before there uses (this is the case without loops using a topological order)
+
+* Minimality:
+ - refer to construction chapter: SSA construction falls into 2 phases. phi placement; renaming. Minimality is a property of the code with phi function inserted but before renaming.
+ - The constraint is that every _program point_ must be reached by at most one definition. Not all phis are necessary to enforce the single reaching definition (SSA graph is to be a "sparse" graph...) => notion of minimality
+ - single reaching definition refers to a notion of paths.
+ - Raw notion of Join set.
+ - Example: would place at join set instead. Refer to construction chapter.
+ - Copy propagation can reduce number of phis but does not lead to minimal. Refer to construction chapter for a discussion on this using DU chains.
+
+* Dominance property:
+ - Notion of dominance. Refer to appendix
+ - every use is dominated by its unique reaching definition
+ - Strictness for general code (non SSA). Handle by compilers for non strict languages.
+ - Example of SSA code with and without dominance
+ - minimality + dominance => minimal SSA. Easy to build thanks to DF+
+ - Copy propagation through phi can make a strict non strict. But not necessarily strict minimal => non strict minimal
+ - why it is useful: live-ranges have structural properties => liveness, interference
+    . liveness check easier, liveness analysis faster to compute (refer to liveness chapter)
+    . Notion of dominance and dominance tree. Refer to appendix
+    . Interference check (intersection + value) is easy (refer to extented SSA destruction: Budimlic + Boissinot).
+    . Intersection graph is chordal (graph coloring) but also tree-scan (live-range coloring) :refer to register allocation chapter
+
+* Pruned:
+ - should not contain dead phi functions
+ - When not interested in program points where the variable is not live
+ - The constraint is that every _live_ program point (or every use) must be reached by at only one definition.
+ - Example of pruned and non-pruned SSA
+ - Much less phi functions
+ - Refer to construction chapter for building it (using either liveness or dead-code). Notice that deadcode is easy under SSA (refer to chapter) thanks to UD chains and so pruning is easy.
+ - Semi-pruned: approximation of Pruned by Briggs
+
+* Conventional:
+ - SSA web is interference free (which does not imply intersection free)
+ - Freeshly constructed SSA is SSA web intersection free (interference free)
+ - Example of conventional (with intersecting live-ranges) and non conventional
+ - Conventional can be destructed easily (rename the web into a unique representative). Otherwise need to had copies (refer to extended SSA destruction)
