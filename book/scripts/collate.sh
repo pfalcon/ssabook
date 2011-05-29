@@ -7,6 +7,7 @@
 for i in `scripts/all_targets.sh`; do
 
 	echo $i;
+	make -C $i purge;
 	make -C $i;
 	BASENAME=`basename $i`
 
