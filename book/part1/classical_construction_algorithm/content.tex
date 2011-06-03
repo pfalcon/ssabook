@@ -2,7 +2,7 @@
 \label{chap:classical_construction}
 \inputprogress
 
-{
+
 \def\phiops{$\phi$-functions}
 \def\phiop{$\phi$-function}
 
@@ -18,25 +18,20 @@ earliest phases in the middle-end of an optimizing compiler, when the program
 has been converted to three-address intermediate code.
 SSA destruction is sometimes called out-of-SSA translation. This phase
 takes place in an optimizing compiler after all SSA optimizations have
-been performed, and prior to code generation. (However note that there are
+been performed, and prior to code generation. However note that there are
 specialized code generation techniques that work directly on SSA-based
-intermediate representations. \emph{FIXME - forward ref})
+intermediate representations such as code selection (see Chapter~\ref{chapter:code_selection}), if-conversion (see Chapter~\ref{chapter:if_conversion}), or register allocation (see Chapter~\ref{chapter:register_allocation}).
 
 The algorithms presented in this chapter are simple and pragmatic.
-They were originally reported in the seminal SSA research
-papers \cite{cytron89efficiently,cytron91efficiently}.
-For all of these reasons, they are
-widely implemented in current compilers.
+For all of these reasons, they are widely implemented in current compilers.
 Note that more
 efficient, albeit more complex, alternative algorithms have been devised.
 These are described further in Chapters \ref{chap:alternative_construction}
 and \ref{chap:alternative_destruction}.
 
-\section{Simple programming language model}
-
 Throughout this chapter,
 we assume that a `program' is represented as an
-intraprocedural control flow graph (CFG)
+intra-procedural control flow graph (CFG)
 with a single entry node $r$, from which every other
 node is reachable.
 \emph{FIXME - precise definition of CFG in appendix?}
@@ -46,30 +41,14 @@ global variables, with no pointer indirection.
 (Part II of this textbook contains chapters dealing with
 SSA extensions for high-level features like
 pointer-based aliasing, arrays, compound data structures, concurrency, etc.)
-We further assume that
-all global variables have an implicit definition at $r$.
-% No constraints on control-flow structures in CFG
-% (unlike in syntax-directed SSA construction algorithms).
 
 
 
 \section{Construction}
-{\em We need the notion of CFG, $r$ the entry node. Need the notion of
-  dominance, and (iterated)-dominance-frontier. Need the notion of reaching
-  definition. Give pointers to relevant appendix definitions.}
-
-
-% Transforming a code that has no \phiops\ to a code that has SSA form is
-% called SSA construction.
-The original construction algorithm for SSA form \cite{cytron91efficiently}
+The original construction algorithm for SSA form 
 divides into two distinct phases.
 \begin{enumerate}
-\item \textbf{\phiop\ insertion} ensures that any use of a given variable $v$ is reached 
-%(without traversing another definition of $v$)
-%%%% jsinger - reaching definitions explanation will
-%%%% outline how traversing a new def kills the previous
-%%%% reaching def.
-by exactly one definition of $v$. In other words, this first phase of \phiop\ insertion performs \textit{live-range splitting}.
+\item \textbf{\phiop\ insertion} performs \textit{live-range splitting} to ensures that any use of a given variable $v$ is reached~\footnote{A program point is said to be \emph{reachable} by a definition of $v$, if there exists a path in the CFG from this definition to this program point that do not contain any other definition of $v$.}  by exactly one definition of $v$. 
 The resulting live-ranges have the property of having a single definition, which occurs at the beginning of each live range.
 \item \textbf{variable renaming} assigns a unique variable name to each live-range. This second phase rewrites variable names in program statements such that the program text contains only one definition of each variable, and every use refers to its corresponding unique reaching definition.
 \end{enumerate}
@@ -78,37 +57,31 @@ As already outlined in Chapter \ref{chap:properties-and-flavours},
 there are different flavors of SSA with distinct properties.
 In this chapter, we focus on the \textit{minimal} SSA form.
 Construction of minimal SSA 
-%%%%%% (which is not completely minimal as we will see further) 
-requires the insertion of \phiops\ at \textit{join nodes},
-i.e.\ nodes in the CFG that can be reached by two or more distinct definitions of the same variable using disjoint paths. 
-%% jsinger - is the disjoint paths qualification necessary, if we define "reaching definitions" carefully?
-%%
-% FAB: in fact Cytron et al. iterate on join sets. Weiss said that J+(S)=J(S). So removed the citation that was useless
-Given the assumption that each variable has a {\em pseudo-definition} at the root~$r$ of the CFG, the set of join nodes for a variable definition corresponds exactly to the iterated dominance frontier of that definition.
-\emph{FIXME - this previous sentence needs to be tidied up.}
+requires for each variable $v$ the insertion of \phiops\ at $\join(D_v)$ where $D_v$ is the set of definition points of $v$.  For a given set of program points $S$, $\join(S)$ is the set of \textit{join nodes} of $S$
+i.e.\ nodes in the CFG that can be reached by two (or more) distinct nodes of $S$ using disjoint paths. 
+The original construction for SSA form uses an over-approximation of join sets, the iterated dominance frontier $\iDF(S)=\join(S\cup \{r\})$. 
+The iterated dominance frontier is the limit of the sequence:
+$$\begin{array}{lll}
+\DF_1(S) & = & \DF(S)\\
+\DF_{i+1}(S) & = & \DF\left(S\cup \DF_i(S)\right)
+\end{array}$$
 
 We end up with a straightforward algorithm that places \phiops\ on a per-variable basis.
-For a given variable $v$, we place \phiops\ at the iterated dominance frontier $DF^{+}(S)$ of the set of definition points $S$ for $v$. 
-If we assume, not unreasonably, that the dominance frontier of each CFG node is precomputed, then the \phiops\ can be inserted iteratively using a worklist of definition points, and flags (to avoid multiple insertions). 
-This gives the following pseudo-code for the \phiop\ insertion algorithm:
-% \begin{verbatim}
-% proc phi_insertion
-% // places phi functions at the iterated dominance frontier
-%   foreach global variable v
-%     let Worklist:=definitions(v)
-%         typeof(Worklist) == CFGNode List
-%     let Inserted:=emptyset
-%         typeof(Inserted) == CFGNode List
-%     foreach D in Worklist
-%         typeof(D) == statement
-%       foreach I in DF(D) \ Inserted
-%         typeof I == CFGNode
-%         insert "v=phi(v,...,v)" @ beginning of node I
-%         Inserted += {I}
-% \end{verbatim}
-% \emph{jsinger - Hi Fabrice, I think it would be helpful to include
-% types for variables in this algorithm. At the moment, there is some confusion
-% over CFG nodes and individual statements. We need to resolve this...}
+For a given variable $v$, we place \phiops\ at the iterated dominance frontier $DF^{+}(S)=\bigcup_{n\in S} \DF(s)$ of the set of definition points $S$ for $v$. As discussed further, this leads to building a form that has the dominance property (see Chapter~\ref{chapter:properties_and_flavors}).
+If we assume, not unreasonably, that the dominance frontier of each CFG node is precomputed, then the \phiops\ can be inserted iteratively using a worklist of definition points, and flags (to avoid multiple insertions). The corresponding pseudo-code is given in Figure~\ref{fig:classical_construction:phi_insertion}.
+
+Providing the dominance tree as a given, the computation of the dominance frontier is quite straight-forward. This can be understood using the DJ-graph notation. The skeleton of the DJ-graph is the dominator tree of the CFG that makes the $D$-edges. This is augmented with $J$-edges (join edges) that correspond to all edges of the CFG which source do not dominate its destination. A $DF$-edge (dominance frontier edge) is an edge which destination is in the dominance frontier of its source. By definition, there is a $DF$-edge $(a,b)$ between every CFG nodes $a$, $b$ such that there is a CFG-path from $a$ to $b$ but $a$ does not dominate $b$. 
+In other-words, for each  $J$-edge $(a,b)$, all ancestors (including $a$) that do not dominate $b$ have $b$ in there dominance frontier. This leads to the pseudo-code given in Figure~\ref{fig:classical_construction:df}. The iterated dominance frontier is nothing else than the transitive closure of the dominance frontier and we can define the $DF^+-graph$ as the transitive closure of the $DF$-graph. We can compute the iterated dominance frontier for each variable independently, as proposed in this chapter, or ``cache'' it to avoid multiple computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chapter:alternative_ssa_construction_algorithms}.
+
+\begin{figure}
+\begin{verbatim}
+foreach (a,b) in cfg_edges
+  while not a dominate b
+     DF(a) := DF(a) union b
+     a := iDom(a)
+\end{verbatim}
+\caption{\label{fig:classical_construction:df}Algorithm for computing the dominance frontier of each CFG node}
+\end{figure}
 
 \begin{figure}
 
@@ -178,20 +151,11 @@ proc v.update_reachingDef(o):
   v.reachingDef:=rd
 \end{verbatim}
 
-As detailed and explained further \emph{(in Philip's chapter?)}, this simple algorithm constructs programs in a SSA form that is \textit{minimal} (with the meaning given by Cytron et al.).
-The SSA code could be \textit{pruned} (some dead \phiops\ are unnecessarily inserted).
-It is \textit{conventional} SSA (the transformation that renames back all $\phi$-related variables into a unique representative one, and removes all \phiops\ is a correct SSA-destruction algorithm).
-Finally, such SSA has the \textit{dominance} property (each variable use is dominated by its unique definition).
+As mentioned earlier, this simple algorithm constructs programs in a SSA form that is \textit{minimal}. It is not pruned SSA as some dead \phiops\ are possibly inserted. 
+It is \textit{conventional} SSA as the transformation that renames back all $\phi$-related variables into a unique representative one, and removes all \phiops\ is a correct SSA-destruction algorithm.
+Finally, such SSA has the \textit{dominance} property: each variable use is dominated by its unique definition. This is due to the use during the $\phi$-placement phase of iterated dominance frontier instead of join set.
 
 TODO: talk about undef variable when the initial code is not strict and provide an example using bottom sign.
-
-\section{Turning general SSA into conventional/pruned/dominance property}
-
-Discussion regarding relationship between minimal and pruned SSA, etc.
-$phi$-function removal can give pruned SSA but break
-dominance properties, etc. Keep this section simple, and don't duplicate
-material from Philip Brisk in previous chapter.
-Ask Philip who may have some materials for the ``turning into SSA with dominance property'' part.
 
 
 \section{Destruction \Author{F. Rastello}}
@@ -217,4 +181,11 @@ The simplest (but not the more efficient) way for destructing non conventional S
 
 We should outline that this technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not allow to split a given edge; second, the obtained code contains many additional temporary-to-temporary copies. In theory, coping with these copies is the role of the coalescer during the register allocation phase. But only decoupled register allocators (such as the one detailed in Chapter~\ref{ chap:register-allocation}) with memory and time consuming coalescing heuristics can handle the removal of these copies efficiently. Coalescing can also, with less efforts, be handled prior to the register allocation phase. As opposed to a (so called conservative) coalescer during register allocation, this so called aggressive coalescing would not cope with the interference graph colorability. Still the insertion of copies itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative-destruction} is to cope both with non splittable edges and difficulties related with SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
 
-}
+\section{Turning general SSA into conventional/pruned/dominance property}
+
+Discussion regarding relationship between minimal and pruned SSA, etc.
+$phi$-function removal can give pruned SSA but break
+dominance properties, etc. Keep this section simple, and don't duplicate
+material from Philip Brisk in previous chapter.
+Ask Philip who may have some materials for the ``turning into SSA with dominance property'' part.
+
