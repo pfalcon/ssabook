@@ -34,7 +34,6 @@ we assume that a `program' is represented as an
 intra-procedural control flow graph (CFG)
 with a single entry node $r$, from which every other
 node is reachable.
-\emph{FIXME - precise definition of CFG in appendix?}
 Data flow occurs through definitions and uses of 
 global variables, with no pointer indirection.
 %% FIXME - forward reference to Part II ...
@@ -153,9 +152,7 @@ proc v.update_reachingDef(o):
 
 As mentioned earlier, this simple algorithm constructs programs in a SSA form that is \textit{minimal}. It is not pruned SSA as some dead \phiops\ are possibly inserted. 
 It is \textit{conventional} SSA as the transformation that renames back all $\phi$-related variables into a unique representative one, and removes all \phiops\ is a correct SSA-destruction algorithm.
-Finally, such SSA has the \textit{dominance} property: each variable use is dominated by its unique definition. This is due to the use during the $\phi$-placement phase of iterated dominance frontier instead of join set.
-
-TODO: talk about undef variable when the initial code is not strict and provide an example using bottom sign.
+Finally, such SSA has the \textit{dominance} property: each variable use is dominated by its unique definition. This is due to the use during the $\phi$-placement phase of iterated dominance frontier instead of join set. Whenever the iterated dominance frontier of the set of definition points of a variable differs from the join set, then at least one program point can be reached both by $r$ (the entry of the CFG) and one of the definition points. In other words, as in the double diamond figure (to be inserted), a use of an inserted \phiop\ does not have any actual reaching definition that dominates it. This corresponds to the undef value used to initialize reachingDef in the renaming phase pseudo code. Actual implementation can use NULL value, create a fake undefined variable at the entry of the CFG, or create on the fly undef pseudo operations just before the concerned used. We choose to use in this book the undef value, represented with the bottom $\bottom$ sign.
 
 
 \section{Destruction \Author{F. Rastello}}
@@ -219,9 +216,31 @@ Making SSA conventional, precisely corresponds to the first phase of SSA destruc
 Making SSA strict ie fulfill the dominance property, is as ``hard'' as constructing SSA. Of course, a pre-pass can detect the variables which definitions do not dominate their uses, but basically one of the numerous possible variable per variable \phiops\ insertion algorithm (see Chapter~\ref{chapter:alternative_ssa_construction_algorithms}) can be used by restricting them to the set of interesting variables. The renaming phase can also be used with the same filtering process. As the number of variables to repair, might be a small proportion of all variables, a costly traversal of the whole program can be avoided by building the def-use chains (the non dominating ones) during the detection phase. Renaming can then be done in a variable per variable basis or better (if pruned SSA is preferred) the reconstruction algorithm presented in Chapter~\ref{chapter:repair_maintain_ssa_after_optimization} can be used both for renaming and \phiops\ placement.
 
 The construction algorithm described in this chapter does not build pruned SSA form. It can easily be modified to build a so called semi-pruned SSA form by simply filtering out the local variables ie variables which definitions dominate there uses and appear in the same basic block. Then, if liveness information is available prior to the construction, it can be used to filter out the insertion of \phiops\ wherever the variable is not live.
-If the original liveness information is not available, pruning SSA form is nothing else than dead-code elimination or making SSA pruned ie remove dead \phiops\ can be done using two different approaches. 
+If the original liveness information is not available, pruning SSA form is nothing else than dead-code elimination. As use-def chains are explicitly provided by SSA form is simply relies in marking actual uses (non \phiops\ ones) as useful and propagate backward through \phiops usefulness. This leads to the following pseudo-code:
+
+\begin{verbatim}
+stack = ()
+foreach I: instruction of the CFG in dominance order
+  if I of the form "a=phi(...)
+    mark a has useless
+  else I of the form ...=f(a1,...,an)
+    foreach ai defined by a phi function
+      mark ai as useful
+      stack.push(ai)
+while a := stack.pop
+  let I: a=phi(a1,...,an) be the phi-function that defines a
+  foreach ai marked as useless
+    mark ai as useful
+    stack.push(ai)
+foreach I: phi instruction of the form a=phi(...)
+  if a marked as useless then delete I  
+\end{verbatim}
+
+
+Talk about minimality here.
 
 \section{Additional reading}
 
 %%% FAB: we should probably move the technical discussions to this part?
+%%% At least, put all the external references here (eg Cytron, etc.)
 %%% TODO: write this section
