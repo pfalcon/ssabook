@@ -221,14 +221,14 @@ If the original liveness information is not available, pruning SSA form is nothi
 \begin{verbatim}
 stack = ()
 foreach I: instruction of the CFG in dominance order
-  if I of the form "a=phi(...)
+  if I of the form "a=phi(...)"
     mark a has useless
-  else I of the form ...=f(a1,...,an)
+  else I of the form "...=f(a1,...,an)"
     foreach ai defined by a phi function
       mark ai as useful
       stack.push(ai)
 while a := stack.pop
-  let I: a=phi(a1,...,an) be the phi-function that defines a
+  let I: "a=phi(a1,...,an)" be the phi-function that defines a
   foreach ai marked as useless
     mark ai as useful
     stack.push(ai)
@@ -237,7 +237,7 @@ foreach I: phi instruction of the form a=phi(...)
 \end{verbatim}
 
 Construction of Minimal SSA comes with the price of a sophisticated algorithm involving iterated dominance frontier. 
-Still, \phiops\ placement could be done pessimistically, as described further, on each CFG nodes along the live-ranges of the variables. 
+Still, \phiops\ placement could be done pessimistically, as described further, on each CFG nodes along the live-ranges of the variables (or at every basic-block if we are extremely lazy or simply do not want SSA to be pruned). 
 Also, code transformations such as code motion, CFG modifications, can make a minimal SSA non minimal.
 Actually, minimality can be obtained/recovered using copy propagation whenever the CFG is reducible. 
 To be efficient (as otherwise as many iterations as the maximum loop depth might be necessary), def-use chains should be computed. 
@@ -245,13 +245,32 @@ As already mentioned in Chapter~\ref{chapter:properties_and_flavours}, copy prop
 If we want to avoid breaking the dominance property we simply have to avoid the use of this simplification rule that involves $\undef$. 
 A more interesting rule is the one that propagates $a$ through a \phiop\ of the form $a'=\phi(a_1,...,a_n)$ where $a_i$ is either equal to $a$ or $a'$. 
 ``Identity'' \phiops\ can be simplified this way from inner to outer loops. 
-When the CFG is reducible, this leads to minimal SSA. 
+Actually, when the CFG is reducible, this leads to minimal SSA. 
 The underlying reason for that is that the def-use chain of a given variable is in this context a sub graph of a reducible graph: 
-all nodes but those that can be reached by two different paths (from actual non \phiops\ definitions) can be simplified using iteratively $T1$ or $T2$ transformations.
-We keep the analogy with graph reduction in the following pseudo-code that assumes def-use chains to be available, at least for every \phiop\ related variable:
+all nodes but those that can be reached by two different paths (from actual non \phiops\ definitions) can be simplified using iteratively $T1$ (merge of a node to its unique predecessor) or $T2$ (removal of self edge) reductions.
+More precisely:
+\begin{itemize}
+\item simplifying any \phiop\ $a'=\phi(a_1,...,a_n)$ such that all $a_i$ are equals corresponds to $T1$ reduction
+\item simplifying any \phiop\ $a'=\phi(a_1,...,a_n)$ such that each $a_i$ is either equal to $a'$ or to $a_1$, corresponds to $T2$ followed by $T1$ reduction.
+\end{itemize}
+This leads to a worklist algorithm in which the worklist stores the nodes that might be simplified. The worklist can be initialized with successors of non-\phiops\ definitions of variables (sources of the graph) -- if we want to stick on the framework of graph reduction --, or simply with all \phiops. Of course, if loop nesting forest is available, worklist can be avoided by traversing the CFG in a single pass from inner to outer loops, and in a topological order within each loop (header excluded)... 
+As we believe the main motivation for this approach to be its simplicity, the pseudo-code provided here uses a worklist:
 
 \begin{verbatim}
-
+worklist := ()
+foreach I: phi instruction of the program
+  worklist.push(I)
+  mark I
+while worklist is non empty
+  unmark I
+  I := worklist.shift
+  let I be of the form a'=phi(a1,...,an)
+  if foreach ai, ai in {a1,a'}
+    foreach I': instruction different than I that uses a'
+      replaces a' by a1 in I'
+      if I' not marked
+        mark I'
+        worklist.push(I')
 \end{verbatim}
 
 
@@ -260,3 +279,11 @@ We keep the analogy with graph reduction in the following pseudo-code that assum
 %%% FAB: we should probably move the technical discussions to this part?
 %%% At least, put all the external references here (eg Cytron, etc.)
 %%% TODO: write this section
+Should cite (at least):
+\begin{itemize}
+\item Cytron for original construction and Aycock for minimality/simple construction and also reference to Semantic chapter (for minimality they have a similar copy-prop algo in the context of functional programming; for construction and dominance notion they have a nice equivalence with functional programming again) 
+\item Wolf (J+=J) for join set
+\item Sreedhar Gao (linear time algo) for properties on DJ-graphs, DF-graphs and dominance tree & Ramalingam (loops, dom, dom-tree) for loop nesting forest dom-tree and DF & reference to advanced SSA construction
+\item Sreedhar's paper & Glessner for basic correct SSA destruction & reference to advanced destruction chapter. Maybe a brief history with previous ``incorrect papers''.
+\item Sreedhar Lee Gao & Ramalingam (incremental dom-tree) for the maintain of the dom-tree (maybe should ask Sebastian to put it in his chapter instead)
+\end{itemize}
