@@ -716,7 +716,7 @@ endef
 
 .SECONDARY:
 
-.PHONY: default all FORCE help clean purge unsafe-purge
+.PHONY: default all diff FORCE help clean purge unsafe-purge
 
 default: all
 
@@ -751,6 +751,23 @@ all:
 	  $(MAKE) -s LATEXSTEP=latex_init FILE=$$fname $$fname.$$fext; \
 	done; \
 	$(ECHO) $(separator)
+
+diff:
+	  $(QUIET)if [ "x$$r" = "x" ]; then \
+	    $(ECHO) Please set the revision you want to diff with using; \
+	    $(ECHO) '  make diff r=XXX'; \
+	    exit 1; \
+	  fi
+	  $(QUIET)$(ECHO) Will diff current revision with revision r$r
+	  $(QUIET)$(ECHO) Retrieving revision r$r in file content-old.tex
+	  $(QUIET) svn cat -r$r content.tex > content-old.tex
+	  $(QUIET)$(ECHO) Running latexdiff on content-old.tex and content.tex into content-diff.tex
+	  $(QUIET) latexdiff content-old.tex content.tex > content-diff.tex
+	  $(QUIET)$(ECHO) Compiling chapter-diff.tex into chapter-diff.pdf
+	  $(MAKE) chapter-diff.pdf
+
+
+
 
 
 pdf: $(FILES_PDF)
