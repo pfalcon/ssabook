@@ -9,9 +9,5 @@ if [[ "xbook" != x`basename $PWD` ]]; then
 	exit 1
 fi
 
-# Build the PDFs
-scripts/collate.sh
-
-
 # Rsync it online
 rsync --delete -arLz $PWD/pdfs/* scm.gforge.inria.fr:/home/groups/ssabook/htdocs/latest/
