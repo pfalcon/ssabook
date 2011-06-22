@@ -22,8 +22,12 @@ been performed, and prior to code generation. However note that there are
 specialized code generation techniques that work directly on SSA-based
 intermediate representations such as code selection (see Chapter~\ref{chapter:code_selection}), if-conversion (see Chapter~\ref{chapter:if_conversion}), or register allocation (see Chapter~\ref{chapter:register_allocation}).
 
-The algorithms presented in this chapter are simple and pragmatic.
-For all of these reasons, they are widely implemented in current compilers.
+The algorithms presented in this chapter are
+based on material from the seminal research papers on SSA.
+These original algorithms are 
+straightforward to implement and have acceptable efficiency.
+For these reasons, the algorithms
+are widely implemented in current compilers.
 Note that more
 efficient, albeit more complex, alternative algorithms have been devised.
 These are described further in Chapters \ref{chap:alternative_construction}
@@ -47,8 +51,8 @@ pointer-based aliasing, arrays, compound data structures, concurrency, etc.)
 The original construction algorithm for SSA form 
 divides into two distinct phases.
 \begin{enumerate}
-\item \textbf{\phiop\ insertion} performs \textit{live-range splitting} to ensures that any use of a given variable $v$ is reached~\footnote{A program point is said to be \emph{reachable} by a definition of $v$, if there exists a path in the CFG from this definition to this program point that do not contain any other definition of $v$.}  by exactly one definition of $v$. 
-The resulting live-ranges have the property of having a single definition, which occurs at the beginning of each live range.
+\item \textbf{\phiop\ insertion} performs \textit{live-range splitting} to ensures that any use of a given variable $v$ is reached~\footnote{A program point $p$ is said to be \emph{reachable} by a definition of $v$, if there exists a path in the CFG from that definition to $p$ that does not contain any other definition of $v$.}  by exactly one definition of $v$. 
+The resulting live-ranges have the property of having a single definition, which occurs at the beginning of each live-range.
 \item \textbf{variable renaming} assigns a unique variable name to each live-range. This second phase rewrites variable names in program statements such that the program text contains only one definition of each variable, and every use refers to its corresponding unique reaching definition.
 \end{enumerate}
 
@@ -158,8 +162,9 @@ Finally, such SSA has the \textit{dominance} property: each variable use is domi
 \section{Destruction \Author{F. Rastello}}
 \label{sec:classical_destruction}
 
-SSA form is a simple and efficient way of having sparse representation of some program information used by some code analysis and optimization. Once we are done with SSA based optimizations, or at least before code generation, one have to get rid of \phiops\ that are not machine instructions. This phase is called SSA destruction. 
-Destructing a freshly constructed SSA code is easy. One just have to first rename back into a unique representative variable all $\phi$-related variables (called SSA-webs) that had initially the same name. Then each \phiop\ have all its operands identical and can be removed to coalesce the related live-ranges.
+SSA form is a simple and efficient means of
+sparsely representing program information used for code analysis and optimization. Once we have completed SSA based optimizations, or at least before code generation, we need to get rid of \phiops\ that are not machine instructions. This phase is called SSA destruction. 
+Destructing freshly constructed SSA code is easy. One simply has to first rename back into a unique representative variable all $\phi$-related variables (which we refer to as \textit{SSA-webs}) that had initially the same name. Then each \phiop\ that has all its operands identical can be removed to coalesce the related live-ranges.
 Finding SSA-webs can be performed efficiently using the classical union-find algorithm for merging sets:
 \begin{verbatim}
 proc find_webs
@@ -170,9 +175,9 @@ foreach instruction of the form "a=phi(a1,...,an)"
   foreach ai union(ssaweb(a),ssaweb(ai))
 \end{verbatim}
 
-An SSA form is said to be conventional if for each ssaweb, all its variables can be safely renamed into a unique representative one. In other words each SSA web should be interference free. While a freshly constructed SSA code is conventional, this may not be the case after optimizations such as copy folding have been performed.
+An SSA form is said to be conventional if for each SSA-web, all its variables can be safely renamed into a unique representative one. In other words each SSA-web should be interference free. While freshly constructed SSA code is conventional, this may not be the case after optimizations such as copy folding FIXME - copy propagation???  have been performed.
 
-The simplest (but not the more efficient) way for destructing non conventional SSA form is to split all (critical) edge, and then replace \phiops\ by parallel copies on predecessor blocks. By splitting an edge say ($s,d)$, we mean replacing it by an edge from $s$ to a freshly created basic block and by another edge from this new basic block to $d$. The corresponding pseudo-code is the following:
+The simplest (but not the most efficient) way for destructing non conventional SSA form is to split all (critical) edge, and then replace \phiops\ by parallel copies on predecessor blocks. By splitting an edge say ($s,d)$, we mean replacing it by an edge from $s$ to a freshly created basic block and by another edge from this new basic block to $d$. The corresponding pseudo-code is the following:
 
 \begin{verbatim}
 foreach B0: basic block of the CFG
@@ -199,7 +204,7 @@ foreach B0: basic block of the CFG
 \end{verbatim}
 
 
-Even this extremely conservative algorithm can lead to potential bugs especially when dealing with SSA destruction at code generation level. Indeed, we must make sure that appending a copy at the really end of a basic block is possible. This would, for example be problematic, in the situation where the jump at the end of the basic block defines a variable used in the following \phiop. We should also be careful of duplicated edges, ie when a basic block appears twice in the list of predecessors. This can append after some dead code and empty block eliminations. In that case, the edges should be considered as critical and then split.
+Even this extremely conservative algorithm can lead to potential bugs especially when dealing with SSA destruction at code generation level. Indeed, we must make sure that appending a copy at the very end of a basic block is possible. This would, for example be problematic, in the situation where the jump at the end of the basic block defines a variable used in the following \phiop. We should also be careful of duplicated edges, ie when a basic block appears twice in the list of predecessors. This can append after some dead code and empty block eliminations. In that case, the edges should be considered as critical and then split.
 
 We should outline that this technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not allow to split a given edge; second, the obtained code contains many additional temporary-to-temporary copies. In theory, coping with these copies is the role of the coalescer during the register allocation phase. But only decoupled register allocators (such as the one detailed in Chapter~\ref{ chap:register-allocation}) with memory and time consuming coalescing heuristics can handle the removal of these copies efficiently. Coalescing can also, with less efforts, be handled prior to the register allocation phase. As opposed to a (so called conservative) coalescer during register allocation, this so called aggressive coalescing would not cope with the interference graph colorability. Still the insertion of copies itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative-destruction} is to cope both with non splittable edges and difficulties related with SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
 
