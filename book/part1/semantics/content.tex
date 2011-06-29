@@ -150,8 +150,6 @@ for a more in-depth discussion of advanced topics in Chapter~\ref{}.
 
 We conclude by discussing some pointers to the literature.
 
-%\section{Control-flow-based representations}
-
 \section{Functional interpretations}
 \label{section:Part1:Semantics:FunctionalLanguages}
 
@@ -173,32 +171,18 @@ $$\mathtt{function}\ f(x_0, \ldots, x_n) = e$$ where the syntactic
 category of expressions $e$ conflates the notions of expressions and
 commands of imperative languages.
 
-\paragraph{Variable assignment versus name binding}
+\subsubsection{Variable assignment versus name binding}
 A language construct provided by almost all functional languages is
-the let-binding $$\letin x {e_1} {e_2}.$$ The effect of this
+the \emph{let-binding} $$\letin x {e_1} {e_2}.$$ The effect of this
 expression is to evaluate $e_1$ and bind the resulting value to
 variable $x$ for the duration of the evaluation of $e_2$.  The code
 affected by this binding, $e_2$, is called the \emph{static scope} of
 $x$ and is easily syntactically identifiable.  In the following, we
-occasionally indicate scopes by code-enclosing boxes, indicating the
+occasionally indicate scopes by code-enclosing boxes, and list the
 variables that are in scope using subscripts.
 
-In contrast to an assignment in an imperative language, a let-binding
-for variable $x$ hides any previous value bound to $x$ for the
-duration of evaluating $e_2$ but does not permanently overwrite
-it. Thus, bindings are treated in a stack-like fashion, and boxes in
-our code excerpts are properly nested.
-%Instead of supporting destructive assignments to variables, functional
-%programming languages provide the concept of \emph{binding} a value to
-%a name for the duration of the evaluation of some expression $e$.
-%, functional languages typically provide an expression former
-%$\letin x {e_1} {e_2}$ that 
-%The result of the entire
-%expression is functionally equivalent to that of evaluating the
-%expression $e_2[e_1/x]$, i.e., the expression that arises from $e_2$ if
-%we substitute $e_1$ for all occurrences of $x$ that are free in $e_2$,
-%i.e., not bound at the top level.
-For example, in code 
+For example, the scope associated with the top-most binding of $v$ in
+code
 \begin{equation}
 \label{FunctionalCodeExample1}
 \begin{array}{l}
@@ -213,12 +197,31 @@ For example, in code
 \end{array}
   \evenoddcheck{semantics:func-code-examples}
 \end{equation}
-the inner binding of $v$ to value $2*3=6$ shadows the outer binding of
-$v$ to value $3$ precisely for the duration of the evaluation of the
-expression $4*v$. Once this evaluation has terminated (resulting in
-the binding of $y$ to $24$), the binding of $v$ to $3$ comes back into
-force, yielding the overall result of $72$.
+spans the both inner let-bindings, the scopes of which are themselves
+not nested inside one other as the (inner) binding to $v$ occurs in
+the $e_1$ position of the let-binding for $y$.
 
+In contrast to an assignment in an imperative language, a let-binding
+for variable $x$ hides any previous value bound to $x$ for the
+duration of evaluating $e_2$ but does not permanently overwrite
+it. Bindings are treated in a stack-like fashion, resulting in a
+tree-shaped nesting stucture of boxes in our code excerpts.
+%Instead of supporting destructive assignments to variables, functional
+%programming languages provide the concept of \emph{binding} a value to
+%a name for the duration of the evaluation of some expression $e$.
+%, functional languages typically provide an expression former
+%$\letin x {e_1} {e_2}$ that 
+%The result of the entire
+%expression is functionally equivalent to that of evaluating the
+%expression $e_2[e_1/x]$, i.e., the expression that arises from $e_2$ if
+%we substitute $e_1$ for all occurrences of $x$ that are free in $e_2$,
+%i.e., not bound at the top level.
+For example, in the above code, the inner binding of $v$ to value
+$2*3=6$ shadows the outer binding of $v$ to value $3$ precisely for
+the duration of the evaluation of the expression $4*v$. Once this
+evaluation has terminated (resulting in the binding of $y$ to $24$),
+the binding of $v$ to $3$ comes back into force, yielding the overall
+result of $72$.
 
 The concepts of binding and static scope ensure that functional
 programs enjoy the characteristic feature of SSA, namely the fact that
@@ -236,10 +239,11 @@ In contrast to SSA, functional languages achieve the association of
 definitions to uses without imposing the global uniqueness of
 variables, as witnessed by the duplicate binding occurrences for $v$
 in the above code. As a consequence of this decoupling, functional
-languages enjoy a strong notion of referential transparency: the
-choice of $x$ as the variable holding the result of $e_1$ depends only
-on the free variables of $e_2$. In fact, code
-(\ref{FunctionalCodeExample1}) is equivalent to the fragments
+languages enjoy a strong notion of \emph{referential transparency}:
+the choice of $x$ as the variable holding the result of $e_1$ depends
+only on the free variables of $e_2$. For example, we may rename the
+inner $v$ in code (\ref{FunctionalCodeExample1}) to $z$ without
+altering the meaning of the code:
 \begin{equation}
 \label{FunctionalCodeExample2}
 \begin{array}{l}
@@ -253,42 +257,63 @@ on the free variables of $e_2$. In fact, code
 \mathtt{end}
 \end{array}
 \end{equation}
-and
-\begin{equation}
-\label{FunctionalCodeExample3}
-\begin{array}{l}
-\mathtt{let}\ v = 3\ \mathtt{in}\\
-\quad 
-  \fbox{$
-   \begin{array}[t]{l} 
-    \mathtt{let}\ y = (\mathtt{let}\ y=2*v \ \mathtt{in}\ \fbox{$4*y$}_{v,y}\ \mathtt{end})\\
-    \mathtt{in}\ \fbox{$y*v$}_{v,y}\ \mathtt{end}\\
-\end{array}$}_v\\
-\mathtt{end}
-\end{array}
-  \evenoddcheck{semantics:func-code-examples}
-\end{equation} 
-that are obtained if we rename the bound variable $v$ in a process
-called \emph{$\alpha$-renaming}. Code~(\ref{FunctionalCodeExample3})
-illustrates that additional bindings of $x$ in $e_1$ do not clash with
-the outer binding of $x$ in $\letin x {e_1} {e_2}$ as the evaluation
-of $e_1$ precedes the binding of its result to $x$.
+Note that this conversion formally makes the outer $v$ visible for the
+expression $4*z$, as indicated by the index $v,z$ decorating its
+surrounding box.
 
-In order to illustrate that the choice of a let-bound variable depends
-on the free variables of $e_2$, let us consider possible renamings for
-the variable $y$ in (\ref{FunctionalCodeExample1}). Since the scope of
-$y$, namely the expression $y*v$, contains the variable $v$ free, we
-cannot replace $y$ by $v$ but only by some other variable, say $y'$.
-
-Program analyses for functional languages are typically compatible
-with $\alpha$-renaming in that they behave equivalently for fragments
-that differ only in their choice of bound variables, and program
-transformations rename bound variables whenever necessary.
+In order to avoid altering the meaning of the program, the choice of
+the newly introduced variable has to be such that confusion with other
+variables is avoided. Formally, this means that a renaming $\letin x
+{e_1} {e_2}$ to $\letin y {e_1} {e_2[y/x]}$ can only be carried out if
+$y$ is not a \emph{free} variable of $e_2$. Moreover, in case that
+$e_2$ already contains some preexisting bindings to $y$, the
+\emph{substitution} of $x$ by $y$ in $e_2$ (denoted by $e_2[y/x]$
+above) first renames these preexisting bindings in a suitable manner.
+Also note that the renaming only affects $e_2$ - indeed any
+occurrences of $x$ or $y$ in $e_1$ refer to conceptually
+\emph{different} but identically named variables, but the static
+scoping discipline ensures these will never be confused with the
+variables involved in the renaming.
+%\begin{equation}
+%\label{FunctionalCodeExample3}
+%\begin{array}{l}
+%\mathtt{let}\ v = 3\ \mathtt{in}\\
+%\quad 
+%  \fbox{$
+%   \begin{array}[t]{l} 
+%    \mathtt{let}\ y = (\mathtt{let}\ y=2*v \ \mathtt{in}\ \fbox{$4*y$}_{v,y}\ \mathtt{end})\\
+%    \mathtt{in}\ \fbox{$y*v$}_{v,y}\ \mathtt{end}\\
+%\end{array}$}_v\\
+%\mathtt{end}
+%\end{array}
+%  \evenoddcheck{semantics:func-code-examples}
+%\end{equation} 
+%that are obtained if we rename the bound variable 
+%
+% Code~(\ref{FunctionalCodeExample3})
+%illustrates that additional bindings of $x$ in $e_1$ do not clash with
+%the outer binding of $x$ in $\letin x {e_1} {e_2}$ as the evaluation
+%of $e_1$ precedes the binding of its result to $x$.
+%
+%In order to illustrate that the choice of a let-bound variable depends
+%on the free variables of $e_2$, let us consider possible renamings for
+%the variable $y$ in (\ref{FunctionalCodeExample1}). Since the scope of
+%$y$, namely the expression $y*v$, contains the variable $v$ free, we
+%cannot replace $y$ by $v$ but only by some other variable, say $y'$.
+In general, the semantics-preserving renaming of bound variables is
+called $\alpha$-renaming. Typically, program analyses for functional
+languages are compatible with $\alpha$-renaming in that they behave
+equivalently for fragments that differ only in their choice of bound
+variables, and program transformations $\alpha$-rename bound variables
+whenever necessary.
 
 A consequence of referential transparency, and thus a property
 typically enjoyed by functional languages, is \emph{compositional
-equational reasoning}: the meaning of a piece of code is only
-dependent on the meaning of its subexpressions. Hence, languages with
+equational reasoning}: the meaning of a piece of code $e$ is only
+dependent its free variables, and can be calculated from the meaning
+of its subexpressions. For example, the meaning of a phrase $\letin x
+{e_1} {e_2}$ only depends on the free variables of $e_1$ and on the
+free variables of $e_2$ \emph{other than $x$}. Hence, languages with
 referential transparency allow one to replace a subexpression by some
 semantically equivalent phrase without altering the meaning of the
 surrounding code. Since semantic preservation is a core requirement of
@@ -296,6 +321,7 @@ program transformations, the suitability of SSA for formulating and
 implementing such transformations can be explained by the proximity of
 SSA to functional languages.
 
+\subsubsection{Control flow: continuations}
 O'Donnell~\cite{ODonnellPhD} and Kelsey~\cite{Kelsey95} observed that
 the correspondence between let-bindings and points of variable
 definition in assignments extends to other aspects of program
@@ -306,7 +332,6 @@ structure, in particular to code in
 representation routinely used in compilers for functional languages
 \cite{DBLP:journals/lisp/SussmanS98a,Appel:CWC}.
 
-\paragraph{Control flow: continuations}
 %This interpretation rooted in the observation that the
 %central goal of SSA, namely to provide each use of a variable with a
 %unique point of definition, is obtained for free from the concepts of
@@ -345,8 +370,12 @@ argument expressions), as is the case for the variable $k$ in
 In effect, $k$ represents any function that may be applied to the
 result of expression~(\ref{FunctionalCodeExample1}).
 
-Surrounding code may specify the conrecte continuation by
-binding $k$ to a suitable expression, as in
+Surrounding code may specify the concrete continuation by binding $k$
+to a suitable expression. For example, a client of the above code
+fragment wishing to multiply the fragment's result by $2$ may insert
+code (\ref{ContinuationCode0}) in the $e_2$ position of a let-binding
+for $k$ that (in its $e_1$-position) contains $\lambda\, x .\, 2* x$,
+as in the following code: 
 $$\begin{array}{l}
 \mathtt{let}\ k = \lambda\, x .\, 2* x\\ 
 \mathtt{in}\ 
@@ -360,10 +389,11 @@ $$\begin{array}{l}
   \end{array}\\ 
 \mathtt{end}
 \end{array}
-$$
-or wrap fragment (\ref{ContinuationCode0}) in a function definition
-with formal argument $k$ and construct the continuation in the calling
-code:
+$$ 
+Alternatively, the client may wrap fragment (\ref{ContinuationCode0})
+in a function definition with formal argument $k$ and construct the
+continuation in the calling code, where he would be free to choose a
+different name for the continuation-representing variable:
 \begin{equation}
 \label{ContinuationCode1}
 \begin{array}{l}
@@ -384,8 +414,6 @@ code:
 \mathtt{end}.
 \end{array}
 \end{equation}
-In both cases,  the $\lambda$-term $\lambda\, x .\, 2* x$ stipulates that the
-result of $f$ should be multiplied by $2$. 
 
 %whose continuation argument $k$ represents a function that is applied
 %to the result of the function's body. Continuations are constructed by
@@ -424,7 +452,7 @@ In a similar way, the function
     \mathtt{let}\ x=4\ \mathtt{in} \\
     \quad \begin{array}{l}
             \mathtt{let}\ k' = \lambda\, z .\, k (z*x)\\
-            \mathtt{in}
+            \mathtt{in}\
                \begin{array}[t]{l}
                  \mathtt{if}\ y>0\\
                  \mathtt{then\ let}\ z = y*2\ \mathtt{in}\ k'(z)\ \mathtt{end}\\
@@ -437,10 +465,14 @@ In a similar way, the function
 \end{array}
 \end{equation}
 constructs from $k$ a continuation $k'$ that is invoked (with
-different arguments) in each branche of the conditional. In effect,
+different arguments) in each branch of the conditional. In effect,
 the sharing of $k'$ amounts to the definition of a control flow merge
 point, as indicated by the CFG corresponding to $h$ in
-Figure~\ref{FigureCFGForSharedContinuation} (left).
+Figure~\ref{FigureCFGForSharedContinuation} (left).  Contrary to the
+functional representation, the top-level continutaion parameter $k$ is
+not explicitly visible in the CFG - it roughly corresponds to the
+frame slot that holds the return address in an imperative procedure
+call.
 
 \begin{figure}
 \begin{center}
@@ -514,7 +546,7 @@ SSA, we discuss a close relative of CPS, the so-called
 %unify the arguments stemming from various calls sites and bind them to
 %a unique name for the duration of the ensuing code fragment.
 
-\paragraph{Control flow: direct style}
+\subsubsection{Control flow: direct style}
 
 An alternative to the explicit passing of continuation terms via
 additional function arguments is to represent code as a set of locally
@@ -522,7 +554,10 @@ named tail-recursive functions. Appel~\cite{Appel98:SSA} popularized
 the correspondence to SSA of this representation, which is called
 \emph{direct style}~\cite{Reynolds1974}.
 
-In direct style, code (\ref{ContinuationCode4}) may be represented as
+In direct style, no continuation terms are constructed dynamically and
+then passed as function arguments, and we hence exclusively employ
+$\lambda$-free function definitions in our representation. For
+example, code (\ref{ContinuationCode4}) may be represented as
 \begin{equation}
 \label{DirectStyleCode1}
 \begin{array}{l}
@@ -551,10 +586,17 @@ In direct style, code (\ref{ContinuationCode4}) may be represented as
 \end{equation}
 where the local function $h'$ plays a similar role as the continuation
 $k'$ and is jointly called from both branches. In contrast to the CPS
-representation the body of $h'$ returns its result directly rather
-than by passing it on as an argument to some continuation. Neither the
-declaration of $h$ nor that of $h'$ contain additional continuation
-parameters.
+representation, howver, the body of $h'$ returns its result directly
+rather than by passing it on as an argument to some continuation. Also
+nte that neither the declaration of $h$ nor that of $h'$ contain
+additional continuation parameters. Thus, rather than handing its
+result directly over to some caller-specified receiver (as
+communicated by the continuation argument $k$), $h$ simply returns
+control back to the caller, who is then respsonsible for any further
+execution. Roughly speaking, the effect is similar to the imperative
+compilation discipline of always setting the return address of a
+procedure call to the instruction pointer immediately following the
+call instruction.
 
 A stricter format is obtained if the granularity of local functions is
 required to be that of basic blocks:
@@ -595,13 +637,13 @@ Figure~\ref{FigureCFGForSharedContinuation}.  Both, CPS and direct
 style are compatible with the strict notion of basic blocks as well as
 more relaxed ones where, for example, functions that have only a
 single invocation site are inlined (extended basic blocks). At the
-other expreme, both representation also admit the explicit naming of
+other extreme, both representation also admit the explicit naming of
 all control flow points, i.e., the introduction of one local function
 or continuation per instruction.  The questions whether CPS or direct
-style should be preferred, and what the appropriate granularity level
-of functions is, have received considerable attention, with no clear
-consensus being established. In our discussion below, we employ the
-arguably easier-to-read direct style, although the gist of the
+style should be preferred, and what the most appropriate granularity
+level of functions is, have received considerable attention, with no
+clear consensus being established. In our discussion below, we employ
+the arguably easier-to-read direct style, although the gist of the
 discussion applies equally well to CPS.
 
 Independent of the granularity level of local functions, the process
@@ -651,6 +693,7 @@ the formal argument of $h$.
 %the usual frame stack discipline and may (as in CPS) be represented as
 %function calls that occur in non-tail position.}
 
+\subsubsection{Let-normal form}
 For both direct style and CPS the correspondence to SSA is most
 pronounced for code in \emph{let-normal-form}: each intermediate
 result must be explicitly named by a variable, and function arguments
@@ -815,7 +858,7 @@ example.
 \caption{\label{fig:FunctionalCorrespondenceRunningExampleGraphic} Functional construction of SSA: running example}
 \end{figure}
 
-\paragraph{Initial construction using liveness analysis}
+\subsubsection{Initial construction using liveness analysis}
 
 A simple way to represent this program in let-normalized direct style
 is to introduce one function $f_i$ for each basic block $b_i$. The
@@ -920,7 +963,7 @@ eliminating such arguments is called
 the more widely known transformation
 \emph{$\lambda$-lifting}~\cite{DBLP:conf/fpca/Johnsson85}.
 
-\paragraph{$\lambda$-dropping}
+\subsubsection{$\lambda$-dropping}
 
 $\lambda$-dropping may be performed before or after variable names are
 made distinct, but for our purpose, the former option is more
@@ -1157,7 +1200,7 @@ condition~(\ref{ParameterDroppingConditionOne}) is necessarily
 satisfied for all parameters $x$ of $f$. Thus, all parameters of $f$
 can be dropped and no $\phi$-function is generated.
 
-\paragraph{Nesting, dominance, loop-closure}
+\subsubsection{Nesting, dominance, loop-closure}
 %\footnote{Mention groups of (mutually recursive) functions, with example}
 
 Analyzing whether function definitions may be nested inside one
@@ -1393,7 +1436,7 @@ $f_2$:
 \end{array}
 \end{equation}
 
-\paragraph{Destruction of SSA}
+\subsubsection{Destruction of SSA}
 
 The above example code excerpts where variables are not made distinct
 exhibit a further pattern: the argument list of any call coincides
