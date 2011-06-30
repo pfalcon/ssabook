@@ -701,8 +701,30 @@ must be names or constants. Syntactically, let-normal-form isolates
 basic instructions in a separate category of primitive terms $a$ and
 then requires let-bindings to be of the form $\letin x a e$.  In
 particular, neither jumps (conditional or unconditional) nor
-let-bindings are primitive. The let-normalized form
-of~(\ref{FunctionalCodeExample2}),
+let-bindings are primitive. Let-normalized form is obtained by
+repeatedly rewriting code of the form
+\begin{eqnarray*}
+ \begin{array}{l}
+   \mathtt{let}\ x = \letin y {e} {\fbox{$e'$}_y}\\
+   \mathtt{in}\ {\fbox{$e''$}_{x}}\\ 
+   \mathtt{end}
+  \end{array}
+& \quad \textrm{into} \quad &
+  \begin{array}{l}
+    \mathtt{let}\ y = e\\
+    \mathtt{in}\ \fbox{$\begin{array}{l}
+                            \mathtt{let}\ x = {e'}\ 
+                            \mathtt{in}\ {\fbox{$e''$}_{x,y}}
+                            \mathtt{end}
+                        \end{array}$}_y\\
+    \mathtt{end,}
+  \end{array}
+\end{eqnarray*}
+%$$\letin x {(\letin y {e_1} {\fbox{$e_2$}_y})} {\fbox{$e_3$}_{x}}$$
+%into $$\letin y {e_1} {\fbox{$\letin x {e_2} {\fbox{$e_3$}_{x,y}}$}_y},$$
+subject to the side condition that $y$ not be free in $e''$.
+For example, let-normalizing code~(\ref{FunctionalCodeExample2}) pulls the
+let-binding for $z$ to the outside of the binding for $y$, yielding
 \begin{equation}
 \label{FunctionalCodeExample4}
 \begin{array}{l}
@@ -718,41 +740,18 @@ of~(\ref{FunctionalCodeExample2}),
 \mathtt{end}
 \end{array}
 \end{equation}
-is obtained by pulling the let-binding for $z$ from the
-$e_1$-position to the outside of the binding for $y$.  
-In general, the transformation repeatedly rewrites
-\begin{eqnarray*}
- \begin{array}{l}
-   \mathtt{let}\ x = \letin y {e_1} {\fbox{$e_2$}_y}\\
-   \mathtt{in}\ {\fbox{$e_3$}_{x}}\\ 
-   \mathtt{end}
-  \end{array}
-& \quad \textrm{into} \quad &
-  \begin{array}{l}
-    \mathtt{let}\ y = e_1\\
-    \mathtt{in}\ \fbox{$\begin{array}{l}
-                            \mathtt{let}\ x = {e_2}\ 
-                            \mathtt{in}\ {\fbox{$e_3$}_{x,y}}
-                            \mathtt{end}
-                        \end{array}$}_y\\
-    \mathtt{end,}
-  \end{array}
-\end{eqnarray*}
-%$$\letin x {(\letin y {e_1} {\fbox{$e_2$}_y})} {\fbox{$e_3$}_{x}}$$
-%into $$\letin y {e_1} {\fbox{$\letin x {e_2} {\fbox{$e_3$}_{x,y}}$}_y},$$
-subject to the side condition that $y$ not be free in $e_3$.
 
 Programs in let-normal form thus do not contain let-bindings in the
 $e_1$-position of outer let-expressions. The stack discipline in which
 let-bindings are managed is simplified as scopes are nested inside
-each other\footnote{Provided the continuation/function definitions
-are closed, this means that bindings can be implemented
-destructively, i.e., as assignments/updates.}. While still enjoying
-referential transparency, let-normal code is in closer correspondence
-to imperative code than nonnormalized code as the chain of nested
-let-bindings directly reflects the sequence of statements in a basic
-block, interspersed occasionally by the definition of continuations or
-local functions.
+each other. \footnote{Provided the continuation/function definitions
+are closed (i.e., do not contain free variables), bindings can hence
+be implemented destructively, as assignments/updates.} While still
+enjoying referential transparency, let-normal code is in closer
+correspondence to imperative code than nonnormalized code as the chain
+of nested let-bindings directly reflects the sequence of statements in
+a basic block, interspersed occasionally by the definition of
+continuations or local functions.
 
 % As a consequence of these restrictions, the conversion of
 %unrestricted code into let-normal form fixes an evaluation order, in a
@@ -869,71 +868,63 @@ liveness analysis. For each basic block $b_i$, we choose an arbitrary
 enumeration of its live-in variables. We then use this enumeration as
 the list of formal parameters in the declaration of the function
 $f_i$, and also as the list of actual arguments in calls to $f_i$. We
-organize all function definitions in a single block of mutually
-tail-recursive functions at the top level:
+collect all function definitions in a block of mutually tail-recursive
+functions at the top level:
 \begin{equation}
 \label{FunctionalConstructionProgram1}
 \begin{array}{l}
-  \mathtt{function}\ f_1() = \\ \qquad
-   \letin v 1 {
-              \letin z 8 {
-                 \letin y 4 {\call {f_2} {v,z,y}}
-              }
-            }
-\\
-\begin{array}{lcl}
-\mathtt{and}\ f_2(v,z,y) & = & 
-  \letinD x {5+y} {
-              \letinD y {x*z} {
-                 \letinD x {x-1} {}}}\\ & & 
-   \ite {x=0} {\call {f_3} {y,v}} 
-              {\call {f_2} {v,z,y}}\ \mathtt{end}\ \mathtt{end}\ \mathtt{end}
-\end{array}\\
-\begin{array}{lcl}
-  \mathtt{and}\ f_3(y,v) & = & \letin w {y+v} w\\
-  \mathtt{in}\ f_1()\ \mathtt{end}
-\end{array} 
+  \begin{array}{ll}
+    \mathtt{function}\ f_1() = 
+     & \letinD v 1 {}\\
+     & \quad \letinD z 8 {}\\
+     & \quad \quad \letin y 4 {\call {f_2} {v,z,y}}\\
+     & \quad \mathtt{end}\\
+     & \mathtt{end}
+  \end{array}\\
+  \begin{array}{ll}
+    \mathtt{and}\ f_2(v,z,y) =
+     & \letinD x {5+y} {}\\
+     & \quad \letinD y {x*z} {}\\
+     & \quad \quad \letinD x {x-1} {}\\
+     & \quad \quad \quad {\ite {x=0} {\call {f_3} {y,v}} {\call {f_2} {v,z,y}}}\\
+     & \quad \quad \mathtt{end}\\
+     & \quad \mathtt{end}\\
+     & \mathtt{end}
+  \end{array}\\
+  \begin{array}{l}
+    \mathtt{and}\ f_3(y,v) = \letin w {y+v} w\\
+    \mathtt{in}\ f_1()\ \mathtt{end}
+  \end{array} 
 \end{array}
 \end{equation}
 The resulting program has the following properties:
 \begin{itemize}
-\item all function declarations are \emph{closed}: the free variables of their bodies are contained in their formal parameter lists\footnote{Apart from the function identifiers $f_i$ which can always be chosen distinct from the variables};
-\item variable names are not unique, but the unique association of definitions to uses is satisfied;
-\item each subterm $e_2$ of a let-binding $\letin x {e_1} {e_2}$ corresponds to the control flow successor of the assignment to $x$.
+\item 
+  all function declarations are \emph{closed}: the free variables of
+  their bodies are contained in their formal parameter
+  lists\footnote{Apart from the function identifiers $f_i$ which can
+  always be chosen distinct from the variables};
+
+\item
+  variable names are not unique, but the unique association of
+  definitions to uses is satisfied;
+
+\item
+  each subterm $e_2$ of a let-binding $\letin x {e_1} {e_2}$
+  corresponds to the control flow successor of the assignment to $x$.
+
 \end{itemize}
 If desired, we may $\alpha$-rename to make names globally unique. As
-all function declarations are closed, the renamings are independent.
-The resulting program
-\begin{equation}
-\label{FunctionalConstructionProgram2}
-\begin{array}{l}
-  \mathtt{function}\ f_1() = \\ \qquad
-   \letin {v_1} 1 {
-              \letin {z_1} 8 {
-                 \letin {y_1} 4 {\call {f_2} {v_1,z_1,y_1}}
-              }
-            }
-\\
-\begin{array}{lcl}
-\mathtt{and}\ f_2(v_2,z_2,y_2) & = & 
-  \letinD {x_1} {5+y_2} {
-              \letinD {y_3} {x_1*z_2} {
-                 \letinD {x_2} {x_1-1} {}}}\\ & & 
-   \ite {x_2=0} {\call {f_3} {y_3,v_2}} 
-              {\call {f_2} {v_2,z_2,y_3}}\ \mathtt{end}\ \mathtt{end}\ \mathtt{end}
-\end{array}\\
-\begin{array}{lcl}
-  \mathtt{and}\ f_3(y_4,v_3) & = & \letin {w_1} {y_4+v_3} {w_1}\\
-  \mathtt{in}\ f_1()\ \mathtt{end}
-\end{array} 
-\end{array}
-  \evenoddcheck{semantics:pruned-ssa}
-\end{equation}
-is an SSA-program in
-disguise~(cf.~Figure~\ref{fig:FunctionalCorrespondenceRunningExampleInitialSSA}):
-each formal parameter of a function $f_i$ is the target of one
-$\phi$-function for the corresponding block $b_i$. The arguments of
-these $\phi$-functions are the arguments in the corresponding
+the function declarations in
+code~(\ref{FunctionalConstructionProgram1}) are closed, all variable
+renamings are independent from each other.  The resulting
+code~(\ref{FunctionalConstructionProgram2}) is shown in
+Figure~\ref{fig:FunctionalCorrespondenceRunningExampleInitialSSA}
+(top) and corresponds precisely to the SSA-program shown
+in~Figure~\ref{fig:FunctionalCorrespondenceRunningExampleInitialSSA}
+(bottom): each formal parameter of a function $f_i$ is the target of
+one $\phi$-function for the corresponding block $b_i$. The arguments
+of these $\phi$-functions are the arguments in the corresponding
 positions in the calls to $f_i$. As the number of arguments in each
 call to $f_i$ coincides with the number of $f_i$'s formal parameters,
 the $\phi$-functions in $b_i$ are all of the same arity, namely the
@@ -941,6 +932,35 @@ number of call sites to $f_i$. In order to coordinate the relative
 positioning of the arguments of the $\phi$-functions, we choose an
 arbitrary enumeration of these call sites.
 \begin{figure}
+\begin{equation}
+\label{FunctionalConstructionProgram2}
+\begin{array}{l}
+  \begin{array}{ll}
+    \mathtt{function}\ f_1() = 
+    & \letinD {v_1} 1 {}\\
+    & \quad \letinD {z_1} 8 {}\\
+    & \quad \quad \letin {y_1} 4 {\call {f_2} {v_1,z_1,y_1}}\\
+    & \quad \mathtt{end}\\
+    & \mathtt{end}
+  \end{array}\\
+  \begin{array}{ll}
+    \mathtt{and}\ f_2(v_2,z_2,y_2) =
+    & \letinD {x_1} {5+y_2} {}\\
+    & \quad \letinD {y_3} {x_1*z_2} {}\\
+    & \quad \quad \letinD {x_2} {x_1-1} {}\\ 
+    & \quad \quad \quad 
+          {\ite {x_2=0} {\call {f_3} {y_3,v_2}} {\call {f_2} {v_2,z_2,y_3}}}\\ 
+    & \quad \quad \mathtt{end}\\
+    & \quad \mathtt{end}\\
+    & \mathtt{end}
+  \end{array}\\
+  \begin{array}{l}
+    \mathtt{and}\ f_3(y_4,v_3) = \letin {w_1} {y_4+v_3} {w_1}\\
+    \mathtt{in}\ f_1()\ \mathtt{end}
+  \end{array} 
+\end{array}
+  \evenoddcheck{semantics:pruned-ssa}
+\end{equation}
 \begin{center}
 \includegraphics[scale=0.6]{SSAConstructionExample2}
 \end{center}
@@ -952,15 +972,15 @@ Under this perspective, the above construction of parameter lists
 amounts to equipping each $b_i$ with $\phi$-functions for all its
 live-in variables, with subsequent renaming of the variables. Thus,
 the above method corresponds to the construction of \emph{pruned} (but
-not minimal) SSA -- see Chapter~\ref{chap:properties-and-flavours}.
+not minimal) SSA --- see Chapter~\ref{chap:properties-and-flavours}.
 
 While resulting in a legal SSA program, the construction clearly
 introduces more $\phi$-functions than necessary. Each superfluous
 $\phi$-function corresponds to the situation where all call sites to
 some function $f_i$ pass identical arguments. The technique for
 eliminating such arguments is called
-\emph{$\lambda$-dropping}~\cite{DBLP:journals/tcs/DanvyS00}, the inverse of
-the more widely known transformation
+\emph{$\lambda$-dropping}~\cite{DBLP:journals/tcs/DanvyS00}, and is
+the inverse of the more widely known transformation
 \emph{$\lambda$-lifting}~\cite{DBLP:conf/fpca/Johnsson85}.
 
 \subsubsection{$\lambda$-dropping}
@@ -986,10 +1006,16 @@ by rewriting to
 $$\mathtt{function}\ g(y_1,\ldots,y_m) =
 \begin{array}[t]{l} 
   \mathtt{function}\ f(x_1,\ldots,x_n) = e_f\\
-  \mathtt{in}\ e_g\ \mathtt{end}
+  \mathtt{in}\ e_g\ \mathtt{end}.
 \end{array}
-$$ 
-in general and to
+$$ This transformation does not alter the meaning of the code, as the
+declaration of $f$ is closed (see above), hence moving it into the
+scope of $g$'s formal parameters $y_1,\ldots,y_m$ (and also into the
+scope of $g$ itself) is harmless. 
+
+Applying this transforation to example
+program~(\ref{FunctionalConstructionProgram1}) yields the following
+code:
 \begin{equation}
 \label{FunctionalConstructionProgram3}
 \begin{array}{l}
@@ -1020,12 +1046,14 @@ in general and to
 \end{array} 
 \end{array}
 \end{equation}
-in the case of our example program. Note that since the declaration of
-$f$ is closed, moving it into the scope of $g$'s formal parameters
-$y_1,\ldots,y_m$ (and also into the scope of $g$ itself) is harmless.
 
-A preferable alternative is to insert $f$ near the end of its host
-function, in the vicinity of its calls:
+An alternative transformation is to insert $f$ near the end of its
+host function $g$, in the vicinity of the calls to $f$. This brings
+the declaration of $f$ additionally into the scope of all let-bindings
+in $e_g$. Referentail transparency and preservation of semantics is
+again respected due to the fact that both declarations are closed.  In
+our example, the alternative rewriting yields
+code~(\ref{FunctionalConstructionProgram4}).
 \begin{equation}
 \label{FunctionalConstructionProgram4}
 \begin{array}{l}
@@ -1063,13 +1091,12 @@ function, in the vicinity of its calls:
 \mathtt{in}\ f_1()\  \mathtt{end}
 \end{array}
 \end{equation}
-This brings the declaration of $f$ additionally into the scope of
-let-bindings in $e_g$, but functional transparency is again respected
-due to the fact that the declaration is closed.
 
-The second phase, parameter dropping, removes superfluous parameters
-based on the syntactic scope structure: a parameter $x$ may be removed
-from the declaration of and calls to $f$ if
+
+The second phase of $\lambda$-dropping, \emph{parameter dropping},
+removes superfluous parameters based on the syntactic scope structure:
+a parameter $x$ may be removed from the declaration of and calls to
+$f$ if
 \begin{enumerate}
 \item\label{ParameterDroppingConditionOne}
   the scope in force for $x$ at the declaration of $f$ coincides
@@ -1085,6 +1112,7 @@ The scope applicable for $v$ at the site of declaration of $f_3$ and
 also at its call site is the one rooted at the formal parameter $v$ of
 $f_2$. In case of $y$, the common scope is the one rooted at the
 let-binding for $y$ in the body of $f_2$. We thus obtain
+code~(\ref{FunctionalConstructionProgram5}).
 \begin{equation}
 \label{FunctionalConstructionProgram5}
 \begin{array}{l}
@@ -1129,7 +1157,7 @@ $z$ have binding occurrences in the body of $f_2$. The scopes
 applicable at the external call site to $f_2$ coincide with those
 applicable at its site of declaration and are given by the scopes
 rooted in the let-bindings for $v$ and $z$. Thus, parameters $v$ and
-$z$ may be removed from $f_2$, yielding
+$z$ may be removed from $f_2$:
 
 \begin{equation}
 \label{FunctionalConstructionProgram6}
@@ -1168,8 +1196,7 @@ $z$ may be removed from $f_2$, yielding
 \mathtt{in}\ f_1()\  \mathtt{end}
 \end{array}
 \end{equation}
-as the result of parameter dropping and hence
-$\lambda$-lifting. Interpreting the uniquely-renamed variant
+Interpreting the uniquely-renamed variant
 of~(\ref{FunctionalConstructionProgram6}) back in SSA yields the
 desired minimal code with a single $\phi$-function, for variable $y$
 at the beginning of block $b_2$ -- see
@@ -1213,14 +1240,14 @@ identifiers of our earlier remark that lexical scope coincides with
 the dominance region, and that points of definition/binding
 occurrences should dominate the uses. Indeed, functional languages do
 not distinguish between code and data when aspects of binding and use
-of variables are concerned, as witnesses by our use of the let-binding
+of variables are concerned, as witnessed by our use of the let-binding
 construct for binding code-representing expressions to the variables
 $k$ in our syntax for CPS. The fact that they also treat functions
 like data (as ``first class citizens'') when argument and result
 passing are concerned makes functional languages particularly suitable
 for the extension of (SSA-based) program analyses to inter-procedural
 analyses\footnote{This sentence should probably be moved to the
-  subsection on type systems, once that has been written.}.
+subsection on type systems, once that has been written.}.
 
 The \emph{optimal} nesting structure is thus given by the dominator
 tree: the maximal level at which a function may occur is its level
@@ -1450,18 +1477,19 @@ where argument lists and formal parameter lists coincide for each
 function. This is achieved by introducing additional let-bindings of
 the form $\letin x y e$: for example, a call $f(v,z,y)$ where $f$ is
 declared as $\mathtt{function}\ f(x,y,z) = e$ may be converted to
-$$\letin x y {\letin y z {\letin z x {\letin x a {f(x,y,z)}}}},$$ in
+$$\letin x v {\letin a z {\letin z y {\letin y a {f(x,y,z)}}}},$$ in
 correspondence to the move instructions introduced in imperative
 formulations of SSA destruction (see
-Chapters~\ref{sec:classical_destruction}
-and~\cite{DestructionChapter}).
-Beringer~\cite{DBLP:journals/entcs/Beringer07} calls the appropriate
-transformation on a functional representation GNF-conversion -- note
-that the target language is only syntactically a functional language
-as it is not immune against $\alpha$-renaming -- and presents a simple
-local algorithm that considers each call site individually. A single
-additional variable suffices for performing all necessary insertions
-of let-bindings, in line with the results of~\cite{May}. Rideau et
+Chapters~\ref{chap:classical_construction} and~\ref{????}\footnote{I
+mean Chapter 5 (SSA destruction for machine code) here, but it doesn't
+have a label yet.}).  Beringer~\cite{DBLP:journals/entcs/Beringer07}
+calls the appropriate transformation on a functional representation
+GNF-conversion -- note that the target language is only syntactically
+a functional language as it is not immune against $\alpha$-renaming --
+and presents a simple local algorithm that considers each call site
+individually. A single additional variable (the $a$ in the above code)
+suffices for performing all necessary insertions of let-bindings, in
+line with the results of~\cite{May}. Rideau et
 al.~\cite{DBLP:journals/jar/RideauSL08} present an in-depth study of
 this conversion problem, including a verified implementation in the
 proof asistant Coq.
