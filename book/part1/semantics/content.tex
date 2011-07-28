@@ -20,6 +20,8 @@
 \newcommand{\simplejudge}[2]{{#1} \vdash {#2}}
 \newcommand{\closenode}[3]{\mathtt{close}_{{#1}}({#2},{#3})}
 \newcommand{\loopnode}[3]{\mathtt{loop}_{{#1}}({#2},{#3})}
+\newcommand{\LV}{\ensuremath{\sc{Live}}}
+\newcommand{\fv}{\ensuremath{\sc{Free}}}
 
 %\section{Introduction}
 \label{section:Part1:Semantics:Intro}
@@ -148,7 +150,6 @@ and was originally introduced by Pop~\cite{PopJS2007}.  Our discussion
 focuses on some principal underlying this representation, preparing
 for a more in-depth discussion of advanced topics in Chapter~\ref{}.
 
-We conclude by discussing some pointers to the literature.
 
 \section{Functional interpretations}
 \label{section:Part1:Semantics:FunctionalLanguages}
@@ -1057,12 +1058,12 @@ code:
 \end{array}
 \end{equation}
 
-An alternative transformation is to insert $f$ near the end of its
-host function $g$, in the vicinity of the calls to $f$. This brings
-the declaration of $f$ additionally into the scope of all let-bindings
-in $e_g$. Again, referential transparency and preservation of
-semantics are respected as both declarations are closed.  In our
-example, the alternative rewriting yields
+An alternative strategy is to insert $f$ near the end of its host
+function $g$, in the vicinity of the calls to $f$. This brings the
+declaration of $f$ additionally into the scope of all let-bindings in
+$e_g$. Again, referential transparency and preservation of semantics
+are respected as the declaration on $f$ is closed. In case of our
+example code, the alternative stragegy would yield
 code~(\ref{FunctionalConstructionProgram4}).
 \begin{equation}
 \label{FunctionalConstructionProgram4}
@@ -1101,9 +1102,15 @@ code~(\ref{FunctionalConstructionProgram4}).
 \mathtt{in}\ f_1()\  \mathtt{end}
 \end{array}
 \end{equation}
-Irrespective of the placement, the nesting structure of the resulting
-programs reflects the dominance of the corresponding basic blocks. In
-our example, code~(\ref{FunctionalConstructionProgram3}) and
+In general, one would insert $f$ directly prior to its call if $g$
+contains only a single call site for $f$. In case that $g$ contains
+multiple call sites for $f$, these are (due to their tail-recursive
+positioning) in different arms of a conditional, and we would insert
+$f$ directly prior to this conditional. 
+
+Both outlined placement strategies result in code whose nesting
+structure reflects the dominance relationship of the imperative code.
+In our example, code~(\ref{FunctionalConstructionProgram3}) and
 (\ref{FunctionalConstructionProgram4}) both nest $f_3$ inside $f_2$
 inside $f_1$, in accordance with the dominator tree of the imperative
 program (see
@@ -1269,12 +1276,7 @@ occurrences should dominate the uses. Indeed, functional languages do
 not distinguish between code and data when aspects of binding and use
 of variables are concerned, as witnessed by our use of the let-binding
 construct for binding code-representing expressions to the variables
-$k$ in our syntax for CPS. The fact that they also treat functions
-like data (as ``first class citizens'') when argument and result
-passing are concerned makes functional languages particularly suitable
-for the extension of (SSA-based) program analyses to inter-procedural
-analyses\footnote{This sentence should probably be moved to the
-subsection on type systems, once that has been written.}.
+$k$ in our syntax for CPS. 
 
 The \emph{optimal} nesting structure is thus given by the dominator
 tree: the maximal level at which a function may occur is its level
@@ -1736,23 +1738,132 @@ al.~\cite{DBLP:journals/spe/BriggsCHS98} can easily be
 given~\cite{DBLP:journals/entcs/Beringer07}. Instead of introducing
 let-bindings for all parameter positions of a call, the algorithm
 scales with the number and size of cycles that span identically named
-arguments and parameters (like the cylce between $y$ and $z$ above),
+arguments and parameters (like the cycle between $y$ and $z$ above),
 and employs a single additional variable (called $a$ in the above
 code) to break all these cycles one by one, in line with the results
 of~\cite{May}.
 
-\subsection{Program analyses}
+%%%%%%%%%%%%
+
+\section{Pointers to the literature}
+\label{section:Part1:Semantics:Literature}
+
+Continuations and low-level functional languages have been an object
+of intensive study since their inception about four decades
+ago~\cite{vanWijngaarden1966,Landin1965}.  For retrospective accounts
+of the historical development, see Reynolds~\cite{Reynolds:LSC1993}
+and Wadsworth~\cite{Wadsworth00}. Early uses and studies of CPS
+include~\cite{Reynolds:1972,Plotkin75}.  The relative merits of the
+various functional representations and, and formal conversions between
+these formats, remain an active area of research, in particular with
+respect to their integration with program analyses and optimizing
+transformations.  Recent contributions include
+\cite{DBLP:journals/jfp/DanvyMN07,DBLP:journals/lisp/Reppy02,DBLP:conf/icfp/Kennedy07}.
+%Danvy et al.~\cite{DBLP:conf/dsl/DanvySZ09} show how to use
+%continuations to translate a subset of Algol into JavaScript.
+
+Occasionally, the term \emph{direct style} refers to the combination
+of tail-recursive functions and let-normal form, and the conditions on
+the latter notion is strengthened so that only variables may to appear
+as branch conditions. Variations of this discipline include
+\emph{administrative normal form} (A-normal form,
+ANF~\cite{DBLP:conf/pldi/FlanaganSDF93}),
+B-form~\cite{DBLP:conf/pldi/TarditiMCSHL96}, and
+SIL~\cite{DBLP:journals/jfp/TolmachO98}.
+
+Closely related to continuations and direct-style functional
+representations are \emph{monadic} intermediate languages such as
+those of Benton et al.~\cite{BentonKennedyRussel:ICFP1998} and
+Peyton-Jones et al.~\cite{PeytonJonesShieldsLT:POPL1998}. These
+partition expressions into a category of \emph{values} and
+\emph{computations}, similar to the isolation of primitive terms in
+let-normal form (see also~\cite{Reynolds1974,Plotkin75}). This allows
+one to treat side-effects (memory access, IO, exceptions,\ldots) in a
+uniform way, following Moggi~\cite{Moggi1991}, and thus simplifies
+reasoning about program analyses and the associated transformations.
+
+Rideau et al.~\cite{DBLP:journals/jar/RideauSL08} present an in-depth
+study of SSA destruction, including a verified implementation in the
+proof assistant Coq for the ``windmills''-problem, i.e., the task of
+correctly introducing $\phi$-compensating assignments.
+
+Extending the syntactic correspondences between SSA and functional
+languages, similarities may be identified between the respective
+characteristic program analysis frameworks, \emph{dataflow analyses}
+and \emph{type systems}.  Chakravarty et
+al.~\cite{ChakravartyKZ:COCV03} prove the correctness of a functional
+representation of Wegmann and Zadeck's SSA-based sparse conditional
+constant propagation algorithm~\cite{WegmannZ:Toplas1991}.  Beringer
+et al.~\cite{DBLP:journals/entcs/BeringerMS03} consider data flow
+equations for liveness and read-only variables, and formally translate
+their solutions to properties of corresponding typing derivations.
+Laud et al.~\cite{DBLP:journals/tcs/LaudUV06} present a formal
+correspondence between dataflow analyses and type systems but consider
+a simple imperative language rather than SSA. The
+textbook~\cite{NielsonNielsonHanking:POPA} presents a unifying
+perspective on various program analysis techniques, including data
+flow analysis, abstract interpretation, and type systems. As outlined
+in \emph{loc.~cit.}, the extension of type systems to effect systems
+is particularly suitable for integrating data with control flow
+analyses. Indeed, as functional languages treat code and data in an
+integrated fashion, type-based analyses provide a natural setting for
+developing extensions of (SSA-based) program analyses to
+inter-procedural analyses. For additional pointers on type-based
+program analysis, see~\cite{Palsberg}.
+%
+% of higher-order functions and . For this reason, The fact that
+%they also treat functions like data (as ``first class citizens'') when
+%argument and result passing are concerned makes 
+
+%Modern textbooks on programming language semantics and type systems
+%include~\cite{winskel_93_formal,GunterBook,PierceTAPL}.
+
+\section{Concluding remarks}
+\label{section:Part1:Semantics:Conclusion}
+In addition to the low-level functional languages, alternative
+representations for SSA have been proposed.
+Glesner~\cite{DBLP:conf/asm/Glesner04} employs an encoding in terms of
+abstract state machines~\cite{DBLP:journals/tocl/Gurevich00} that
+disregards the sequential control flow inside basic blocks but retains
+control flow between basic blocks to prove the correctness of a code
+generation transformation. Later work by the same author uses a more
+direct representation of SSA in the theorem prover Isabelle/HOL for
+studying further SSA-based analyses.
+
+Matsuno and Ohori~\cite{DBLP:conf/ppdp/MatsunoO06} present a formalism
+that captures core aspects of SSA in a notion of (non-standard) types
+while leaving the program text in unstructured non-SSA form. Instead
+of classifying values or computations, types represent the definition
+points of variables.  Similar to contexts in functional languages,
+program variables are associated at each program point with types, but
+this association models the reaching-definitions relationship rather
+than approximating the set of possible values the variable may take.
+Noting a correspondence between the types associated with a variable
+and the sets of def-use paths, the authors admit types to be
+formulated over type variables whose introduction and use corresponds
+to the introduction of $\phi$-nodes in SSA.
+
+Finally, Pop et al.'s model~\cite{PopJS2007} dispenses with control
+flow entirely and instead views programs as sets of equations that
+model the assignment of values to variables in a style reminiscent of
+partial recursive functions. This model is discussed in more detail in
+Chapter~\ref{} of the present book.
+
+
+{\tiny
+
+\section{Program analyses}
 \label{section:Part1:Semantics:ProgramAnalyses}
 \footnote{This section still needs polishing/reformulation}
 The correspondence between liveness and free occurrences of names
 manifests itself in the striking structural similarity between the
-liveness-equation for assignments $$\mathsf{LV}([x:=a]^i) =
-\mathsf{Use}(a) \cup (\mathsf{LV}(\mathit{succ}(i)) \setminus \mathsf{Defs}(i))$$ 
+liveness-equation for assignments $$\LV([x:=a]^i) =
+\mathsf{Use}(a) \cup (\LV(\mathit{succ}(i)) \setminus \mathsf{Defs}(i))$$ 
 (where $i$ denotes the assignment's program point) and the clause for
 let-bindings
 %the corresponding expression form %$\letin x a e$ 
 in the definition of free variables,
-$$\mathsf{FV}(\letin x a e) = \mathsf{Use}(a) \cup (\mathsf{FV}(e) \setminus
+$$\fv(\letin x a e) = \mathsf{Use}(a) \cup (\fv(e) \setminus
 \{x\})).
 $$ In fact, the \emph{least} solution to the liveness equations cannot
 only be used to determine the formal parameters of the local functions
@@ -2101,63 +2212,8 @@ equations into imperative programs. Finally, Pop's
 dissertation~\cite{PopDissertation} describes how a number of program
 analyses may be phrased in terms of the equational language, including
 induction variable analysis and other loop optimizations.
+}
 
-%%%%%%%%%%%%
-
-\section{Pointers to the literature}
-\label{section:Part1:Semantics:Discussion}
-
-The relative merits of the various functional representations remain
-an active area of research, in particular with respect to their
-integration with program analyses and optimizing transformations, and
-conversions between these formats. Recent contributions include
-\cite{DBLP:journals/jfp/DanvyMN07,DBLP:journals/lisp/Reppy02,DBLP:conf/icfp/Kennedy07}.
-%Danvy et al.~\cite{DBLP:conf/dsl/DanvySZ09} show how to use
-%continuations to translate a subset of Algol into JavaScript.
-
-The concept of continuations was introduced multiple times, the
-earliest discoveries being attributed by
-Reynolds~\cite{Reynolds:LSC1993} and Wadsworth~\cite{Wadsworth00} to
-van Wijngaarden
-\cite{vanWijngaarden1966} and Landin \cite{Landin1965}. Early uses
-and studies of CPS include \cite{Reynolds:1972,Plotkin75}.  
-
-Occasionally, \emph{direct style} refers to the combination of
-tail-recursive functions and let-normal form. Variations of this
-discipline include
-\emph{administrative normal form} (A-normal form, ANF~\cite{DBLP:conf/pldi/FlanaganSDF93}), B-form~\cite{DBLP:conf/pldi/TarditiMCSHL96}, and SIL~\cite{DBLP:journals/jfp/TolmachO98}. 
-
-Closely related to continuations and direct-style functional
-representations are \emph{monadic} languages such as Benton et al.'s
-MIL~\cite{BentonKennedyRussel:ICFP1998} and Peyton-Jones et al.'s
-language~\cite{PeytonJonesShieldsLT:POPL1998}. These partition
-expressions into a category of \emph{values} and \emph{computations},
-similar to the isolation of primitive terms in let-normal form (see
-also~\cite{Reynolds1974,Plotkin75}). This allows one to treat
-side-effects (memory access, IO, exceptions,\ldots) in a uniform way,
-following Moggi~\cite{Moggi1991}.
-
-Rideau et al.~\cite{DBLP:journals/jar/RideauSL08} present an in-depth
-study of SSA destruction, including a verified implementation in the
-proof assistant Coq for the ``windmills''-problem, i.e., the task of
-correctly introducing $\phi$-node-compensating assignments.
-
-Regarding formally worked-out instantiations of the correspondences
-for program analyses, Chakravarty et al.~present a functional analysis
-of sparse constant propagation~\cite{ChakravartyKZ:COCV03}. Beringer
-et al.~\cite{DBLP:journals/entcs/BeringerMS03} consider data flow
-equations for liveness and read-only variables, and formally translate
-their solutions to properties of corresponding typing
-derivations. Laud et al.~\cite{DBLP:journals/tcs/LaudUV06} present a
-formal correspondence between dataflow analyses and type systems but
-consider a simple imperative language rather than SSA or a functional
-representation. The textbook~\cite{NielsonNielsonHanking:POPA}
-presents a unifying perspective on program analysis techniques,
-including data flow analysis, abstract interpretation, and type
-systems.
-
-Modern textbooks on programming language semantics and type systems
-include~\cite{winskel_93_formal,GunterBook,PierceTAPL}.
 
 %\bibliographystyle{alpha}
 %\bibliography{chapter}
