@@ -1,0 +1,81 @@
+Here are some general remarks that I will develop further (and try to provide some suggestions to solve it):
+
+- Length and missing related work: 
+This is much too long for the content. After putting some figures together, adding some content (around 2 pages) related to loop transformation techniques (see later), it should definitely not exceed 15 pages. I tried to give you (both in what follows and using annotations of the pdf) suggestions to reduce the length.
+
+- No external refs in the main part:
+Sorry if I have not been clear in the past, but I impose each chapter to be self content. I mean, you can refer to another chapter but you cannot refer to any paper. References should appear in the last section of your chapter that provides further readings etc. For example I should not have to read [10] to understand the motivation for full array SSA. 
+ 
+- Less formalism as possible (in particular lattices):
+I found it easy to read as I have abilities to manipulate formalism. Even though I believe it is too formal. Too many notations is a killer for many people I know. Personally I think all the lattice formalism is useless (as convergence is trivial in this case) all the more it is already developed in the propagation engine chapter.
+
+- Lack of applications for full array ssa: 
+You present full array SSA form but do not provide any application to it. The @phi seems to be an interesting idea that can be approximated at compilation time (using for example polyhedral tools). Still there are some problems related to this notion as I will develop further (espetially for detection of parallelism which is I think the main purpose of this representation). However you need to explain what you mean by run-time evaluation, storage duplication etc. (I had to read the corresponding paper to understand). Actually I am not convinced with the practical interest of it (versus FADA for example, but this is my personnal point of view you do not need to share it :-)) and you really need to describe other existing approaches to give your chapter more rightness. 
+
+- Emphasize "irregular" memory access rather than arrays: 
+We do not see the interest of partial array SSA just for arrays as it is presented. Indeed dependence graph (along with Array Dataflow Analysis) seems to be much more powerful (at least for constant propagation). I am actually not convinced at all about its advantages for loop parallelization as it adds lots of dependencies. On the other hand I like it for representing object references (still not for parallelization, but just for simple back-end transformations as the one you develop).
+
+- What about related work (esp. loop opt):
+ As you choose for your representation "Array SSA" you cannot ignore all the work done on automatic parallelization that among others focused on expressing efficiently dependencies between array access. So you have to dedicate at least 2 pages one this.
+
+- Some concerns about the correctness:
+See details both below and in the annotated pdf.
+
+==== // =====
+
+Let me now detail a few points (to illustrate my remarks) in addition to some precise suggestion (to simplify the notations and reduce the size). I also annotated the pdf when I refer to specific parts in the text.
+
+- Do you really want to talk about full array SSA? What about removing it? If we decide to keep it then you need to explain that you propose to actually modify the code to "implement" the phi & @phi (this is what you call run-time evaluation), expand the arrays (storage duplication) so as to expose parallelism thanks to speculation. Then give the example provided in 10 (figures 15 and 18 should be sufficient).
+
+- The presentation of full array ssa can be shortened easily:
+  - you can remove description of properties of SSA. 
+  - the example with a simple if-then-else can be dropped of. Yon can directly go with the example with the loop. This will have the advantage that we understand the meaning of the timestamp that does not make much sens for loop free programs.
+
+- There is a flow in your definition of iteration vector which is different than the one used in polyhedral tools (such as Cloog). Indeed, if you have the following code:
+S:=...
+if (C) then
+  S:=...
+endif
+
+that gives:
+
+@S1:=()
+@S2:=()
+S1:=...
+@S1:=(1)
+if (C) then
+  S1:=...
+  @S1:=(1)
+endif
+S3 := PHI(S1, @S1, S2, @S2)
+@S3 := max(@S1, @S2)
+
+@S1 & @S2 are equal...
+
+Instead in ClooG (for example), instructions are numbered, a lexical dimension is introduced within each loop dimension which avoids the problem.
+
+- For partial array SSA (1.2.2 and further) you drop of @A by pretending that no information can be attached to it at compile time. This I do not agree.
+If you agree with me, what you should do (because you will not redesign partial array SSA to please me :-)), is simply say that computing informations for @A at compile time requires advanced analysis technics (that you will mention in you last section of the chapter) and that partial array SSA is a simplification designed for simple data-flow analysis... blablabla.
+
+- Concerning reachable/unreachable code that you say @A cannot represent. I do not agree for the same reason than the previous point. Also, there is an important point that needs to be clarified: even in full array SSA form, you droped of the control dependence on phi functions. This is fine (if you keep the @A with a refined timestamp vector) as soon as you do not do any transformation on your SSA code such as code motion and then build array SSA. As an example, 
+A1:=...
+A2:=...
+if (c) then
+  ...
+endif
+A3:=phi(A1,A2)
+is a correct SSA code. If you remove the control dependance you lose the full semantic. This key difference between array SSA and SSA is confusing for someone who knows well SSA (which is as opposed to array ssa a real IR that can afford complex transformations -- see update chapter).
+
+- The fact that you restrict your discussion to reachable/unreachable code is very confusing. You clearly have a precise family of analysis in mind (which is quite restrictive), and you should state that from the really beginning: "partial ssa is an IR (that cannot afford code transformations) designed for this set of analysis... blablabla."
+
+- Concerning the lattice representation for arrays. The part on the constant case can easily be shortened into 10 lines (figures 1.6, 1.7, 1.8, 1.9 & 1.10 can be removed): You just have to say that an array in that case behaves just like a set of independant scalar variables A[0], A[1], etc. Instead of having a separate lattice for each element you consider a unified lattice for the full array that is noting else than the cross product of all its elements. This lattice is represented in a dense way where only non bottom elements are stored. Hence if L(A) = [ _, _, 25, _, -5 ], it is represented as a set {(2,3), (4,-5)}. This as several advantages: the size of the set will be small in pratice (less than the size of the program); this allows to generalize to the symbolic index values.
+
+- For section 1.5, why don't you simply start with a simple if then else example that discusses the merge depending on the knowledge we have on the indices (if they are DD or DS). Then everything is clear and you just need to provide figures 1.8 & 1.9 for completness.
+
+- Again partial array SSA just for arrays is not very convincing. Evenmore that the DD relation is difficult to compute precisely enough. On the other hand for object references, partial array ssa does not suffer the comparison to (F)ADA and is easier to understand than some representations such as H-SSA. I would suggest you make a section 1.5 that presents both non constant indices case and heap arrays. 
+
+- It seems extremely important that you describe in details the representation of the result of both array data flow analysis and pointer alias analysis (or some others analysis if you think this is more appropriate). Given this result how you derive DS & DD information. Giving some heuristics for computing DD & DS directly is also good but not mandatory as soon as you give good pointers. Again, be careful that I do not want any references (other than internal to the book) in the trunk of the chapter. The main part must be self content. References have to be in the last section (extensions, related work, etc).
+
+- I think you can drop off the Dead Store Elimination part which is I admit useful when you do scalar replacement but I do not find it necessary for the understanding (Redundant load example seems to be sufficient to illustrate). You can (should) of course mention it in the last section.
+
+- You really need to talk about other representations (in a last section) that would do similar work. Among others you need to mention H-SSA (and the corresponding chapter), DSA (along with Alpha for example), FADA, ...
