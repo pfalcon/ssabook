@@ -2,6 +2,8 @@
 \label{chap:classical_construction}
 \inputprogress
 
+\graphicspath{{Figures/}{classical_construction_algorithm/Figures/}{part1/classical_construction_algorithm/Figures/}}
+
 
 \def\phiops{$\phi$-functions}
 \def\phiop{$\phi$-function}
@@ -21,7 +23,7 @@ generally
 takes place in an optimizing compiler after all SSA optimizations have
 been performed, and prior to code generation. However note that there are
 specialized code generation techniques that work directly on SSA-based
-intermediate representations such as code selection (see Chapter~\ref{chapter:code_selection}), if-conversion (see Chapter~\ref{chapter:if_conversion}), or register allocation (see Chapter~\ref{chapter:register_allocation}).
+intermediate representations such as code selection (see Chapter~\ref{chapter:code_selection}), if-conversion (see Chapter~\ref{chap:if_conversion}), or register allocation (see Chapter~\ref{chap:register_allocation}).
 
 The algorithms presented in this chapter are
 based on material from the seminal research papers on SSA.
@@ -48,7 +50,28 @@ variables, with no pointer indirection.
 SSA extensions for high-level features like
 pointer-based aliasing, arrays, compound data structures, concurrency, etc.)
 
+Figure \ref{fig:examplecfg} shows an example control flow graph
+program. The set of nodes is $\{ r, A, B, C, D, E\}$.
+The set of variables is $\{ x, y, \mathit{tmp} \}$.
+Note that the program shows the complete control flow structure,
+denoted with directed edges between the nodes.
+However the program only shows 
+statements that define relevant variables, together with the
+unique \texttt{return} statement at the exit point of the CFG.
+All of the program variables are undefined on entry. On certain
+control
+flow paths, some variables may be used without being defined.
+We discuss this issue later in the section.
+We intend to use this program as a running example
+throughout the chapter,
+to demonstrate various aspects of SSA construction.
 
+
+\begin{figure}
+\includegraphics[width=5cm]{initial.jpg}
+\caption{\label{fig:examplecfg}Example control flow graph, before
+  SSA construction occurs}
+\end{figure}
 
 \section{Construction}
 The original construction algorithm for SSA form 
@@ -65,11 +88,26 @@ In this chapter, we focus on the \textit{minimal} SSA form.
 Construction of minimal SSA 
 requires for each variable $v$ the insertion of \phiops\ at $\join(D_v)$.
 Here $D_v$ is the set of definition points of $v$, and,
-for a given set of program points $S$, $\join(S)$ is the set of \textit{join nodes} of $S$
+for a given set of program points $S$, $\join(S)$ is the set of
+\textit{join nodes} of $S$
 i.e., nodes in the CFG that can be reached by
 two (or more) distinct elements of $S$ using disjoint paths.
+
+Let us consider some join set examples from the
+program in Figure \ref{fig:examplecfg}.
+\begin{enumerate}
+\item $\join(\{B,C\}) = \{D\}$, since it is possible to get from $B$ to $D$
+and from $C$ to $D$ along different, non-overlapping, paths.
+\item Again, $\join(\{r, A, B, C, D, E \}) = \{A,D,E\}$, since the nodes
+$A$, $D$, and $E$ are the only nodes with multiple predecessors in
+the program.
+\end{enumerate}
+
  
-The original construction for SSA form uses an over-approximation of join sets, the iterated dominance frontier $\iDF(S)=\join(S\cup \{r\})$. 
+The original construction for SSA form uses an over-approximation of
+join sets, the iterated dominance frontier $\iDF(S)=\join(S\cup
+\{r\})$, i.e.\ it assumes an \emph{implicit} definition of every
+variable at the entry node $r$.
 The iterated dominance frontier is the limit of the sequence:
 $$\begin{array}{lll}
 \DF_1(S) & = & \DF(S)\\
@@ -80,17 +118,59 @@ $$\begin{array}{lll}
 If so - refer back to that section...
 Also, is $\DF$ defined over nodes, or sets of nodes?)
 
-We end up with a straightforward algorithm that places \phiops\ on a per-variable basis.
-For a given variable $v$, we place \phiops\ at the iterated dominance frontier $\iDF(S)$ where $S$ is the set of definition points for $v$.
-As discussed ealier, this leads to building a form that has the dominance property (see Chapter~\ref{chapter:properties_and_flavors}).
+We end up with a straightforward algorithm that places \phiops\
+on a per-variable basis.
+For a given variable $v$, we place \phiops\ at the
+iterated dominance frontier $\iDF(S)$ where
+$S$ is the set of definition points for $v$.
+As discussed ealier, this leads to building a form that has
+the dominance property (see Chapter~\ref{chapter:properties_and_flavors}).
 
-If we assume, not unreasonably, that the dominance frontier of each CFG node is precomputed, then the \phiops\ can be inserted iteratively using a worklist of definition points, and flags (to avoid multiple insertions). The corresponding pseudo-code is given in Figure~\ref{fig:classical_construction:phi_insertion}.
+Consider again our running example from Figure 
+\ref{fig:examplecfg}. The set of definition points for variable
+$x$ is $\{ B,C,D \}$. The iterated dominance frontier of this set
+is $\{ A, D, E \}$. Hence we need to insert 
+\phiops\ at the heads of nodes $A$, $D$, and $E$.
+Figure \ref{fig:examplessa_varx} shows the example control flow graph
+with inserted \phiops\ for $x$ marked in red.
+
+\begin{figure}
+\includegraphics[width=5cm]{ssa_variablex.jpg}
+\caption{\label{fig:examplecfg}Example control flow graph, including
+inserted \phiops\ for variable $x$
+}
+\end{figure}
+
+
+
+If we assume, not unreasonably, that the dominance frontier of each
+CFG node is precomputed, then the \phiops\ can be inserted iteratively
+using a worklist of definition points, and flags (to avoid multiple
+insertions). The corresponding pseudo-code is given in
+Figure~\ref{fig:classical_construction:phi_insertion}.
+FIXME - explain issue about cascading inserts. A \phiop\ is itself a 
+definition, so could require further \phiops\ to be inserted.
+Give an example figure...
+
+The worklist - records definition points that we have not yet
+processed - i.e. haven't yet inserted \phiops\ at their dominance
+frontier.
+The flags array is used to avoids repeated insertion. A node may be
+shared across several dominance frontiers, so once a \phiop\ has been
+inserted once, no need to insert another one. Single \phiop\ per
+variable handles all incoming definitions.
+E.g. in running example - see Figure \ref{fig:examplessa_varx},
+\phiop\ at $E$ could be inserted because $E$
+is in dominance frontier of D, also in dominance frontier of C. Once
+inserted, no need to reinsert (or to consider its own iterated dom
+frontier again...)
+
 
 (FIXME - do we need the next paragraph here or should we leave this detail until
 the Advanced construction chapter??)
 
 Providing the dominance tree as a given, the computation of the dominance frontier is quite straight-forward. This can be understood using the DJ-graph notation. The skeleton of the DJ-graph is the dominator tree of the CFG that makes the $D$-edges. This is augmented with $J$-edges (join edges) that correspond to all edges of the CFG which source do not dominate its destination. A $DF$-edge (dominance frontier edge) is an edge which destination is in the dominance frontier of its source. By definition, there is a $DF$-edge $(a,b)$ between every CFG nodes $a$, $b$ such that there is a CFG-path from $a$ to $b$ but $a$ does not dominate $b$. 
-In other-words, for each  $J$-edge $(a,b)$, all ancestors (including $a$) that do not dominate $b$ have $b$ in there dominance frontier. This leads to the pseudo-code given in Figure~\ref{fig:classical_construction:df}. The iterated dominance frontier is nothing else than the transitive closure of the dominance frontier and we can define the $DF^+-graph$ as the transitive closure of the $DF$-graph. We can compute the iterated dominance frontier for each variable independently, as proposed in this chapter, or ``cache'' it to avoid multiple computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chap:alternative_ssa_construction_algorithms}.
+In other-words, for each  $J$-edge $(a,b)$, all ancestors (including $a$) that do not dominate $b$ have $b$ in their dominance frontier. This leads to the pseudo-code given in Figure~\ref{fig:classical_construction:df}. The iterated dominance frontier is nothing else than the transitive closure of the dominance frontier and we can define the $DF^+-graph$ as the transitive closure of the $DF$-graph. We can compute the iterated dominance frontier for each variable independently, as proposed in this chapter, or ``cache'' it to avoid multiple computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chap:alternative_ssa_construction_algorithms}.
 
 \begin{figure}
 \begin{verbatim}
@@ -229,7 +309,7 @@ foreach B0: basic block of the CFG
 
 Even this extremely conservative algorithm can lead to potential bugs especially when dealing with SSA destruction at code generation level. Indeed, we must make sure that appending a copy at the very end of a basic block is possible. This would, for example be problematic, in the situation where the jump at the end of the basic block defines a variable used in the following \phiop. We should also be careful of duplicated edges, ie when a basic block appears twice in the list of predecessors. This can append after some dead code and empty block eliminations. In that case, the edges should be considered as critical and then split.
 
-We should outline that this technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not allow to split a given edge; second, the obtained code contains many additional temporary-to-temporary copies. In theory, coping with these copies is the role of the coalescer during the register allocation phase. But only decoupled register allocators (such as the one detailed in Chapter~\ref{ chap:register-allocation}) with memory and time-consuming coalescing heuristics can handle the removal of these copies effectively. Coalescing can also, with less efforts, be handled prior to the register allocation phase. As opposed to a (so called conservative) coalescer during register allocation, this so called aggressive coalescing would not cope with the interference graph colorability. Still the insertion of copies itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative-destruction} is to cope both with non splittable edges and difficulties related with SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
+We should outline that this technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not allow to split a given edge; second, the obtained code contains many additional temporary-to-temporary copies. In theory, coping with these copies is the role of the coalescer during the register allocation phase. But only decoupled register allocators (such as the one detailed in Chapter~\ref{chap:register-allocation}) with memory and time-consuming coalescing heuristics can handle the removal of these copies effectively. Coalescing can also, with less efforts, be handled prior to the register allocation phase. As opposed to a (so called conservative) coalescer during register allocation, this so called aggressive coalescing would not cope with the interference graph colorability. Still the insertion of copies itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative-destruction} is to cope both with non splittable edges and difficulties related with SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
 
 Once, \phiops\ have been replaced by parallel copies, we need to sequentialize parallel copies ie replace them by a sequence of simple copies. This phase can be performed right after SSA destruction or later on even after register allocation have been performed (see Chapter~\ref{chap:register_allocation}). It might be useful to postpone it as it introduces some arbitrary interferences between variables. As an example, $(a_1,b_1)\gets (a_2,b_2)$ can be sequentialized into $a_1\gets a_2;\ b_1\gets b_2$ which would make $b_2$ interfere with $a_1$ while the other way round $b_1\gets b_2;\ a_1\gets a_2$ would not ($a_2$ would interfere with $b_1$ instead).
 If we still decide to replace parallel copies into a sequence of simple copies right after our SSA destruction (with no copy propagation / coalescing in between), this is straightforward: as no variable both appears as a source and as a destination (either all the sources or all the destinations are freshly created variables), any order is correct. Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} will provide the pseudo-code that is required after coalescing have been performed and Chapter~\ref{chapter:register_allocation} will deal with the case under register allocated code.
