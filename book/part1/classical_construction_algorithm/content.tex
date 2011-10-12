@@ -8,15 +8,16 @@
 
 %% jsinger - simple introductory paragraphs
 
-This chapter describes the standard algorithms for SSA \textit{construction} and
-\textit{destruction}.
+This chapter describes the standard algorithms for construction and
+destruction.
 
-SSA construction refers to the process of translating a non-SSA program into
+SSA \emph{construction} refers to the process of translating a non-SSA program into
 one that satisfies the SSA constraints. In general, this transformation
 occurs as one of the
 earliest phases in the middle-end of an optimizing compiler, when the program
 has been converted to three-address intermediate code.
-SSA destruction is sometimes called out-of-SSA translation. This phase
+SSA \emph{destruction} is sometimes called out-of-SSA translation. This phase
+generally
 takes place in an optimizing compiler after all SSA optimizations have
 been performed, and prior to code generation. However note that there are
 specialized code generation techniques that work directly on SSA-based
@@ -30,8 +31,10 @@ For these reasons, the algorithms
 are widely implemented in current compilers.
 Note that more
 efficient, albeit more complex, alternative algorithms have been devised.
-These are described further in Chapters \ref{chap:alternative_construction}
-and \ref{chap:alternative_destruction}.
+These are described further in Chapters 
+\ref{chap:alternative_ssa_construction_algorithms}
+and
+\ref{chap:alternative_ssa_destruction_algorithm}.
 
 Throughout this chapter,
 we assume that a `program' is represented as an
@@ -56,12 +59,16 @@ The resulting live-ranges have the property of having a single definition, which
 \item \textbf{variable renaming} assigns a unique variable name to each live-range. This second phase rewrites variable names in program statements such that the program text contains only one definition of each variable, and every use refers to its corresponding unique reaching definition.
 \end{enumerate}
 
-As already outlined in Chapter \ref{chap:properties-and-flavours},
+As already outlined in Chapter \ref{chap:properties_and_flavours},
 there are different flavors of SSA with distinct properties.
 In this chapter, we focus on the \textit{minimal} SSA form.
 Construction of minimal SSA 
-requires for each variable $v$ the insertion of \phiops\ at $\join(D_v)$ where $D_v$ is the set of definition points of $v$.  For a given set of program points $S$, $\join(S)$ is the set of \textit{join nodes} of $S$
-i.e., nodes in the CFG that can be reached by two (or more) distinct nodes of $S$ using disjoint paths. 
+requires for each variable $v$ the insertion of \phiops\ at $\join(D_v)$.
+Here $D_v$ is the set of definition points of $v$, and,
+for a given set of program points $S$, $\join(S)$ is the set of \textit{join nodes} of $S$
+i.e., nodes in the CFG that can be reached by
+two (or more) distinct elements of $S$ using disjoint paths.
+ 
 The original construction for SSA form uses an over-approximation of join sets, the iterated dominance frontier $\iDF(S)=\join(S\cup \{r\})$. 
 The iterated dominance frontier is the limit of the sequence:
 $$\begin{array}{lll}
@@ -69,12 +76,21 @@ $$\begin{array}{lll}
 \DF_{i+1}(S) & = & \DF\left(S\cup \DF_i(S)\right)
 \end{array}$$
 
+(FIXME - where have we described dominance frontiers? In chapter 2?
+If so - refer back to that section...
+Also, is $\DF$ defined over nodes, or sets of nodes?)
+
 We end up with a straightforward algorithm that places \phiops\ on a per-variable basis.
-For a given variable $v$, we place \phiops\ at the iterated dominance frontier $DF^{+}(S)=\bigcup_{n\in S} \DF(s)$ of the set of definition points $S$ for $v$. As discussed further, this leads to building a form that has the dominance property (see Chapter~\ref{chapter:properties_and_flavors}).
+For a given variable $v$, we place \phiops\ at the iterated dominance frontier $\iDF(S)$ where $S$ is the set of definition points for $v$.
+As discussed ealier, this leads to building a form that has the dominance property (see Chapter~\ref{chapter:properties_and_flavors}).
+
 If we assume, not unreasonably, that the dominance frontier of each CFG node is precomputed, then the \phiops\ can be inserted iteratively using a worklist of definition points, and flags (to avoid multiple insertions). The corresponding pseudo-code is given in Figure~\ref{fig:classical_construction:phi_insertion}.
 
+(FIXME - do we need the next paragraph here or should we leave this detail until
+the Advanced construction chapter??)
+
 Providing the dominance tree as a given, the computation of the dominance frontier is quite straight-forward. This can be understood using the DJ-graph notation. The skeleton of the DJ-graph is the dominator tree of the CFG that makes the $D$-edges. This is augmented with $J$-edges (join edges) that correspond to all edges of the CFG which source do not dominate its destination. A $DF$-edge (dominance frontier edge) is an edge which destination is in the dominance frontier of its source. By definition, there is a $DF$-edge $(a,b)$ between every CFG nodes $a$, $b$ such that there is a CFG-path from $a$ to $b$ but $a$ does not dominate $b$. 
-In other-words, for each  $J$-edge $(a,b)$, all ancestors (including $a$) that do not dominate $b$ have $b$ in there dominance frontier. This leads to the pseudo-code given in Figure~\ref{fig:classical_construction:df}. The iterated dominance frontier is nothing else than the transitive closure of the dominance frontier and we can define the $DF^+-graph$ as the transitive closure of the $DF$-graph. We can compute the iterated dominance frontier for each variable independently, as proposed in this chapter, or ``cache'' it to avoid multiple computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chapter:alternative_ssa_construction_algorithms}.
+In other-words, for each  $J$-edge $(a,b)$, all ancestors (including $a$) that do not dominate $b$ have $b$ in there dominance frontier. This leads to the pseudo-code given in Figure~\ref{fig:classical_construction:df}. The iterated dominance frontier is nothing else than the transitive closure of the dominance frontier and we can define the $DF^+-graph$ as the transitive closure of the $DF$-graph. We can compute the iterated dominance frontier for each variable independently, as proposed in this chapter, or ``cache'' it to avoid multiple computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chap:alternative_ssa_construction_algorithms}.
 
 \begin{figure}
 \begin{verbatim}
@@ -117,7 +133,9 @@ foreach (a,b) in cfg_edges
 
 Once \phiops\ have been inserted using this algorithm, the program may still contain several definitions per variable, however there is a static single definition statement that reaches each use. Moreover, with the following semantics for \phiops\ where its variable uses are considered to be on the corresponding predecessor basic blocks, then use-def chains are aligned with the CFG dominance tree. In other word the unique definition that reaches each use dominates that use.
 
-To obtain a code with a static single assignment per variable, it is necessary to perform variable renaming. Because of the dominance property outlined above,
+To obtain the desired property of a static single assignment per variable,
+it is necessary to perform variable renaming.
+Because of the dominance property outlined above,
 renaming can be easily achieved using a DFS traversal of the dominance tree.
 During the traversal, for each variable $v$, it is necessary to remember its nearest dominating definition.
 This gives the following pseudo-code for the variable renaming algorithm:
@@ -154,9 +172,14 @@ proc v.update_reachingDef(o):
   v.reachingDef:=rd
 \end{verbatim}
 
-As mentioned earlier, this simple algorithm constructs programs in a SSA form that is \textit{minimal}. It is not pruned SSA as some dead \phiops\ are possibly inserted. 
-It is \textit{conventional} SSA as the transformation that renames back all $\phi$-related variables into a unique representative one, and removes all \phiops\ is a correct SSA-destruction algorithm.
-Finally, such SSA has the \textit{dominance} property: each variable use is dominated by its unique definition. This is due to the use during the $\phi$-placement phase of iterated dominance frontier instead of join set. Whenever the iterated dominance frontier of the set of definition points of a variable differs from the join set, then at least one program point can be reached both by $r$ (the entry of the CFG) and one of the definition points. In other words, as in the double diamond figure (to be inserted), a use of an inserted \phiop\ does not have any actual reaching definition that dominates it. This corresponds to the undef value used to initialize reachingDef in the renaming phase pseudo code. Actual implementation can use NULL value, create a fake undefined variable at the entry of the CFG, or create on the fly undef pseudo operations just before the concerned used. We choose to use in this book the undef value, represented with the $\undef$ sign.
+Let us review the flavour of SSA form that can is constructed by this simple
+algorithm. (FIXME - Ref back to chapter 2?)
+\begin{itemize}
+\item It is \textit{minimal} --- FIXME what does minimal mean? 
+\item It is \textit{not pruned} SSA as some dead \phiops\ are possibly inserted.
+\item It is \textit{conventional} SSA as the transformation that renames back all $\phi$-related variables into a unique representative one, and removes all \phiops\ is a correct SSA-destruction algorithm.
+\item Finally, it has the \textit{dominance} property; each variable use is dominated by its unique definition. This is due to the use during the $\phi$-placement phase of iterated dominance frontier instead of join set. Whenever the iterated dominance frontier of the set of definition points of a variable differs from the join set, then at least one program point can be reached both by $r$ (the entry of the CFG) and one of the definition points. In other words, as in the double diamond figure (to be inserted), a use of an inserted \phiop\ does not have any actual reaching definition that dominates it. This corresponds to the undef value used to initialize reachingDef in the renaming phase pseudo code. Actual implementation can use NULL value, create a fake undefined variable at the entry of the CFG, or create on the fly undef pseudo operations just before the concerned used. We choose to use in this book the undef value, represented with the $\undef$ sign.
+\end{itemize}
 
 
 \section{Destruction \Author{F. Rastello}}
