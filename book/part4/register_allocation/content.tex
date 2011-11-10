@@ -476,42 +476,28 @@ First, it still is chordal, hence easily colorable in linear time;
 Second, we know that $R$~colors are sufficient to color it since $\maxlive \leq R$.
 In this section, we will first present the traditional graph coloring heuristic of Chaitin et al.\ and show how it successfully color programs under SSA form.
 We will then present a lighter coloring algorithm based on the scanning on the dominance tree.
-Finally, we will then explain how to add \emph{coalescing} to the coloring phase to reduce the number of copies in a program.
+Finally, we will explain how to add \emph{coalescing} to the coloring phase to reduce the number of copies in a program.
 
  
 
 \subsection{Greedy coloring scheme}
 \label{sec:regalloc:greedy-col}
 
-{\sl
-\begin{itemize}
-  \item two simplicial nodes
-  \item color in the reverse order of simplification
-  \item one such order considers subtrees from the root of the tree
-  \item no need to construct interference graph
-  \item Fab: make it as more intuitive as possible. Avoid as much as possible 
-    chordal stuffs which are useless. Greedy coloring and its relationship with 
-    the subtree representation is important on the other hand. See with Philip 
-    to avoid redundancies between your chapter and his (SSA properties). It is 
-    important to outline here that this property that is due to decoupled+SSA 
-    enables more aggressive coalescing heuristics. But also simpler 
-    (tree-scan).
-\end{itemize}
-}
-
-
-In traditional graph coloring register allocation algorithms, the assignment is done by coloring the interference graph with the greedy heuristic of Chaitin et al.~\cite{chaitin:1981:register}.
+In traditional graph coloring register allocation algorithms, the assignment of registers to variables is done by coloring the interference graph using the greedy heuristic of Chaitin et al.
 This scheme is based on the observation that given $R$ colors---representing the registers---, if a node in the graph has at most $R-1$ neighbours, there will always be one color available for this node whatever colors the remaining nodes have.
 Such a node node can be \emph{simplified}, i.e., removed from the graph and placed on a stack.
-This process can be iterated with the remaining nodes, whose degree may have decreased if the simplified node was one of their neighbours.
+This process can be iterated with the remaining nodes, whose degree may have decreased (if the simplified node was one of their neighbours).
 If the graph becomes empty, we know it is possible to color the graph with $R$ colors; 
-Such a coloring can be obtained by assigning colors to nodes in the reverse order of their simplification, i.e., by popping nodes from the stack and assigning them one available color, which is always possible since they have at most $R-1$ colored neighbours.
-We call this algorithm the \emph{greedy coloring scheme}.
+In particular, a valid $R$-coloring can be obtained by assigning colors to nodes in the reverse order of their simplification,
+i.e., popping nodes from the stack and assigning them one available color.
+This is always possible since they have at most $R-1$ colored neighbours.
+We call this algorithm the \emph{greedy coloring scheme}.\index{greedy coloring scheme}
 
-Since it is a coloring heuristic, this scheme can get stuck (whenever all remaining nodes have degree at least $R$).
+The greedy scheme is a coloring heuristic, and as such, it can get stuck;
+it happens whenever all remaining nodes have degree at least $R$.
 In that case, we do not know whether the graph is $R$-colorable or not.
 In traditional register allocation, this is the trigger for spilling some variables so as to unstuck the simplification process.
-However, we will see that under the SSA form, after spilling has already been done so that the register pressure is at most $R$, the greedy coloring scheme can never get stuck.
+However, we will see that under the SSA form, if spilling has already been done so that the maximum register pressure is at most $R$, the greedy coloring scheme can never get stuck.
 
 \begin{comment}
 \begin{function}[h]
@@ -563,8 +549,16 @@ return stack ;
 \label{sec:regalloc:ssa-greedy}
 
 One of the interesting properties of SSA form for register allocation is that the live-ranges of variables are subtrees of the dominance tree (see Chapter~\ref{chap:properties-and-flavours}, Section~\ref{part1:ssaprop:subtrees}).
-This means the interference graph is chordal and can be represented as the intersection graph of a family of subtrees.
-We will now prove that if the register pressure is at most $R$, the interference graph can be colored with $R$ colors using the greedy scheme.
+The interference graph in hence the intersection graph of a family of subtrees.
+In the graph theory, this means this graph in chordal and as such colorable in polynomial time, but it is in fact quite easy to understand why without resorting to this theory.
+
+Consider the greedy coloring scheme described in the previous section, and picture a ``tree'' representation in you head.
+At the end of each dangling branch there is a ``leaf'' variable, that is defined last in this branch.
+We can visually see that this variable will not have many intersecting variables;
+it is in fact a candidate for simplification, and once removed another variable will become the new leaf.
+We see that simplification can always happens at the end of the branches of the dominance tree, moving upwards until the whole tree is simplified.
+
+We will now prove more thoroughly that if the register pressure is at most $R$, the interference graph can be colored with $R$ colors using the greedy scheme.
 
 \begin{proof}
   Let us consider such a subtree representation of the interference graph (see Figure~\ref{fig:regalloc:subtree} TODO) and try to apply the greedy coloring scheme to it.
@@ -586,20 +580,20 @@ We will now prove that if the register pressure is at most $R$, the interference
   \label{fig:regalloc:subtree}
 \end{figure}
 
-We just proved that if we are under SSA form and the spilling has already been done so that $\maxlive \leq R$, the classical greedy coloring scheme of Chaitin et al.\ is \emph{guaranteed} to perform register allocation with $R$ without any additional spilling.
-This is practical for instance when working on an existing compiler that uses classical register allocation (for instance, the Iterated Register Coalescing of George and Appel~\cite{george:96:iterated}).
+We just proved that if we are under SSA form and the spilling has already been done so that $\maxlive \leq R$, the classical greedy coloring scheme of Chaitin et al.\ is \emph{guaranteed} to perform register allocation with $R$ colors without any additional spilling.
+This is practical for instance when working on an existing compiler that uses a classical register allocation algorithm, for instance, the Iterated Register Coalescing.
 
 
-The original simplification scheme of Chaitin et al.\ does the job, without any modification. 
-Following a call to Is\_k\_Greedy, it is possible to re-use the stack to assign the colors by making a call to Assign\_colors, Figure~\ref{code:assign-color}. 
+It is also possible to assign colors directly after the greediness has been check during the spilling phase (see Section~\ref{todo}).
+Indeed, the function Is\_k\_Greedy maintains a stack of simplified variables. 
+This stack can be directly used for coloring by making a call to Assign\_colors given in Figure~\ref{code:assign-color}. 
+
 Among the good things, this also means that existing register allocators can be easily modified to handle SSA code and that register allocation can benefit from powerful coalescing strategies such as aggressive or conservative ones. 
-Moreover, the fact that register allocation can be decoupled into a phase of spilling first and then a phase of coloring/coalescing allows the writing of more involved coalescing \todo{cite examples}.
+Moreover, the fact that register allocation can be decoupled into a phase of spilling first and then a phase of coloring/coalescing allows the writing of more involved coalescing strategies, as we have reduced the interplay (hence complexity) between those two phases.
 
-
-However, this algorithm still needs the interference graph, an additional structure that takes time to build and uses memory up.
-We will propose next a lighter coloring algorithm based on the insight given by the greedy coloring scheme.
-
-
+One disadvantage remains compared to lighter algorithms, we still use the interference graph, a structure that takes time to build and uses memory up.
+By building on our current understanding of why the greedy scheme works for SSA graphs, we will show next how to design a 
+lighter coloring algorithm.
 
 
 
@@ -638,16 +632,16 @@ Function Assign_colors(G)
 }
 
 One of the advantages of SSA is to make things simpler, faster, and use less memory. 
-For the register assignment problem, we have seen that the existing greedy scheme based on simplification still works; 
-However, it requires constructing and maintaining an interference graph, a structure judged to big and cumbersome to be used in a JIT context, where compilation time and memory prints matter more. 
-%This is one of the reasons linear-scan allocators are being developed, even if their performance does not equal those of aggressive time-consuming off-line compilers. 
-We will now present a method to perform a fast register assignment for SSA after spilling which does not need more than the dominance tree and def-use chains. 
+For the register assignment problem, we now know that the existing greedy scheme based on simplification still works; 
+However, it requires constructing and maintaining the interference graph, a structure judged to big and cumbersome to be used in a JIT context, where compilation time and memory prints matter more. 
+We will now show how to perform a fast register assignment for SSA after spilling that does not need more than the dominance tree and def-use chains. 
 
 The algorithm we propose scans the dominance tree, coloring the variables from the root to the leaves in a top-down order.
-The variables are colored in the order of their definitions.
-A pseudo-code is given in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}.
-Intuitively, this method works because when the scanning arrives at the definition of a variable, the only colored variables are ``above'' it and since there is at most $R-1$ other variables live at the definition, there is always a free color.
-We will now prove that this method always work;
+This means the variables are simply colored in the order of their definitions, first come first served!
+We give the pseudo-code in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}; It works because it mimics the effect of the greedy scheme (``leaves'' are simplified first hence colored \emph{last}), without actually performing any simplification.
+
+Intuitively, when the scanning arrives at the definition of a variable, the only colored variables are ``above'' it and since there is at most $R-1$ other variables live at the definition, there is always a free color.
+We will now prove more formally that this method always work;
 The key observation is that the order in which variables are considered corresponds to a reverse order of simplification, i.e., a valid order of the nodes on the stack after the greedy simplification scheme.
 
 \begin{proof}
@@ -663,6 +657,7 @@ The key observation is that the order in which variables are considered correspo
   As we have seen previously in Section~\ref{sec:regalloc:greedy-col}, this means the reverse order $v_n, v_{n-1}, \ldots, v_1$ is a valid order for coloring.
 \end{proof}
 
+FLORENT: continue reading HERE.
 
 \begin{important}
 It is important to understand why this method does not work in the general non-SSA case.
@@ -925,6 +920,19 @@ must be added to keep the behaviour of the program.
   \item Fab: Yes make it as simple as possible. Local pcopy motion works in practice. It is useless to go further. The ultimate solution (Sreedhar based) might have been discussed in the previous section
 \end{itemize}
 
+
+\section{Further Reading \& References}
+
+Do not forgot to mention:
+\begin{itemize}
+  \item Examples of coalescing simpler / more involved because of split compilation.
+\end{itemize}
+
+References not organized yet:
+\begin{itemize}
+\item Chaitin et al.~\cite{chaitin:1981:register}
+\item IRC of George and Appel~\cite{george:96:iterated}
+\end{itemize}
 
 \endofchapter
 }
