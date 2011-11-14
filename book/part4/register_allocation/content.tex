@@ -657,7 +657,6 @@ The key observation is that the order in which variables are considered correspo
   As we have seen previously in Section~\ref{sec:regalloc:greedy-col}, this means the reverse order $v_n, v_{n-1}, \ldots, v_1$ is a valid order for coloring.
 \end{proof}
 
-FLORENT: continue reading HERE.
 
 \begin{important}
 It is important to understand why this method does not work in the general non-SSA case.
@@ -706,37 +705,41 @@ The goal of \emph{coalescing} is to minimize the number of register-to-register 
 While there may not be so many such ``copies'' at the high-level (e.g., instruction ``{\tt a = b;}'' in C)---especially after a phase of copy propagation under SSA (\todo{See chapter X})---,
 many such instructions are added by different compiler phases by the time compilation reaches the register allocation phase.
 For instance, adding copies is a common way to deal with register constraints (see Section~\ref{sec:practical-regalloc}). 
-An even more obvious and unavoidable reason in our case is the presence of \phifuns due to SSA form. 
-Indeed, remember that a \phifun represents in fact parallel copies on incoming edges of basic blocks. 
-For instance, if the function is $a \gets \phi(b,c)$, then it means that instructions $a\gets b$ should be executed on the edge coming from the left, and $a\gets c$ on the one from the right. 
+An even more obvious and unavoidable reason in our case is the presence of \phifuns due to the SSA form. 
+
+A \phifun represents in fact parallel copies on incoming edges of basic blocks. 
+For instance, $a \gets \phi(b,c)$ means that instruction $a\gets b$ should be executed on the edge coming from the left, and $a\gets c$ on the one from the right. 
 Suppose now that register allocation decided to put $a$ and $b$ in register $R_1$, but $c$ in register $R_2$;
 Then, the copy $a\gets b$ does not need to be executed anymore, but $a\gets c$ still does:
 the value of variable $c$ will be contained in $R_2$ and needs to transfered to $R_1$, which means the final code will contain an instruction ``{\tt mov $R_1, R_2$}'' or the like. 
 
 
+In the case of SSA, it is obviously better to assign variables linked by a \phifun, to the same register, so as to remove copies between subscripts of the same variable ($a_1$, $a_2$, \dots).
+This is possible if we are under conventional SSA (CSSA, see Chapter~\ref{todo}), but optimizations can break this property and interferences can appear between subscripted variables with the same origin.
+Such two variables cannot be assigned to the same register without breaking the program.
 
-In the case of SSA, it is for instance obviously better to assign variables linked by a \phifun, to the same register, so as to remove copies between subscripts of the same variable ($a_1$, $a_2$, etc.).
-This is possible if we are under CSSA, but optimizations can break this property and interferences can appear between subscripted variables with the same origin.
-In order to bypass this problem and also allow for more involved coalescing between SSA variables of different origin, we will define a notion of \emph{affinity}, acting as the converse of the relation of interference and expressing how much two variables ``want'' to share the same register. 
-We add a metric to this notion, measuring the benefit one could get if the two variables are assigned to the same register.
-Given two variables $a$ and $b$, the weight of the affinity between them is the number of occurrences of copy instructions involving them ($a\gets b$ or $b\gets a$) or \phifuns ($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$). 
-These numbers should of course be weighted as a copy in a loop costs more than one outside a loop for instance.
-We recommend using using actual execution frequencies based on profiling in possible, and empirically parameters if not
-(e.g., $\times 10$ for each level of nested loop, $\times 0.5$ if in a conditional branch, etc.).
+To bypass this problem and also allow for more involved coalescing between SSA variables of different origins,
+we define a notion of \emph{affinity}, acting as the converse of the relation of interference and expressing how much two variables ``want'' to share the same register. 
+By adding a metric to this notion, it measures the benefit one could get if the two variables were assigned to the same register:
+the weight represents how much instructions we would save at execution if the two variables share the same register.
+For instance, given two variables $a$ and $b$, the weight of the affinity between them is the number of occurrence of copy instructions involving them ($a\gets b$ or $b\gets a$) or \phifuns ($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$).
+Actually, some parts of the program are more often executed than others, and a more accurate cost for each copy can be calculated using actual execution frequencies based on profiling;
+It is also possible to use empirical parameters, for instance $\times 10$ for each level of nested loop, $\times 0.5$ if in a conditional branch, etc.
 
 
 \subsubsection{Biased coalescing}
 
-Since the number of affinities is sparse compared to the number of possible pairs of variables, we propose to keep for each variable $v$ an ``affinity list'' where each element is a pair $(u,w)$ meaning that $v$ has an affinity with $u$ of weight $w$.
+Since the number of affinities is sparse compared to the number of possible pairs of variables,
+it is best to keep for each variable $v$ an ``affinity list'' where each element is a pair $(u,w)$ meaning that $v$ has an affinity with $u$ of weight $w$.
 We propose a version of function {\tt choose\_color} that bias the choosing of colors based on these affinity lists, shown on Figure~\ref{code:choose-color}. 
-The bias is very simple, each choice of color maximizes locally, under the current knowledge, the coalescing for the variable being colored. 
-It is not of course optimal since the general problem of coalescing is NP-complete~\cite{BouchezDR07:coalescing-cplx}, and biased algorithms are known to be easily misguided. 
+The bias is very simple: each choice of color maximizes locally---under the current knowledge---the coalescing for the variable being colored. 
+It is not of course optimal since the general problem of coalescing is NP-complete, and biased algorithms are known to be easily misguided. 
 
 
 \begin{figure}
   \begin{verbatim}
 global variables
-  count = array of size #colors and elements 0
+  count = array of size #colors and containing only zeros
 
 choose_color(v, available)
   for each (u,weight) in affinity_list(v)
@@ -810,7 +813,7 @@ reside in particular registers, and in general conventions are defined to
 simplify for example the writing of libraries, by specifying how parameters to 
 functions are passed and how results are returned. This adds constraints to the 
 register allocation, usually by restricting the coloring possibilities of 
-variables. Some examples are given in Figure~\label{fig:reg-constraints}.
+variables. Some examples are given in Figure~\ref{fig:reg-constraints}.
 
 \begin{figure}
   \begin{center}
@@ -818,8 +821,8 @@ variables. Some examples are given in Figure~\label{fig:reg-constraints}.
     Context & Constraint  & Instruction & Effect on reg. alloc. \\
     x86 & Division in registers $R_x$ and $R_y$ & $a / b$ & $a$ in $R_x$, $b$ in $R_y$\\
     st200 & Memory load cannot use $R_z$ & $a = load(b)$ & $b$ cannot be in $R_z$\\
-    ABI & Functions arguments in $R_1$, $R_2$\ldots & $a = f(b,c)$ & $b$ in $R_1$, 
-    $c$ in $R_2$ \\
+    ABI & Functions arguments in $R_1$, $R_2$\ldots & $a = f(b,c)$ & $b$ in $R_1$, $c$ in $R_2$ \\
+     & result in $R_0$ & & $a$ in $R_0$\\
   \end{tabular}
   \end{center}
   \caption{Examples of register constraints.}
@@ -828,27 +831,33 @@ variables. Some examples are given in Figure~\label{fig:reg-constraints}.
 
 
 The problem with such constraints is that they cannot be expressed directly in 
-the register allocation problem. For instance, if variable $a$ and $b$ must 
+the register allocation problem under SSA form. For instance, if variable $a$ and $b$ must 
 absolutely reside in register $R_1$, it is not possible to pre-color them with 
 color $R_1$ as the interference graph could not be chordal anymore.  
 Furthermore, $a$ and $b$ maybe interfere, for instance if they are both the 
-first parameter of successive function calls, it that case putting them in the 
-same register without check would break the program. We propose two solutions 
+first parameter of successive function calls. In that case putting them in the 
+same register would break the program. We propose two solutions 
 to deal with this problem. The first is classic in the literature, and the 
 second is newer and promising.
 
 
-\subsubsection{Splitting variables to handle register constraints.}
+\paragraph{Splitting variables to handle register constraints.}
 
-Traditionally, variables involved in constraining operations are split before 
-and after the operation. For instance, if $a$ is involved in a division on an 
-x86, the instructions $a'\gets a$ and $a\gets a'$ are issued before and after 
-the division so that, if $a$ is not in the right register, it can be moved in 
-it for the operation. This however still poses the problem of variable $a'$ 
-which still interfere with every variable alive during the division, and hence 
-is part of the interference graph. Moreover, $a$ is redefined which breaks the 
-SSA. A workaround solution is to split \emph{all} variables alive before and 
-after the operation using a \emph{parallel copy}. New subscripted variables 
+Traditionally, variables involved in constraining operations are split before and after the operation.
+For instance, suppose $a$ is involved in an instruction that requires it to be in register $R_x$.
+Then the instructions $a'\gets a$ and $a\gets a'$ are issued before and after the division,
+$a'$ is forced to be in $R_x$ and is used instead of $a$ in the instruction.
+If $a$ happens to be in $R_x$ after the register allocation, the copies can be removed, if not, the copies ensure the constraint is respected.
+
+In SSA form, the problem is that variable $a'$ is $R_x$, and if this constraint appears somewhere else in the program, it breaks the SSA property since there would be multiple definition of the same variable.
+Additionally, $a$ also is redefined which also breaks the SSA form.
+
+A workaround solution is to split \emph{all} variables alive before and 
+after the operation using a \emph{parallel copy}, as shown on Figure~\ref{fig:reg-split-all}.
+
+FLORENT HERE
+
+New subscripted variables 
 must be defined by the second split to keep the SSA property (and subsequent 
 uses must be changed accordingly). The use of parallel copies assures that 
 the locally created variables, with very short live-ranges (span of only one 
@@ -859,8 +868,37 @@ In that case, the danger is that many copy instructions can be added if the
 coalescing is not good enough to assign most of the created copies to the same 
 register.
 
+\begin{figure}
+  \begin{center}
+    Before
+      \begin{verbatim}
+      Live = {a, b, c, d, e}
 
-\subsubsection{Repairing problems afterwards.}
+      f = a/b
+
+      Live = {a, c, d, e, f}
+
+      \end{verbatim}
+    \hrule
+    After
+      \begin{verbatim}
+      Live = {a, b, c, d, e}
+
+      (a', b', c', d', e') = (a, b, c, d, e)
+
+      f' = a'/b'
+
+      (a'', c'', d'', e'', f) = (a', c', d', e', f')
+
+      Live = {a'', c'', d'', e'', f}
+      \end{verbatim}
+
+  \end{center}
+  \caption{Examples of full parallel splitting.}
+  \label{fig:reg-split-all}
+\end{figure}
+
+\paragraph{Repairing problems afterwards.}
 
 Another possibility is to let register allocation do its job, and then 
 intervene to repair the coloring whenever it does not fit the constraints, by 
@@ -932,6 +970,7 @@ References not organized yet:
 \begin{itemize}
 \item Chaitin et al.~\cite{chaitin:1981:register}
 \item IRC of George and Appel~\cite{george:96:iterated}
+\item Coalescing is NP-complete in most cases~\cite{BouchezDR07:coalescing-cplx}
 \end{itemize}
 
 \endofchapter
