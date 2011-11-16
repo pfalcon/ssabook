@@ -782,28 +782,6 @@ So we will just give a short overview of other coalescing schemes that might be 
 
 
 \subsection{Handling registers constraints}
-{\sl
-\begin{itemize}
-  \item ABI contraints
-  \item split beforehand solution: many parallel copies, need good biased 
-    coloring
-  \item repair afterwards solution: biased try to give right color, else, 
-    actual copies are added
-  \item Fab: For the repair afterward at the time we will publish the book you 
-    will be able to cite the current paper we write on tree-scan coalescing. We 
-    plan to elaborate on the repairing mechanism and illustrate it in the 
-    context of tree-scan.
-  \item Fab: For the repair afterward you will build an interference graph with 
-    negative affinity weights. Current coalescers do not handle it. A 
-    workaround (but costly) for affinity adge (a,b) with weight W<0 is replace 
-    it by an interference edge (a,ab) and an affinity edge (ab,b) of weight -W 
-    with ab a dummy node. For iterated reg-alloc (Briggs \& George's test) you 
-    can rewrite the different rules by doing as if you had such a dummy node 
-    (you virtualize it). You can discuss this with Quentin. Of course the idea 
-    is not to describe it here but it can be interesting to discuss a little 
-    bit the implications.
-\end{itemize}
-}
 
 In theory, register allocation algorithms are always nicely working with nodes 
 and colors. In practice, however, not all variables or registers are 
@@ -854,46 +832,45 @@ Additionally, $a$ also is redefined which also breaks the SSA form.
 
 A workaround solution is to split \emph{all} variables alive before and 
 after the operation using a \emph{parallel copy}, as shown on Figure~\ref{fig:reg-split-all}.
+Moreover, the second copy must must define new variables to keep the SSA property (and subsequent uses must be changed accordingly).
 
-FLORENT HERE
-
-New subscripted variables 
-must be defined by the second split to keep the SSA property (and subsequent 
-uses must be changed accordingly). The use of parallel copies assures that 
-the locally created variables, with very short live-ranges (span of only one 
-instruction), are completely disconnected from the interference graph. Their 
-only relation with the other, ``normal'' variable are affinities that each 
+The use of parallel copies assures that the locally created variables, with very short live-ranges (span of only one instruction), are completely disconnected from the rest of the interference graph.
+Their only relation with the other, ``normal'' variable are affinities that each 
 variable share with the two other parts coming from the same original variable.
-In that case, the danger is that many copy instructions can be added if the 
-coalescing is not good enough to assign most of the created copies to the same 
-register.
+
+The only problem with this method is that many copy instructions can remain in the program if the coalescing is not good enough to assign most of the created variables to the same register.  
 
 \begin{figure}
+  \begin{minipage}{.39\textwidth}
   \begin{center}
     Before
       \begin{verbatim}
-      Live = {a, b, c, d, e}
+Live in = {a, b, c, d, e}
 
-      f = a/b
+f = a/b
 
-      Live = {a, c, d, e, f}
+Live out = {a, c, d, e, f}
 
       \end{verbatim}
-    \hrule
+  \end{center}
+  \end{minipage}
+  \begin{minipage}{.6\textwidth}
+  \begin{center}
     After
       \begin{verbatim}
-      Live = {a, b, c, d, e}
+Live in = {a, b, c, d, e}
 
-      (a', b', c', d', e') = (a, b, c, d, e)
+(a', b', c', d', e') = (a, b, c, d, e)
 
-      f' = a'/b'
+f' = a'/b'
 
-      (a'', c'', d'', e'', f) = (a', c', d', e', f')
+(a'', c'', d'', e'', f) = (a', c', d', e', f')
 
-      Live = {a'', c'', d'', e'', f}
+Live out = {a'', c'', d'', e'', f}
       \end{verbatim}
 
   \end{center}
+  \end{minipage}
   \caption{Examples of full parallel splitting.}
   \label{fig:reg-split-all}
 \end{figure}
@@ -904,15 +881,20 @@ Another possibility is to let register allocation do its job, and then
 intervene to repair the coloring whenever it does not fit the constraints, by 
 adding copies afterwards around mismatches. To minimize the number of conflicts 
 on constraints, it is however important to drive the coloring so that it still 
-gives the right color whenever possible. For example, if variable $a$ must 
-reside in register $R_1$, it is possible to consider a clique of $R$ nodes 
-otherwise disconnected from the graph, one for each register, and adding $R_1$ 
-in the affinity list of $a$. On the contrary, if $a$ cannot be assigned to a 
-register, say $R_2$, an affinity of \emph{negative weight} is added to the 
-list, representing the added cost it will required if $a$ is still put in 
-register $R_2$. Existing coalescing algorithms in the literature currently do 
-not support negative weight \todo{see Fab's hack}.
+gives the right color whenever possible. 
+To do so, we add a clique (complete graph) of $R$ nodes, one for each register, to the interference graph.
+This clique is completely disconnected from the graph, and serves only to materialize affinities.
 
+For instance, if variable $a$ must reside in register $R_1$ we add $R_1$ to the affinity list of $a$. 
+On the contrary, if $a$ cannot be assigned to a register, say $R_2$, an affinity of \emph{negative weight} is added to the list, representing the added cost it will required if $a$ is still put in register $R_2$.
+
+Existing coalescing algorithms in the literature usually do not support negative weight.
+However, it is possible to emulate a negative weight between two variables, say $a$ and $b$ with weight $w<0$, by using the following trick:
+we create a new ``dummy'' variable, $v_{ab}$, and add an interference between $a$ and $v_{ab}$ and an affinity of weight $|w|$ between $v_{ab}$ and $b$.
+Hence, coalescing $v_{ab}$ and $b$ ensures $a$ and $b$ will not be in the same register.
+ 
+The problem with this trick is that it adds many useless nodes and interferences in the graph.
+In practice, it is best to modify the coalescing rules to act ``as if'' there were such a dummy node in case of negative weight affinities, hence not requiring an actual modification of the graph.
 
 
 
@@ -935,17 +917,54 @@ The point is that its coloring might be stucked (Chaitin reduction). So the poss
 \end{itemize}
 }
 
-As mentioned previously, the \phifuns are not actual machine instructions.  
-They must be removed when going ``out-of-SSA.'' In traditional translation 
-out-of-SSA, this happens before register allocation, but in our case, variables 
-are already allocated to memory or registers, and arguments and results of 
-\phifuns are not variables anymore but registers.
+\phifuns are not actual machine instructions, they must be replaced by actual instructions when going ``out-of-SSA.''
+Traditionally, this translation out-of-SSA happens before register allocation.
+The classical ``Sreedhar'' method involves inserting copies before \emph{and after} the \phifuns, i.e., at the end the previous basic blocks, and at the beginning of the current block.
+This creates a new short-lived variable for each \phifun, for instance, consider $a \gets \phi(b,c)$, then copies $a' \gets b$ and $a' \gets c$ are created on the predecessors, and $a \gets a'$ replaces the \phifun. 
+This elegant method ensures the programs stays semantically correct, and fixes problems of earlier methods, the so-called ``swap problem'' and ``lost-copy problem.''
+
+When going out-of-SSA after register allocation, however, variables are already allocated to memory or registers, hence arguments and results of \phifuns are not variables anymore but registers.
+Shreedar's method in this context would generate local, uncolored variables.
+Trying to color these variables could lead to a dead-end, as we come back to regular, non-SSA coloring.
+
+\smallskip
+We propose then a different approach. First, if the definition and arguments of a \phifun have been allocated to the same register, then it can be safely removed.
+We then replace the remaining \phifuns by adding copies directly \emph{on the control-flow edges}.
+Of course, it is not actually possible to place code on edges, so we have to create new basic blocks on these edges to hold the added code.
+Since the semantics of \phifuns is parallel, we have to replace them with \emph{parallel copies} on the edges.
+These copies can then be sequentialized using actual simple {\tt move} instructions.
+
+Sequentializing is not a difficult task, but the order of the final instructions is important.
+A very simple algorithm to sequentialize copies consist of first dealing with ``cycles'' in the parallel copy.
+For instance, in Figure \ref{fig:reg-phifun-seq}, registers $R_1$ and $R_2$ form a cycle since their values must be swapped.
+We use the currently available register $R_3$ to act as a temporary register during the swap, which requires three copies.
+Then, $R_3$ gets the value that was contained in $R_2$ and which is in $R_1$ after the swap.
 
 
-If the definition and arguments 
-of a \phifun have been allocated to the same register, then it can be safely 
-removed. If this is not the case, however, the some {\tt move} instructions 
-must be added to keep the behaviour of the program. 
+\begin{figure}
+\begin{center}
+  \begin{tabular}{c@{\qquad}c@{\qquad}c}
+  \phifuns & Parallel copy & Sequential copies \\
+  \hline
+  $R_1 \gets \phi (R_2, \dots)$ & & $R_3 \gets R_1$ \\
+  $R_2 \gets \phi (R_1, \dots)$ &  $(R_1, R_2, R_3) \gets (R_2, R_1, R_2)$  & $R_1 \gets R_2$\\
+  $R_3 \gets \phi (R_2, \dots)$ &  & $R_2 \gets R_3$ \\
+  &  & $R_3 \gets R_1$ \\
+\end{tabular}
+\end{center}
+\caption{Replacing \phifuns by actual copies.}
+\label{fig:reg-phifun-seq}
+\end{figure}
+
+In our case, we could save a copy by choosing to save $R_2$ into $R_3$ instead of $R_1$ for the swap.
+Better algorithms can be found in the literature but we prefer not to describe them here.
+
+An important observation is that cycles can appear in parallel copies.
+These cycles need a ``free'' register to be sequentialized.
+What happens if a cycle concern all registers, for instance, $(R_1, R_2, \dots, R_n) \gets (R_2, R_3, \dots, R_n, R_1)$?
+In that case, there is no available register to ``break'' the cycle so we need to store one value in memory (spill), for instance $R_1$, then perform all copies starting with $R_1 \gets R_2$ and ending by loading the stored value to $R_n$.
+
+
 
 
 
@@ -960,17 +979,22 @@ must be added to keep the behaviour of the program.
 
 
 \section{Further Reading \& References}
+\label{sec:reg-further-reading}
 
 Do not forgot to mention:
 \begin{itemize}
   \item Examples of coalescing simpler / more involved because of split compilation.
+  \item How to virualize dummy nodes with negative affinities: reference \cite{todo}.
+  \item swap and lost-copy problems: cite Briggs' thesis
+  \item better sequentialization algorithm
 \end{itemize}
 
 References not organized yet:
 \begin{itemize}
-\item Chaitin et al.~\cite{chaitin:1981:register}
-\item IRC of George and Appel~\cite{george:96:iterated}
-\item Coalescing is NP-complete in most cases~\cite{BouchezDR07:coalescing-cplx}
+  \item Chaitin et al.~\cite{chaitin:1981:register}
+  \item IRC of George and Appel~\cite{george:96:iterated}
+  \item Coalescing is NP-complete in most cases~\cite{BouchezDR07:coalescing-cplx}
+  \item Repairing ABI constraints: cite Fab's paper on tree-scan~\cite{todo}
 \end{itemize}
 
 \endofchapter
