@@ -902,20 +902,8 @@ In practice, it is best to modify the coalescing rules to act ``as if'' there we
 
 
 
-\subsection{Out-of-SSA and critical edge splitting}
+\subsection{Out-of-SSA and edge splitting}
 
-{\sl
-\begin{itemize}
-  \item \phifuns are not machine instructions, they are replaced by actual 
-    copies in out-of-SSA phase
-  \item in our case, colored SSA: Sreedhar not possible
-  \item SSA implicitly 
-    actual ``parallel copies'' are placed on edges
-  \item problem with some critical edges: abnormal edges, back-edge of loop
-  \item Fab: Sreedhar IS possible. It generates local variables not colored.
-The point is that its coloring might be stucked (Chaitin reduction). So the possible need to split edges...
-\end{itemize}
-}
 
 \phifuns are not actual machine instructions, they must be replaced by actual instructions when going ``out-of-SSA.''
 Traditionally, this translation out-of-SSA happens before register allocation.
@@ -936,7 +924,7 @@ These copies can then be sequentialized using actual simple {\tt move} instructi
 
 Sequentializing is not a difficult task, but the order of the final instructions is important.
 A very simple algorithm to sequentialize copies consist of first dealing with ``cycles'' in the parallel copy.
-For instance, in Figure \ref{fig:reg-phifun-seq}, registers $R_1$ and $R_2$ form a cycle since their values must be swapped.
+For instance, in Figure~\ref{fig:reg-phifun-seq}, registers $R_1$ and $R_2$ form a cycle since their values must be swapped.
 We use the currently available register $R_3$ to act as a temporary register during the swap, which requires three copies.
 Then, $R_3$ gets the value that was contained in $R_2$ and which is in $R_1$ after the swap.
 
@@ -965,31 +953,62 @@ What happens if a cycle concern all registers, for instance, $(R_1, R_2, \dots, 
 In that case, there is no available register to ``break'' the cycle so we need to store one value in memory (spill), for instance $R_1$, then perform all copies starting with $R_1 \gets R_2$ and ending by loading the stored value to $R_n$.
 
 
+\subsection{Parallel copy motion}
+
+We have seen in the previous section that we can split control-flow edges to add copy code to get rid of \phifuns.
+Splitting edges has multiple disadvantages, it adds a new indirection in the code (such as a {\tt goto} instruction), code on this block cannot be scheduled with code elsewhere, or it might prevent the use of hardware loop accelerators to name a few.
+
+We can see however that splitting is not always necessary, it depends on the notion of \emph{criticality} of the edge.
+We say that an edge is \emph{critical} if it goes from a block with multiple successors to a block with multiple predecessors, see Figure~\ref{fig:reg-critical}.
+For instance, edges in a regular ``if'' construct are not critical, while the back-edge of a ``do\dots until'' loop is critical.
+
+Code added on a non-critical edge can in fact be moved either at the bottom the predecessor block (move \emph{up}) or at the top of the successor block (move \emph{down}), depending on which one has only one exit or entry edge.
+For instance, if there is a \phifun after the join point of the \texttt{if}-construct of Figure~\ref{fig:reg-critical}, the move instructions can be placed at the end of the corresponding \texttt{true} and \texttt{false} branches.
+
+However, in the case of a critical edge, it is dangerous to move up or down the copies, as such code would then be always executed, even if the control-flow is not taken.
+For instance, Figure~\ref{fig:reg-critical}, it is not possible to move the copy $R_1 \gets R_2$ up or down as this would change the behaviour of the program \todo{figure}.
+
+It is still possible in some cases to move copies out of critical edges.
+For instance, a parallel copy swaps the values in $R_1$ and $R_2$, then it is possible to move this swap up on the preceding block, as long as the values are swapped back in their correct registers on all other outgoing edges, see Figure~\ref{todo}.
+If all those edges are not critical, i.e., their successors have only one arriving control-flow edge in this case, then those swaps back can be moved down and no edge has been split.
+We call a critical edge with this property a \emph{weak critical edge}.
+This one is \emph{weak at the top} since all other edges leaving the predecessor are non-critical, meaning a copy on it can be moved up.
+It is also possible to have critical edges \emph{weak at the bottom}, if all other edges arriving on the successor are non-critical, meaning we can move a parallel copy down.
+
+In practice, not all parallel copies can be moved up or down on weak critical edges, since their effects are not always ``reversible'':
+for instance, $R_1 \gets R_2$ erases the value on $R_1$ and if this value is not saved elsewhere, it is not possible to get it back in $R_1$ on the other edges.
+We will not elaborate on this subject as our goal here is to show that optimizations are possible but not to cover them extensively.
+We advise the interested readers to read the existing literature on the subject, with some pointers given in the last section of this chapter.
+They will find there extended discussions on the ``reversibility'' of parallel copies, on the existence of ``strong'' critical edges (as opposed to ``weak'' ones), and what can be done for ``abnormal'' edges, i.e., control-flow edges that cannot be split.
+Here we will just conclude that in case we are stuck with our copies, there is always a means to solve our problem by spilling.
 
 
 
-\subsection{More repairing on \phifuns}
-\begin{itemize}
-  \item Biased coloring is fast but not very good at coalescing
-  \item Basic parallel copy motion: move to next edge.
-  \item More involved problem: spill variables
-  \item Better solution: look at biblio (parallel copy motion)
-  \item Fab: Yes make it as simple as possible. Local pcopy motion works in practice. It is useless to go further. The ultimate solution (Sreedhar based) might have been discussed in the previous section
-\end{itemize}
+\begin{figure}
+  % subfigure
+  critical edge def \hfill if-construct example \hfill do\dots until loop example\\
+  todo \hfill todo \hfill todo
+
+  \caption{Examples of critical and non-critical edges.}
+  \label{fig:reg-critical}
+\end{figure}
 
 
 \section{Further Reading \& References}
 \label{sec:reg-further-reading}
 
-Do not forgot to mention:
+This section need to be completed/written:
+
+Stuff to mention for interested readers:
 \begin{itemize}
   \item Examples of coalescing simpler / more involved because of split compilation.
   \item How to virualize dummy nodes with negative affinities: reference \cite{todo}.
   \item swap and lost-copy problems: cite Briggs' thesis
   \item better sequentialization algorithm
+  \item parallel copy motion
 \end{itemize}
 
-References not organized yet:
+References to give:
 \begin{itemize}
   \item Chaitin et al.~\cite{chaitin:1981:register}
   \item IRC of George and Appel~\cite{george:96:iterated}
