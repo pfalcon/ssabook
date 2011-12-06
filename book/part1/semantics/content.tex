@@ -1,4 +1,5 @@
-\chapter{Semantics \Author{L. Beringer}}
+%\chapter{Semantics \Author{L. Beringer}}
+\chapter{Functional representations of SSA \Author{L. Beringer}}
 \inputprogress
 \numberofpages{10}
 \graphicspath{{img/}{semantics/img/}{part1/semantics/img/}}
@@ -23,57 +24,89 @@
 \newcommand{\LV}{\ensuremath{\sc{Live}}}
 \newcommand{\fv}{\ensuremath{\sc{Free}}}
 
+
+%\section{Functional interpretations}
+%\label{section:Part1:Semantics:FunctionalLanguages}
+
 %\section{Introduction}
 \label{section:Part1:Semantics:Intro}
-In this chapter we discuss alternative representations that highlight
-aspects of control and data flow structure that lie at the heart of
-the SSA discipline.  The development of such representations is
-motivated by the following considerations.
-\begin{itemize}
+This chapter discusses alternative representations of SSA using the
+terminology and structuring mechanisms of functional programming
+languages. The reading of SSA as a discipline of functional
+programming arises from a correspondence between dominance and
+syntactic scope that subsequently extends to numerous aspects of
+control and data flow structure.
+
+The development of functional representations of SSA is motivated by
+the following considerations.
+
+\begin{enumerate}
+\item relating the core ideas of SSA to concepts from other
+areas of compiler and programming language research provides
+conceptual insight into the SSA discipline and thus contributes to a
+better understanding of the practical appeal of SSA to compiler
+writers;
+
+\item
+reformulating SSA as a functional program makes explicit some of the
+implicit syntactic conditions and semantic invariants that motivate
+the definition of SSA and guide its use. Indeed, the introduction of
+SSA itself was motivated by a similar goal: to represent aspects of
+program structure, namely the def-use\index{def-use} relationships,
+explicitly in syntax, by enforcing a particular naming discipline. In
+a similar way, functional representations directly enforce
+invariants such as ``all $\phi$-functions in a block must be of the
+same arity'', ``the variables assigned to by these $\phi$-functions
+must be distinct'', ``$\phi$-functions are only allowed to occur at
+the beginning of a basic block'', or ``each use of a variable should
+be dominated by its (unique) definition''. Contraints such as these
+would typically have to be validated or (re-)established after each
+optimization phase of an SSA-based compiler, but are typically
+enforced \emph{by construction} if a functional representation is
+chosen. Consequently, less code code is required, improving the
+compiler's robustness, maintainability, and code readability;
+
+\item the intuitive meaning of ``unimplementable'' $\phi$-instructions is
+complemented by a concrete execution model, facilitating the rapid
+implementation of interpreters. This enables the compiler developer to
+experimentally validate SSA-based analyses and transformations at
+their genuine language level, without requiring SSA
+destruction. Indeed, functional intermediate code can often be
+directly emitted as a program in a high-level mainstream functional
+language, giving the compiler writer access to existing interpreters
+and compilation frameworks. Thus, rapid prototyping is supported and
+high-level evaluation of design decisions is enabled;
+
 \item 
-Firstly, the reformulation of the SSA discipline in other formalisms
-complements the intuitive meaning of ``unimplementable''
-$\phi$-instructions and makes syntactic conditions and semantic
-invariants that are implicit in the definition of SSA more
-explicit. The introduction of SSA itself was motivated by a similar
-goal: to represent aspects of program structure, namely the def-use\index{def-use}
-relationships, explicitly in syntax, by enforcing a particular naming
-discipline. In a similar way, the functional representations treated
-in this chapter immediately enforce invariants such as ``all
-$\phi$-functions in a block must be of the same arity'', ``the
-variables assigned to by the $\phi$-functions in a block must be
-distinct'', ``$\phi$-functions are only allowed to occur at the
-beginning of a basic block'', or ``each use of a variable should be
-dominated by its (unique) definition''. Consequently, less code is
-required that validates the well-structuredness of programs between
-compiler phases, and the robustness and maintainability of compiler
-frameworks are increased.
+formal frameworks of program analysis that exist for functional
+languages become applicable. Type systems provide a particularly
+attractive formalism due to their declarativeness and compositional
+nature. As type systems for functional languages typically support
+higher-order functions, they can be expected to generalize more easily
+to interprocedural analyses than other static analysis formalisms;
 
-\item
-Secondly, alternative representations provide formal criteria with
-respect to which SSA-based code transformations may be proven
-correct. For example, Glesner~\cite{DBLP:conf/asm/Glesner04} uses a
-representation of SSA in terms of abstract state machines to prove the
-correctness of a code generation transformation, while Chakravarty et
-al.~\cite{ChakravartyKZ:COCV03} prove the correctness of a functional
-representation of Wegmann and Zadeck's SSA-based sparse conditional
-constant propagation algorithm~\cite{WegmannZ:Toplas1991}. In the same
-spirit, these representations provide a formal basis for comparing
-variants of SSA -- such as the variants discussed elsewhere in this
-book --, for translating between these variants, and for constructing
-and destructing SSA.
+\item  
+a formal basis for comparing variants of SSA -- such as the variants
+discussed elsewhere in this book --, for translating between these
+variants, and for constructing and destructing SSA is
+obtained. Correctness criteria for program analyses and associated
+transformations can be stated in a uniform manner, and can be proved
+to be satisfied using well-established reasoning principles.
 
-\item
-Thirdly, they facilitate the implementation of interpreters operating
-at SSA level. This enables the compiler developer to experimentally
-validate SSA-based analyses and transformations at their genuine
-language level, prior to SSA destruction.
+%\item
+%Secondly, alternative representations provide formal criteria with
+%respect to which SSA-based code transformations may be proven
+%correct. For example, Glesner~\cite{DBLP:conf/asm/Glesner04} uses a
+%representation of SSA in terms of abstract state machines to prove the
+%correctness of a code generation transformation, while Chakravarty et
+%al.~\cite{ChakravartyKZ:COCV03} prove the correctness of a functional
+%representation of Wegmann and Zadeck's SSA-based sparse conditional
+%constant propagation algorithm~\cite{WegmannZ:Toplas1991}. In the same
+%spirit, these representations provide
+%
+%\item
 
-\item
-Finally, alternative formalisms provide conceptual insight into for
-the appeal of SSA by relating its core ideas to concepts from other
-areas of compiler and programming language research.
-\end{itemize}
+\end{enumerate}
 %As the variations on SSA discussed in this book highlights, a compiler
 %writer has considerable elbow room even after subscribing to ``the''
 %SSA discipline. A cross-cutting goal of the semantic models is to
@@ -99,7 +132,9 @@ areas of compiler and programming language research.
 %recursive functions.
 
 %\begin{enumerate}
-%\item In Section~\ref{section:Part1:Semantics:GlesnerSemantics} we discuss representations of SSA using abstract state machines, term graphs, and partial orders developed
+%\item In Section~\ref{section:Part1:Semantics:GlesnerSemantics} we discuss 
+%representations of SSA using abstract state machines, term graphs, and 
+%partial orders developed
 %  by Glesner. Avoiding the explicit use of variable names altogether,
 %  programs are represented as an overlay of the control flow structure
 %  over the data dependence graph given by the def-use
@@ -121,7 +156,12 @@ areas of compiler and programming language research.
 %  $\lambda$-calculus. These features also make the formalism a natural
 %  common representation for integrating compiler front-ends for
 %  different languages.
-%\item Section~\ref{section:Part1:Semantics:PopSemantics} finally summarizes a denotational model developed by Pop et al.~\cite{PopJS2007}. Motivated in part by recent proposals to require loop-closing $\phi$-nodes, the authors formally relate SSA to imperative code in non-SSA form, complementing the formal relationships between SSA and functional languages, and extend the SSA discipline to a full declarative language. 
+%\item Section~\ref{section:Part1:Semantics:PopSemantics} finally summarizes 
+%a denotational model developed by Pop et al.~\cite{PopJS2007}. Motivated in 
+% part by recent proposals to require loop-closing $\phi$-nodes, the authors 
+% formally relate SSA to imperative code in non-SSA form, complementing the 
+%formal relationships between SSA and functional languages, and extend the 
+%SSA discipline to a full declarative language. 
 %\end{enumerate}
 %Similar to the task of implementing one programming language in
 %another, each model embeds SSA into a more ``basic'' host
@@ -132,40 +172,41 @@ areas of compiler and programming language research.
 %considerable. Indeed, for the sake of readability, we gloss over
 %numerous technical details in the following sections and refer the
 %reader to the literature for more in-depth treatments of the models.
-We first outline representations in functional programming languages.
-Pioneered by O'Donnell, Kelsey, and
-Appel~\cite{ODonnellPhD,Kelsey95,Appel98:SSA}, these representations
-are based on the correspondences between the control flow structure of
-SSA and a functional programming discipline called
-continuation-passing-style (short: CPS), and between the constraints
-on def-use-relationships imposed by $\phi$-nodes and the notion of
-static scope. We examine various aspects of these correspondences in
-detail, outline how the construction and destruction of SSA can be
-mirrored by matching operations on functional programs, and indicate
-how the correspondence may be extended to program analysis frameworks.
+%We first outline representations in functional programming languages.
+%and indicate how the correspondence may be extended to program
+%analysis frameworks.
 
-We then consider a representation of SSA programs as sets of mutually
-recursive equations $x_i = e_i$ that stresses data flow aspects of SSA
-and was originally introduced by Pop~\cite{PopJS2007}.  Our discussion
-focuses on some principal underlying this representation, preparing
-for a more in-depth discussion of advanced topics in Chapter~\ref{}.
+%We then consider a representation of SSA programs as sets of mutually
+%recursive equations $x_i = e_i$ that stresses data flow aspects of SSA
+%and was originally introduced by Pop~\cite{PopJS2007}.  Our discussion
+%focuses on some principal underlying this representation, preparing
+%for a more in-depth discussion of advanced topics in Chapter~\ref{}.
 
+Rather than discussing all these considerations in detail, the purpose
+of the present chapter is to highlight aspects of the basic
+correspondence and then point the reader to some more advanced
+material.
 
-\section{Functional interpretations}
-\label{section:Part1:Semantics:FunctionalLanguages}
+\paragraph{Chapter outline}
+We first highlight the main ideas of two low-level functional language
+formats that may be used to represent SSA, namely
+\emph{continuation-passing} and \emph{direct} style. With
+this background in place, we then discuss the relationship between SSA
+and functional forms in more detail by describing how various steps
+that occur during the construction and destruction of SSA mirror
+corresponding transformations on functional code.  Our exposition is
+example-driven but leads to the identification of concrete
+correspondence pairs between the imperative/SSA world and the
+functional world. Finally, we briefly discuss historical aspects,
+pointers to the original literature, and topics of current and future
+work, before concluding with some brief pointers to alternative
+representations that do not employ the terminology of functional
+languages.
 
-Our first model of SSA is provided by functional programming languages
-and exploits the observation that core properties of SSA have direct
-counterparts in the world of functional programming.  We first
-describe  the functional representations
-\emph{continuation-passing} and \emph{direct style} and then outline
-the relationship to SSA by discussing functional counterparts to the
-construction and destruction of SSA code.
+Like the remainder of the book, our discussion is restricted to code
+occurring in a single procedure.
 
-Like the remainder of the book, our discussion concerns code in a
-single procedure.
-
-\subsection{Low-level functional program representations}
+\section{Low-level functional program representations}
 \label{section:Part1:Semantics:LowLevelReps}
 
 Functional languages represent a procedure by a declaration
@@ -173,7 +214,7 @@ $$\mathtt{function}\ f(x_0, \ldots, x_n) = e$$ where the syntactic
 category of expressions $e$ conflates the notions of expressions and
 commands of imperative languages.
 
-\subsubsection{Variable assignment versus name binding}
+\subsection{Variable assignment versus name binding}
 \label{section:Part1:Semantics:Binding}
 A language construct provided by almost all functional languages is
 the \emph{let-binding} $$\letin x {e_1} {e_2}.$$ The effect of this
@@ -324,17 +365,15 @@ program transformations, the suitability of SSA for formulating and
 implementing such transformations can be explained by the proximity of
 SSA to functional languages.
 
-\subsubsection{Control flow: continuations}
+\subsection{Control flow: continuations}
 \label{section:Part1:Semantics:Continuations}
-O'Donnell~\cite{ODonnellPhD} and Kelsey~\cite{Kelsey95} observed that
-the correspondence between let-bindings and points of variable
+The correspondence between let-bindings and points of variable
 definition in assignments extends to other aspects of program
 structure, in particular to code in
 %The dominance-based control flow structure of SSA corresponds in a
 %precise way to
 \emph{continuation-passing-style} (CPS), a program
-representation routinely used in compilers for functional languages
-\cite{DBLP:journals/lisp/SussmanS98a,Appel:CWC}.
+representation routinely used in compilers for functional languages.
 
 %This interpretation rooted in the observation that the
 %central goal of SSA, namely to provide each use of a variable with a
@@ -550,13 +589,12 @@ SSA, we discuss a close relative of CPS, the so-called
 %unify the arguments stemming from various calls sites and bind them to
 %a unique name for the duration of the ensuing code fragment.
 
-\subsubsection{Control flow: direct style}
+\subsection{Control flow: direct style}
 \label{section:Part1:Semantics:DirectStyle}
 An alternative to the explicit passing of continuation terms via
 additional function arguments is to represent code as a set of locally
-named tail-recursive functions. Appel~\cite{Appel98:SSA} popularized
-the correspondence to SSA of this representation, which is called
-\emph{direct style}~\cite{Reynolds1974}.
+named tail-recursive functions, a representation that is often
+referred to as \emph{direct style}.
 
 In direct style, no continuation terms are constructed dynamically and
 then passed as function arguments, and we hence exclusively employ
@@ -697,7 +735,7 @@ the formal argument of $h$.
 %the usual frame stack discipline and may (as in CPS) be represented as
 %function calls that occur in non-tail position.}
 
-\subsubsection{Let-normal form}
+\subsection{Let-normal form}
 \label{section:Part1:Semantics:LetNormalForm}
 For both direct style and CPS the correspondence to SSA is most
 pronounced for code in \emph{let-normal-form}: each intermediate
@@ -798,7 +836,7 @@ correspondences between functional and imperative/SSA concepts.
   Correspondence pairs between functional form and SSA (part I)}
 \end{table}
 
-\subsection{Functional construction of SSA}
+\section{Functional construction and destruction of SSA}
 \label{section:Part1:Semantics:FunctionalSSAConstruction}
 
 The relationship between SSA and functional languages is extended by
@@ -864,7 +902,7 @@ example.
 \caption{\label{fig:FunctionalCorrespondenceRunningExampleGraphic} Functional construction of SSA: running example}
 \end{figure}
 
-\subsubsection{Initial construction using liveness analysis}
+\subsection{Initial construction using liveness analysis}
 \label{section:Part1:Semantics:LivenessAnalysis}
 
 A simple way to represent this program in let-normalized direct style
@@ -987,11 +1025,11 @@ introduces more $\phi$-functions than necessary. Each superfluous
 $\phi$-function corresponds to the situation where all call sites to
 some function $f_i$ pass identical arguments. The technique for
 eliminating such arguments is called
-\emph{$\lambda$-dropping}~\cite{DBLP:journals/tcs/DanvyS00}, and is
+\emph{$\lambda$-dropping}, and is
 the inverse of the more widely known transformation
-\emph{$\lambda$-lifting}~\cite{DBLP:conf/fpca/Johnsson85}. 
+\emph{$\lambda$-lifting}. 
 
-\subsubsection{$\lambda$-dropping}
+\subsection{$\lambda$-dropping}
 \label{section:Part1:Semantics:lambdaDropping}
 
 $\lambda$-dropping may be performed before or after variable names are
@@ -1264,7 +1302,7 @@ site implies that condition~(\ref{ParameterDroppingConditionOne}) is
 necessarily satisfied for all parameters $x$ of $f$. Thus, all
 parameters of $f$ can be dropped and no $\phi$-function is generated.
 
-\subsubsection{Nesting, dominance, loop-closure}
+\subsection{Nesting, dominance, loop-closure}
 \label{section:semantics:loopclosure}
 Analyzing whether function definitions may be nested inside one
 another is tantamount to analyzing the imperative dominance structure:
@@ -1286,7 +1324,7 @@ tree: the maximal level at which a function may occur is its level
 
 The choice as to where functions are placed corresponds to variants of
 SSA. For example, in loop-closed SSA
-form~\cite{Chapter14GraphsAndGating,Chapter19LoopTree}, SSA names
+form~\ref{Chapter14GraphsAndGating,Chapter19LoopTree}, SSA names
 defined in a loop must not be used outside the loop. To this end,
 special-purpose unary $\Phi$-nodes are inserted for these variables at
 the loop exit points. As the loop is unrolled, the arity of these
@@ -1715,7 +1753,7 @@ loop-unrolled SSA representation.
 % \end{array}
 % \end{equation}
 
-\subsubsection{Destruction of SSA}
+\subsection{Destruction of SSA}
 \label{section:Part1:Semantics:SSADestruction}
 
 The above example code excerpts where variables are not made distinct
@@ -1754,6 +1792,17 @@ of~\cite{May}.
 
 \section{Pointers to the literature}
 \label{section:Part1:Semantics:Literature}
+\footnote{O'Donnell~\cite{ODonnellPhD} and Kelsey~\cite{Kelsey95} observed that
+t the correspondence bwtween let-binding and points of varibale declaration extends to other aspects of program structure.
+
+CPS compilers: \cite{DBLP:journals/lisp/SussmanS98a,Appel:CWC}.
+
+Appel~\cite{Appel98:SSA} popularized the correspondence to SSA to
+direct style, which itself was introduced
+Reynolds~\cite{Reynolds1974}.  } The correspondence between SSA and
+functional languages was observed shortly after the introduction of
+SSA, and pioneered by O'Donnell, Kelsey, and
+Appel~\cite{ODonnellPhD,Kelsey95,Appel98:SSA}.
 
 Continuations and low-level functional languages have been an object
 of intensive study since their inception about four decades
@@ -1788,6 +1837,8 @@ let-normal form (see also~\cite{Reynolds1974,Plotkin75}). This allows
 one to treat side-effects (memory access, IO, exceptions,\ldots) in a
 uniform way, following Moggi~\cite{Moggi1991}, and thus simplifies
 reasoning about program analyses and the associated transformations.
+
+Lambda dropping~\cite{DBLP:journals/tcs/DanvyS00}, lambda-lifting~\cite{DBLP:conf/fpca/Johnsson85}
 
 Rideau et al.~\cite{DBLP:journals/jar/RideauSL08} present an in-depth
 study of SSA destruction, including a verified implementation in the
