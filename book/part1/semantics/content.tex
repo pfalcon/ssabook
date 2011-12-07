@@ -49,8 +49,8 @@ writers;
 
 \item
 reformulating SSA as a functional program makes explicit some of the
-implicit syntactic conditions and semantic invariants that motivate
-the definition of SSA and guide its use. Indeed, the introduction of
+syntactic conditions and semantic invariants that are implicit in
+the definition and use of SSA. Indeed, the introduction of
 SSA itself was motivated by a similar goal: to represent aspects of
 program structure, namely the def-use\index{def-use} relationships,
 explicitly in syntax, by enforcing a particular naming discipline. In
@@ -183,23 +183,25 @@ to be satisfied using well-established reasoning principles.
 %for a more in-depth discussion of advanced topics in Chapter~\ref{}.
 
 Rather than discussing all these considerations in detail, the purpose
-of the present chapter is to highlight aspects of the basic
-correspondence and then point the reader to some more advanced
+of the present chapter is to informally highlight particular aspects
+of the correspondence and then point the reader to some more advanced
 material.
 
 \paragraph{Chapter outline}
-We first highlight the main ideas of two low-level functional language
+We start by discussing the fundamental observation that (imperative)
+points of definition correspond to sites of variable binding in
+functional languages. We then outline two low-level functional
 formats that may be used to represent SSA, namely
-\emph{continuation-passing} and \emph{direct} style. With
-this background in place, we then discuss the relationship between SSA
-and functional forms in more detail by describing how various steps
-that occur during the construction and destruction of SSA mirror
+\emph{continuation-passing} and \emph{direct} style. Armed with
+this background, we then discuss the relationship between SSA and
+functional forms in more detail by describing how various steps that
+occur during the construction and destruction of SSA mirror
 corresponding transformations on functional code.  Our exposition is
 example-driven but leads to the identification of concrete
 correspondence pairs between the imperative/SSA world and the
 functional world. Finally, we briefly discuss historical aspects,
 pointers to the original literature, and topics of current and future
-work, before concluding with some brief pointers to alternative
+work, before concluding with some brief remarks on alternative
 representations that do not employ the terminology of functional
 languages.
 
@@ -209,12 +211,19 @@ occurring in a single procedure.
 \section{Low-level functional program representations}
 \label{section:Part1:Semantics:LowLevelReps}
 
-Functional languages represent a procedure by a declaration
-$$\mathtt{function}\ f(x_0, \ldots, x_n) = e$$ where the syntactic
-category of expressions $e$ conflates the notions of expressions and
-commands of imperative languages.
+Functional languages represent code using declarations of the form
+\begin{equation}
+\label{semantics:functiondeclaration}
+\mathtt{function}\ f(x_0, \ldots, x_n) = e
+\end{equation} 
+where the syntactic category of expressions $e$ conflates the notions
+of expressions and commands of imperative languages. Typically, $e$
+may contain further nested or (mutually) recursive function
+declarations. A declaration of the form
+(\ref{semantics:functiondeclaration}) binds the variables $x_i$ and
+also the function name $f$ within $e$.
 
-\subsection{Variable assignment versus name binding}
+\subsection{Variable assignment versus binding}
 \label{section:Part1:Semantics:Binding}
 A language construct provided by almost all functional languages is
 the \emph{let-binding} $$\letin x {e_1} {e_2}.$$ The effect of this
@@ -949,7 +958,7 @@ The resulting program has the following properties:
   all function declarations are \emph{closed}: the free variables of
   their bodies are contained in their formal parameter
   lists\footnote{Apart from the function identifiers $f_i$ which can
-  always be chosen distinct from the variables};
+  always be chosen distinct from the variables.};
 
 \item
   variable names are not unique, but the unique association of
@@ -963,11 +972,10 @@ The resulting program has the following properties:
 If desired, we may $\alpha$-rename to make names globally unique. As
 the function declarations in
 code~(\ref{FunctionalConstructionProgram1}) are closed, all variable
-renamings are independent from each other.  The resulting
-code~(\ref{FunctionalConstructionProgram2}) is shown in
+renamings are independent from each other. The resulting
+code~(\ref{FunctionalConstructionProgram2}) corresponds precisely to
+the SSA-program shown in
 Figure~\ref{fig:FunctionalCorrespondenceRunningExampleInitialSSA}
-(top) and corresponds precisely to the SSA-program shown
-in~Figure~\ref{fig:FunctionalCorrespondenceRunningExampleInitialSSA}
 (bottom): each formal parameter of a function $f_i$ is the target of
 one $\phi$-function for the corresponding block $b_i$. The arguments
 of these $\phi$-functions are the arguments in the corresponding
@@ -977,7 +985,6 @@ the $\phi$-functions in $b_i$ are all of the same arity, namely the
 number of call sites to $f_i$. In order to coordinate the relative
 positioning of the arguments of the $\phi$-functions, we choose an
 arbitrary enumeration of these call sites.
-\begin{figure}
 \begin{equation}
 \label{FunctionalConstructionProgram2}
 \begin{array}{l}
@@ -1007,6 +1014,7 @@ arbitrary enumeration of these call sites.
 \end{array}
   \evenoddcheck{semantics:pruned-ssa}
 \end{equation}
+\begin{figure}
 \begin{center}
 \includegraphics[scale=0.4]{SSAConstructionExample2}
 \end{center}
@@ -1771,74 +1779,92 @@ is declared as $\mathtt{function}\ f(x,y,z) = e$ may be converted to
 $$\letin x v {\letin a z {\letin z y {\letin y a {f(x,y,z)}}}},$$ in
 correspondence to the move instructions introduced in imperative
 formulations of SSA destruction (see
-Chapters~\ref{chap:classical_construction} and~\ref{????}\footnote{I
-mean Chapter 5 (SSA destruction for machine code) here, but it doesn't
-have a label yet.}). Appropriate transformations can be formulated as
-manipulations of the functional representation, although the target
-format is not immune against $\alpha$-renaming and thus only
-syntactically a functional language. For example, a local algorithm
-that considers each call site individually and avoids the
-``lost-copies'' and ``swap''-problems identified by Briggs et
-al.~\cite{DBLP:journals/spe/BriggsCHS98} can easily be
-given~\cite{DBLP:journals/entcs/Beringer07}. Instead of introducing
-let-bindings for all parameter positions of a call, the algorithm
-scales with the number and size of cycles that span identically named
-arguments and parameters (like the cycle between $y$ and $z$ above),
-and employs a single additional variable (called $a$ in the above
-code) to break all these cycles one by one, in line with the results
-of~\cite{May}.
+Chapters~\ref{chap:classical_construction}
+and~\ref{chap:alternative_ssa_destruction_algorithm}). Appropriate
+transformations can be formulated as manipulations of the functional
+representation, although the target format is not immune against
+$\alpha$-renaming and thus only syntactically a functional
+language. For example, a local algorithm that considers each call site
+individually and avoids the ``lost-copies'' and ``swap''-problems
+identified by Briggs et al.~\cite{DBLP:journals/spe/BriggsCHS98} can
+easily be given~\cite{DBLP:journals/entcs/Beringer07}. Instead of
+introducing let-bindings for all parameter positions of a call, the
+algorithm scales with the number and size of cycles that span
+identically named arguments and parameters (like the cycle between $y$
+and $z$ above), and employs a single additional variable (called $a$
+in the above code) to break all these cycles one by one, in line with
+the results of~\cite{May}.
 
 %%%%%%%%%%%%
 
 \section{Pointers to the literature}
 \label{section:Part1:Semantics:Literature}
-\footnote{O'Donnell~\cite{ODonnellPhD} and Kelsey~\cite{Kelsey95} observed that
-t the correspondence bwtween let-binding and points of varibale declaration extends to other aspects of program structure.
 
-CPS compilers: \cite{DBLP:journals/lisp/SussmanS98a,Appel:CWC}.
 
-Appel~\cite{Appel98:SSA} popularized the correspondence to SSA to
-direct style, which itself was introduced
-Reynolds~\cite{Reynolds1974}.  } The correspondence between SSA and
-functional languages was observed shortly after the introduction of
-SSA, and pioneered by O'Donnell, Kelsey, and
-Appel~\cite{ODonnellPhD,Kelsey95,Appel98:SSA}.
+%Appel~\cite{Appel98:SSA} popularized the correspondence to SSA to
+%direct style, which itself was introduced
+%Reynolds~\cite{Reynolds1974}.  } 
+
+Shortly after the introduction of SSA, O'Donnell~\cite{ODonnellPhD}
+and Kelsey~\cite{Kelsey95} noted the correspondence between
+let-bindings and points of variable declaration and its extension to
+other aspects of program structure using
+continuation-passing style. Appel~\cite{Appel98:SSA,Appel:MCIML} popularized
+the correspondence using a direct-style representation, building on
+his earlier experience with continuation-based
+compilation~\cite{Appel:CWC}. 
 
 Continuations and low-level functional languages have been an object
 of intensive study since their inception about four decades
 ago~\cite{vanWijngaarden1966,Landin1965}.  For retrospective accounts
 of the historical development, see Reynolds~\cite{Reynolds:LSC1993}
-and Wadsworth~\cite{Wadsworth00}. Early uses and studies of CPS
-include~\cite{Reynolds:1972,Plotkin75}.  The relative merits of the
-various functional representations, and formal conversions between
-them, remain an active area of research, in particular with respect to
-their integration with program analyses and optimizing
-transformations.  Recent contributions include
-\cite{DBLP:journals/jfp/DanvyMN07,DBLP:journals/lisp/Reppy02,DBLP:conf/icfp/Kennedy07}.
+and Wadsworth~\cite{Wadsworth00}. Early studies of CPS and direct
+style include~\cite{Reynolds:1972,Reynolds1974,Plotkin75}.  Two
+prominent examples of CPS-based compilers are those by Sussman et
+al.~\cite{DBLP:journals/lisp/SussmanS98a} and Appel~\cite{Appel:CWC}.
+The relative merit of the various functional representations,
+algorithms for formal conversion between these formats, and their
+efficient compilation to machine code, remain an active area of
+research, in particular with respect to their integration with program
+analyses and optimizing transformations.  Recent contributions include
+\cite{DBLP:journals/jfp/DanvyMN07,DBLP:journals/lisp/Reppy02,DBLP:conf/icfp/Kennedy07}. 
+A particularly appealing variant is that of
+Kennedy~\cite{DBLP:conf/icfp/Kennedy07}, where the approach to
+explicitly name control flow points such as merge points is taken to
+its logical conclusion. By mandating that \emph{all} control flow
+points be explicitly named, a uniform representation is obtained that
+admits optimizing transformations to be implemented efficiently,
+avoiding the administrative overhead to which some of the alternative
+approaches are susceptible.
+
 %Danvy et al.~\cite{DBLP:conf/dsl/DanvySZ09} show how to use
 %continuations to translate a subset of Algol into JavaScript.
 
 Occasionally, the term \emph{direct style} refers to the combination
 of tail-recursive functions and let-normal form, and the conditions on
-the latter notion are strengthened so that only variables may 
-appear as branch conditions. Variations of this discipline include
+the latter notion are strengthened so that only variables may appear
+as branch conditions. Variations of this discipline include
 \emph{administrative normal form} (A-normal form,
 ANF~\cite{DBLP:conf/pldi/FlanaganSDF93}),
 B-form~\cite{DBLP:conf/pldi/TarditiMCSHL96}, and
 SIL~\cite{DBLP:journals/jfp/TolmachO98}.
 
-Closely related to continuations and direct-style functional
-representations are \emph{monadic} intermediate languages such as
-those of Benton et al.~\cite{BentonKennedyRussel:ICFP1998} and
-Peyton-Jones et al.~\cite{PeytonJonesShieldsLT:POPL1998}. These
-partition expressions into categories of \emph{values} and
+Closely related to continuations and direct-style representation are
+\emph{monadic} intermediate languages as used by Benton et
+al.~\cite{BentonKennedyRussel:ICFP1998} and Peyton-Jones et
+al.~\cite{PeytonJonesShieldsLT:POPL1998}. These partition expressions
+into categories of \emph{values} and
 \emph{computations}, similar to the isolation of primitive terms in
 let-normal form (see also~\cite{Reynolds1974,Plotkin75}). This allows
 one to treat side-effects (memory access, IO, exceptions,\ldots) in a
 uniform way, following Moggi~\cite{Moggi1991}, and thus simplifies
-reasoning about program analyses and the associated transformations.
+reasoning about program analyses and the associated transformations in
+the presence of impure language features.
 
-Lambda dropping~\cite{DBLP:journals/tcs/DanvyS00}, lambda-lifting~\cite{DBLP:conf/fpca/Johnsson85}
+Lambda-lifting and dropping are well-known transformations in the
+functional programming community, and are studied in-depth by
+Johnsson~\cite{DBLP:conf/fpca/Johnsson85} and Danvy et
+al.~\cite{DBLP:journals/tcs/DanvyS00}.
 
 Rideau et al.~\cite{DBLP:journals/jar/RideauSL08} present an in-depth
 study of SSA destruction, including a verified implementation in the
@@ -1846,13 +1872,13 @@ proof assistant Coq for the ``windmills''-problem, i.e., the task of
 correctly introducing $\phi$-compensating assignments.
 
 Extending the syntactic correspondences between SSA and functional
-languages, similarities may be identified between the respective
-characteristic program analysis frameworks, \emph{dataflow analyses}
-and \emph{type systems}.  Chakravarty et
-al.~\cite{ChakravartyKZ:COCV03} prove the correctness of a functional
-representation of Wegmann and Zadeck's SSA-based sparse conditional
-constant propagation algorithm~\cite{WegmannZ:Toplas1991}.  Beringer
-et al.~\cite{DBLP:journals/entcs/BeringerMS03} consider data flow
+languages, similarities may be identified between their characteristic
+program analysis frameworks, \emph{dataflow analyses} and \emph{type
+systems}.  Chakravarty et al.~\cite{ChakravartyKZ:COCV03} prove the
+correctness of a functional representation of Wegmann and Zadeck's
+SSA-based sparse conditional constant propagation
+algorithm~\cite{WegmannZ:Toplas1991}.  Beringer et
+al.~\cite{DBLP:journals/entcs/BeringerMS03} consider data flow
 equations for liveness and read-once variables, and formally translate
 their solutions to properties of corresponding typing derivations.
 Laud et al.~\cite{DBLP:journals/tcs/LaudUV06} present a formal
