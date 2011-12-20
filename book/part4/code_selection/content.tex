@@ -74,7 +74,7 @@ selector for each target architecture, generator tools have been
 designed and implemented that generate the instruction selector based
 on a specification of the machine description of the target. The study
 and implementation of generator tools is mainly motivated by
-implementing compiler back-ends efficiently and effectively using
+implementing compiler back-ends rapidly using
 specifications, and represent a first step towards fully retargetable
 compilers. Generators for instruction
 selectors are used in large compiler infrastructures including
@@ -89,40 +89,6 @@ types. Thereafter, the instruction selection performs the mapping to machine cod
 lowered IR based on the machine description of
 the target architecture.
 
-The approaches in literature can be classified based on the scope of
-translation. A translation unit may be a single statement, a basic
-block, or a whole procedure of the input program. The use of the
-Static Single Assignment (SSA) form improves the code generation for
-most instruction selection approaches because it makes def-use
-relationships explicit. Hence, SSA exposes the data flow of a
-translation unit and utilizes the code generation process.  The
-approaches in literature can be further classified at which stage of
-the compilation the machine description is used to instrument a
-generic instruction selection algorithm: (1) either during compile
-time or (2) at generation time of the instruction selector by
-generating a specialized version of the algorithm based on the
-specification of the machine description. We refer to the generation
-time of the instruction selection as \emph{compiler compile time}.
-
-In the following we give a brief overview of the most important
-techniques applied in practice ordered by increasing scope of
-translation. This includes efficient local techniques such as
-RTL-based instruction selection and (tree) pattern matching
-techniques. The latter is discussed in more detail as it lays the
-foundations for a more general whole-procedure instruction selection
-techniques based on SSA form discussed in the rest of this chapter.
-
-\subsection{RTL-Based Instruction Selection}
-Register Transfer Lists (RTL) are a common machine-independent
-IR employed in several compiler infrastructure
-including Zehpyr/VPO \cite{Ramsey98} and GCC \cite{wwwGCC}. An RTL is a
-simultaneous composition of list of effects. An effect computes the
-value of an expression and stores it in a location, which is either a
-single mutable storage cell or an aggregate of mutable cells. The
-value of an expression can either be constant, fetched from a storage
-location, or the result of the application of an operator to a list
-of argument expressions. Even though an RTL is machine-independent,
-its semantics depend on the particular target architecture.
 
 % \emph{3 pages}; introduction, related work
 \begin{figure}[t]
@@ -158,39 +124,11 @@ its semantics depend on the particular target architecture.
 \end{figure}
 
 
-\begin{algorithm}
-\caption{RTL-based code generation scheme.}
-\label{alg:rtlisel}
-\begin{algorithmic}[1]
-\STATE Forward substitution
-\STATE Combination of independent effects
-\STATE Removal of useless effects
-\STATE Validation based on a machine-description
-\end{algorithmic}
-\end{algorithm}
-Code generators in RTL-based compilers are based on the four-step
-scheme depicted in Algorithm~\ref{alg:rtlisel}. Forward substitution
-forms more complex expressions by substituting sub-expressions with
-their defining RTL. Likewise, step (2) combines individual RTLs to a
-single expression. After application of these rules, the results are
-verified against the machine descriptions. Step (3) simplifies
-redundant effects that might result from the application of the
-previous steps. RTL expressions that do not represent a native
-instruction are discarded in step (4).
-
-The scope of this approach is limited to simple patterns and
-constitutes a form of ``poor-man's instruction selection'' achieving
-only locally optimal code. Thus, the code quality of RTL-based
-compilers such as GCC strongly depends on post-pass RTL-based
-optimizations such as common subexpression elimination (CSE) that make
-up for missed opportunities.
-\subsection{Tree Pattern Matching}
-\label{sec:tpm}
-Tree pattern matching is more sophisticated than RTL-based instruction
-selection, and it is widely used in modern compiler frameworks. The
-technique was introduced by Aho and Johnson~\cite{aj:76}. The unit of
-translation is a single statement represented in the form of a data
-flow tree (DFT). The basic idea is to describe the target instruction
+One of the widely used techniques in code generation is tree pattern 
+matching~\cite{aj:76} whose unit of translation is a single statement 
+represented in the form of a data flow tree (DFT). Code generation for SSA 
+is based on tree pattern matching hence we explain it in more detail by
+an example.  The basic idea of tree pattern matching is to describe the target instruction
 set using an \emph{ambiguous} cost-annotated graph grammar. The
 instruction selector seeks for a cost-minimal \emph{cover} of the
 DFT. Each of the selected rules have an associated semantic action
@@ -239,75 +177,24 @@ bottom-up.
 
 An example of a DFT along with a set of rules representing valid ARM
 instructions is shown in Figure~\ref{fig:tpm}. Each rule consists of
-terminal symbols that are shown in upper-case, and nonterminals that
-are shown in lower-case. Terminal symbols match the corresponding
-labels of the dataflow trees. Nonterminals are used to chain
-individual rules together. Rules that translate from one nonterminal
-to another are called \emph{chain rules}. Nonterminal \texttt{s}
-denotes a distinguished start symbol. Note that there are multiple
-possibilities to obtain a cover of the data-flow tree using the rule
-fragment to the left. Each rule has associated costs. The cost of a
-tree cover is the sum of the costs of the selected rules.
-
-Aho and Johnson~\cite{aj:76} were the first to propose a dynamic
-programming algorithm in order to obtain cost-minimal covers. The
-approach of Aho and Johnson was further refined
-in~\cite{Balachandran90TreeMatching}, and tree-pattern matching can be
-performed in linear time by pre-computing static lookup tables at
-compiler compile time. Most implementations rely on the following
-two-pass scheme:
-\begin{enumerate}
-\item[(1)]\emph{labeling:} use dynamic programming in order to
-  determine a minimum-cost cover of the given DFT bottom-up.
-\item[(2)]\emph{reduce}: traverse the DFT in postfix order and execute
-  the semantic actions associated with the chosen rules to obtain a
-  semantically equivalent target program.
-\end{enumerate}
-One of the more popular existing implementations is the tool
-\texttt{burg}~\cite{FHP:92} that converts a specification
-in the form of a tree grammar into an optimized tree pattern matcher
-written in \texttt{C}. While \texttt{burg} computes costs at compiler
-compile time and thus requires constant costs,
-\texttt{iburg}~\cite{Fraser92Iburg} can handle dynamic costs by
-shifting the dynamic programming algorithm to instruction selection
-time. This allows the use of dynamic properties for cost computations,
-\eg, concrete values of immediates. The additional flexibility is
-traded for a small penalty in runtime.  More recent
-techniques~\cite{ecg:06} save the computed states for tree nodes in a
-lookup table. This approach retains the flexibility of dynamic cost
-computations at nearly the speed of precomputed tree parsing automata.
-
-Tree-pattern matching approaches are limited in scope to simple
-statements. DAG matching techniques are an approach to overcome these
-limitations. However, DAG matching is an NP-complete
-problem~\cite{pro98least} in general. A straight forward
-generalization~\cite{ertl99optimal} of the algorithm discussed so far
-is to treat DAGs as if they were trees and make local choices
-irrespective of shared subgraphs. It turns out that this approach is
-exact for a specific class of grammars but fails to deliver optimal
-solutions in the general case.  For code generation techniques that
-exploit aggressively the properties of the target machine, it is
-useful to increase the scope of instruction selection further to whole
-procedures at a time. An excellent underlying data-structure for code
-generation is the SSA graph~\cite{GSW95} that is an extension of DFTs
-and represent the data-flow of a procedure in SSA form. In the
-following, we will demonstrate how to reduce the instruction selection
-problem in SSA graphs to a specialized quadratic assignment problem
-(PBQP) \cite{EcksteinKS03}. An extension of \emph{patterns} to
-arbitrary acyclic graph structures which we refer to as DAG grammars
-is discussed in Section~\ref{sec:dag_patterns} for details. These
-extension are useful in the presence of SIMD instructions of CPUs.
-
-As we move from acyclic linear code regions to whole-functions, it
-becomes less obvious in which basic block, the selected
-machine instructions should be emitted. For chain rules, the obvious
-choices are often sub-optimal. We will discuss in
-Section~\ref{sec:chain_rule_placement} a polynomial-time algorithm
-based on generic network flows that can be applied to generate more
-efficient code based on a flexible cost model.
-
-\section{Motivation}
-\label{sec:motivation}
+nonterminals that are shown in lower-case, and terminal symbols that are shown in upper-case. Nonterminals are used to chain
+individual rules together whereby nonterminal \texttt{s}
+denotes a distinguished start symbol for the root node of the DFT. Terminal symbols match the corresponding 
+labels of nodes in the dataflow trees. The terminals of the grammar are
+\texttt{VAR}, \texttt{CST}, \texttt{SHL}, \texttt{ADD}, and  \texttt{LD}. 
+ Rules that translate from one nonterminal
+to another are called \emph{chain rules}, e.g., \texttt{reg <- imm} that
+translates an immediate value to a register. Note that there are multiple
+possibilities to obtain a cover of the data-flow tree for
+the example shown in the Figure~\ref{fig:tpm} using the rule
+fragment to the left.  Each rule has associated costs. The cost of a
+tree cover is the sum of the costs of the selected rules. For example, 
+the DFT could be covered by rules (3), (4), and (11)
+which would give a total cost for the cover of one 
+cost unit. Alternatively, the DFT could be covered by rule (2), (6), (8), and (9)
+which yields 4 cost units for the cover for issuing 4 assembly instructions. The dynamic program~\cite{aj:76}
+will select the cost optimal cover for the DFT. However,
+DFT can only describe a statement scope.
 
 \begin{figure}[ht]
   \begin{center}
@@ -386,166 +273,124 @@ efficient code based on a flexible cost model.
     fixed-point artithmetic.}\label{fig:dot_product}
 \end{figure}
 
-We demonstrate that DAG based instruction selection is not
-sufficient to generate optimal code as shown in
-Figure~\ref{fig:dot_product}. For the example we assume an ARM-like RISC
-architecture. The code implements a simple vector dot-product using
-fixed-point arithmetic in Embedded~C. The color of DAG nodes depicts
-the particular basic block they belong to, and we assume the notion of type
-annotation to distinguish fixed-point data types from
-regular integer arithmetic.
+To overcome this limitation of tree-matching, we can extend the scope of the matching
+algorithm to the computational flow of a whole procedure. 
+The use of the Static Single Assignment (SSA) form as an intermediate representation 
+improves the code generation by making def-use relationships explicit. Hence, SSA 
+exposes the data flow of a translation unit and utilizes the code 
+generation process.  Instead of using a textual SSA representations~\cite{CFR+91}, we 
+employ a graph representation of SSA called the \emph{SSA graph}~\cite{GSW95} 
+that is an extension of DFTs and represent the data-flow of a procedure 
+in SSA form.  SSA graphs are a suitable representation for code
+generation: First, SSA graphs enable
+the matching of acyclic and cyclic flow induced by the control
+flow graph. Second, SSA graphs often arise naturally in modern
+compilers as intermediate code is already in SSA form. Third, 
+output or anti-dependencies in SSA graph do not exist.
 
-For sake of simplicity, we neglect the details including numerical precision,
-loop control code, and we disregard output- and anti-dependencies
-that have to be respected in order to maintain semantic equivalence.
-For example, we have to emit the
-post-increment for variables \texttt{p} and \texttt{q} \emph{after} the
-corresponding loads which is neglected.
-
-In our grammar fixed-point values are represented by
-nonterminal symbol \texttt{fp} and the cost function
-separates fixed-point arithmetic from general integer arithmetic,
-\ie, we alter the grammar introduced in Figure~\ref{fig:tpm} as
-shown below:
-\begin{alltt}
-   reg <- VAR : is\_fixed_point() ? \(\infty\) : 0
-   fp  <- VAR : is\_fixed_point() ? 0 : \(\infty\)
-\end{alltt}
-For fixed-point values most arithmetic and bitwise operations are
-identical to their integer equivalents. However, some operations have
-a different semantics, \eg, multiplying two fixed-point values in
-format $m.i$ results in a value with $2i$ digits of fraction. The
-result of the multiplication has to be adjusted by a shift operation
-to the right. The adjustment can be modeled for an ARM-like
-architecture by following rule fragment that models double-precision
-fixed-point values with nonterminal \texttt{fp2}:
-\begin{alltt}
-   fp2 <- MUL(fp, fp)   : 1   \{ MUL Rd, Rm, Rs \}
-   fp  <- fp2           : 1   \{ LSR Rd, Rm, i  \}
-   fp  <- ADD(fp, fp)   : 1   \{ ADD Rd, Rm, Rs \}
-   fp2 <- ADD(fp2, fp2) : 1   \{ ADD Rd, Rm, Rs \}
-\end{alltt}
-We can perform the accumulation for double-precision fixed
-point values at the same cost as for \texttt{fp}. Thus, it would be
-beneficial to move the necessary shift from the inner loop to the
-return block, performing the intermediate calculations in the extended
-format. However, as a DAG based matcher processes basic block by
-basic block, the information of having values as double-precision
-cannot be hoisted across basic block boundaries.
-
-To overcome this limitation, we can extend the scope of the matching
-algorithm to the computational flow of a whole procedure. SSA graphs
-provide a very suitable vehicle for performing instruction selection for
-manifold reasons:  First, in
-contrast to classical tree or DAG representations, SSA graphs enable
-the matching of circular flow stemming from program loops.
-Second, SSA graphs often arise naturally in modern
-compilers as intermediate code is already in SSA form. Third, the
-set of edges fully specifies the set of data dependencies that have to
-be respected as there are no additional output or
-anti-dependencies. These additional dependencies significantly
-complicate or limit DAG based techniques.
-
-\begin{figure}
-  \begin{center}
-%     \begin{tikzpicture}
-
-%       \node [fnode, fill=LightGreen] (ret) {\texttt{ret}};
-%       \node [fnode, fill=LightGreen, below of=ret] (phi1) {$\phi$};
-%       \node [fnode, below of=phi1] (add1) {\texttt{ADD}};
-%       \node [fnode, below of=add1] (mul) {\texttt{MUL}};
-%       \node [fnode, right of=mul, node distance=2cm] (phi3) {$\phi$};
-%       \node [fnode, fill=LightYellow, below right of=phi3, node distance=2cm]
-%             (cst0) {\texttt{CST:0}};
-%       \path[arrow,->] (mul) edge (add1);
-%       \path[arrow,->] (add1) edge (phi1);
-%       \path[arrow,->] (phi1) edge (ret);
-
-%       \node [fnode] at ($(mul)+(-1.7cm,-1.5cm)$) (ldp) {\texttt{LD}};
-%       \node [fnode, below left of=ldp, node distance=2cm] (phip) {$\phi$};
-%       \node [fnode, fill=LightYellow] at ($(phip)+(-1.5cm,-1.5cm)$) (varp) {\texttt{VAR:p}};
-%       \node [fnode] at ($(phip)+(+1.5cm,-1.5cm)$) (inc) {\texttt{INC}};
-%       \path[arrow,->] (varp) -- (phip);
-%       \path[arrow,->] (inc) -- (phip);
-%       \path[arrow,->] (phip) -- (ldp);
-%       \path[arrow,->, bend left=5] (ldp) edge (mul);
-%       \path [arrow,->] (phip) .. controls ($(phip.east)+(2cm,0cm)$)
-%             and ($(inc.east)+(1cm,-1.5cm)$) .. (inc);
-
-%       \node [fnode] at ($(mul)+(1.7cm,-1.5cm)$) (ldq) {\texttt{LD}};
-%       \node [fnode, below right of=ldq, node distance=2cm] (phiq) {$\phi$};
-%       \node [fnode] at ($(phiq)+(-1.5cm,-1.5cm)$) (varq) {\texttt{VAR:q}};
-%       \node [fnode] at ($(phiq)+(+1.5cm,-1.5cm)$) (inc) {\texttt{INC}};
-%       \path[arrow,->] (varq) -- (phiq);
-%       \path[arrow,->] (inc) -- (phiq);
-%       \path[arrow,->] (phiq) -- (ldq);
-%       \path[arrow,->, bend right=5] (ldq) edge (mul);
-%       \path [arrow,->] (phiq) .. controls ($(phiq.east)+(2cm,0cm)$)
-%             and ($(inc.east)+(1cm,-1.5cm)$) .. (inc);
-
-%       \node [fnode] at ($(phip)+(0.5cm,4.5cm)$) (lt) {\texttt{<}};
-%       \node [fnode, fill=LightYellow, below left of=lt,
-%              node distance=2cm] (add) {\texttt{ADD}};
-%       \node [fnode, fill=LightYellow, below of=add] (cstn) {\texttt{CST:2N}};
-%       \path[arrow,->, bend left=5] (add) edge (lt);
-%       \path[arrow,->] (varp) ..controls ($(cstn)+(-1.5cm,0)$) .. (add);
-%       \path[arrow,->] (cstn) -- (add);
-%       \path[arrow,->, bend left=5] (phip) edge (lt);
-%       \path[arrow,->, bend right=5] (phi3) edge (add1);
-%       \path[arrow,->] (add1) .. controls ($(add1.east)+(2cm,0cm)$)
-%             and ($(phi3.east)+(2cm,-1cm)$) .. (phi3);
-%       \path[arrow,->] (cst0) .. controls ($(phi3.east)+(1.5cm,0cm)$) ..  (phi1);
-%       \path[arrow,->,bend right=5] (cst0) edge (phi3);
-
-%     \end{tikzpicture}
-    \includegraphics{pgf-fig004}
-  \end{center}
-  \caption{Corresponding SSA graph for the example introduced in
-    Figure~\ref{fig:dot_product}.}\label{fig:ssa_graph}
-\end{figure}
-
-The corresponding SSA graph for the example introduced in
-Figure~\ref{fig:dot_product} is shown in Figure~\ref{fig:ssa_graph}.
+As SSA graphs are potentially cyclic, no dynamic
+programming approach can be employed for instruction selection. 
+To get a handle on code selection for SSA graphs, we will discuss in the following
+an approach based on a reduction to a quadratic mathematical programming
+problem (PBQP)~\cite{EcksteinKS03,1269857,Ebner08} that has been adopted
+by at least two major embedded system compiler vendors. 
+Consider the code fragment of a dot-product and its SSA graph 
+is shown in Figure~\ref{fig:ssa_graph}.
+The code implements a simple vector dot-product using fixed-point arithmetic in Embedded~C. 
 Nodes in the SSA graph represent a single operation while edges
 describe a flow of data that is produced at the source node and that
 is consumed at the target node. Incoming edges have an order which reflects the argument
 order of the operation. In the figure the color of the nodes
-show to which basic block the operations belong to. An instruction
-selector operating on the SSA graph is free to propagate nonterminal \texttt{fp2}
-across the $\phi$ node prior to the return and emits the
-code for the shift to the right in the return block.
+show to which basic block the operations belong to. 
 
-As SSA graphs are potentially cyclic, no dynamic
-programming approach can be employed for instruction selection. To get
-a handle on code selection for SSA graphs, we will discuss in the following
-an approach based on a reduction to a quadratic mathematical programming
-problem (PBQP) \cite{EcksteinKS03,1269857,Ebner08} that has been adopted
-by at least two major embedded system compiler vendors. We continue with a short
-introduction to PBQP before discussing the main problem formulation
-and two extensions that allow for more flexible grammars and optimal
-chain code placement.
+The example in Figure~\ref{fig:ssa_graph} has fixed-point computations that need
+to be modelled in the grammar. For fixed-point values most arithmetic and bitwise operations are
+identical to their integer equivalents. However, some operations have
+a different semantics, \eg, multiplying two fixed-point values in
+format $m.i$ results in a value with $2i$ digits of fraction. The
+result of the multiplication has to be adjusted by a shift operation
+to the right. To accommodate for fixed-point values, we add
+following rules to the grammar of Figure~\ref{fig:tpm}:
+\begin{alltt}
+   reg <- VAR : is\_fixed_point() ? \(\infty\) : 0
+   fp  <- VAR : is\_fixed_point() ? 0 : \(\infty\)
+   fp2 <- MUL(fp, fp)   : 1   \{ MUL Rd, Rm, Rs \}
+   fp  <- fp2           : 1   \{ LSR Rd, Rm, i  \}
+   fp  <- ADD(fp, fp)   : 1   \{ ADD Rd, Rm, Rs \}
+   fp2 <- ADD(fp2, fp2) : 1   \{ ADD Rd, Rm, Rs \}
+   fp <- PHI(fp, ...) : 0 
+   fp2 <- PHI(fp2, ...) : 0 
+\end{alltt}
+Fixed-point values are represented by
+nonterminal symbol \texttt{fp}. In this grammar, the cost function decides
+whether a variable is represented by \texttt{reg} (general integer arithmetic)
+or \texttt{fp} (fixed-point arithmetic.. 
+The adjustment of the multiplication can be modeled by double-precision
+fixed-point values with nonterminal \texttt{fp2}.
 
-\section{Partitioned Boolean Quadratic Programming}
+In the example the accumulation for double-precision fixed
+point values can be performed at the same cost as for \texttt{fp}. Thus, it would be
+beneficial to move the necessary shift from the inner loop to the
+return block, performing the intermediate calculations in the extended
+format. However, as a tree-pattern matcher generates code at 
+statement-level, the information of having values as double-precision
+cannot be hoisted across basic block boundaries.
+An instruction selector that is operating on the SSA graph, is able to propagate 
+nonterminal \texttt{fp2} across the $\phi$ node prior to the return 
+and emits the code for the shift to the right in the return block.
+
+
+In the following, we will explain how to perform instruction selection
+on SSA graphs with the means of a specialized quadratic assignment problem
+(PBQP)~\cite{EcksteinKS03}. First, we discuss the instruction
+selection problem by employing a discrete optimisation problem 
+called partitioned boolean quadratic problem in the next section.  
+An extension of \emph{patterns} to
+arbitrary acyclic graph structures which we refer to as DAG grammars
+is discussed in Sub-Section~\ref{sec:dag_patterns} for details. These
+extension are useful in the presence of SIMD instructions of CPUs.
+As we move from acyclic linear code regions to whole-functions, it
+becomes less obvious in which basic block, the selected
+machine instructions should be emitted. For chain rules, the obvious
+choices are often sub-optimal. We will discuss in
+Section~\ref{sec:chain_rule_placement} a polynomial-time algorithm
+based on generic network flows that can be applied to generate more
+efficient code based on a flexible cost model.
+
+
+\section{Code Selection for Tree Patterns on SSA-Graphs}
+% \emph{5 pages}; modeling, continued example
+The matching problem for SSA graphs reduces to a discrete 
+optimization problem called Partitioned Boolean Quadratic Problem (PBQP). 
+First, we will introduce
+the PBQP problem and then we will describe the 
+mapping of the instruction selection problem to PBQP.
+
+\subsection{Partitioned Boolean Quadratic Problem}
+\label{sec:pbqp}
 % \emph{2 pages}; introduction into PBQP, algorithms, and applications
 Partitioned Boolean Quadratic Programming
 (PBQP) is a generalized quadratic assignment problem that has proven
 to be effective for a wide range of applications in embedded code
 generation, \eg, instruction selection, register assignment, address
-mode selection \cite{Eck03}, or bank selection for architectures with
-partitioned memory \cite{journals/tecs/ScholzBX08}. Instead of
+mode selection~\cite{Eck03}, or bank selection for architectures with
+partitioned memory~\cite{journals/tecs/ScholzBX08}. Instead of
 problem-specific algorithms, these problems can be modeled in terms of
 generic {PBQP}s that are solved using a common solver library. PBQP
 is flexible enough to model irregularities of embedded architectures
 that are hard to cope with using traditional heuristic approaches.
 
-\subsection{Problem Definition}
 A PBQP is a generalized quadratic assignment problem proposed by
 Scholz and Eckstein for various sub-problems of embedded code
 generation~\cite{ScholzE02,Eck03}. Consider a set of discrete
 variables $X=\{x_1,\ldots,x_n\}$ and their finite domains
 $\{\vardomain_1,\ldots,\vardomain_n\}$. A solution of PBQP is a
-mapping $h$ of each variable to an element in its domain. The quality of a
-solution is based on the contribution of two sets of terms,
+mapping $h$ of each variable to an element in its domain, i.e.,
+an element of $\vardomain_i$ needs to be chosen for variable
+$x_i$. The chosen element imposes local costs and costs
+between a neighbour variable which we refer to as related costs.  
+Hence, the quality of a solution is based on the contribution of 
+two sets of terms,
 \begin{enumerate}
 \item for assigning variable $x_i$ to the element $d_i$ in
   $\vardomain_i$. The quality of the assignment is measured by a
@@ -560,54 +405,23 @@ and the total cost of a solution $h$ is given as,
   f\! =\! \sum_{1 \leq i \leq n} \hspace{-1mm} c(x_i,h(x_i)) + \hspace{-3mm} \sum_{1 \leq i < j  \leq n} \hspace{-3.5mm}
   C\left (x_i,x_j, h(x_i), h(x_j) \right). \label{eqn-pbqp}
 \end{equation}
-The PBQP problem seeks for an assignment with minimum total costs.
+The PBQP problem seeks for an assignment of variables $x_i$ with minimum total costs.
 
-We can alternatively formulate PBQP using matrix calculus: a discrete
-variable $x_i$ is represented as a boolean vector $\vec{x_i}$ whose
-elements are zeros and ones and whose length is determined by the
-number of elements in its domain $|\vardomain_i|$. Each 0-1 element of
-$\vec{x_i}$ corresponds to an element of $\vardomain_i$. An assignment
-of $x_i$ to $d_i$ is represented as a unit vector whose element for
-$d_i$ is set to one. Hence, a valid assignment for a variable $x_i$ is
-modeled by the constraint $\vec{x_i}^T \vec{1}=1$ that restricts
-vectors $\vec{x_i}$ such that exactly one vector element is assigned
-one; all other elements are set to zero.
-
-The related cost function $C(x_i,x_j,d_i,d_j)$ is decomposed for each
-pair $(x_i,x_j)$. The costs for the pair are represented as matrix
+In the following we represent the local cost function and the related cost 
+function in matrix form, i.e., the related cost function 
+$C(x_i,x_j,d_i,d_j)$ is decomposed for each
+pair $(x_i,x_j)$. The costs for the pair are represented as matrix/table
 ${\matrixfont C}_{ij}$. A matrix element corresponds to an assignment
 $(d_i, d_j)$. Similarly, the local cost function $c(x_i,d_i)$ is
-mapped to cost vectors $\vec{c_i}$. We can formulate a PBQP as the
-following mathematical program:
-\begin{align}
-  \min f(X) &=
-  \sum_{1 \leq i \leq n} \vec{x_i}^{T} \vec{c_i}  +
-  \sum_{1 \leq i < j \leq n}
-  \vec{x_i}^{T}  {\matrixfont C}_{ij} \vec{x_j} \\
-  \ s.t. \,        &\,  \forall 1 \leq i \leq n : \vec{x_i} \in \{0,1\}^{|\vardomain_i|}  \label{def:constraints1}\\
-  &\,  \forall 1 \leq i \leq n : \vec{x_i}^T \vec{1} = 1 \label{def:constraints2}
-\end{align}
-A solution satisfying Constraints~\ref{def:constraints1} and
-~\ref{def:constraints2} maps each boolean decision vector $\vec{x_i}$
-to a binary vector that contains a single one element. This defines a
-one-to-one mapping among decision vectors $\vec{x_i}$ and elements in
-their domain $\vardomain_i$. Thus, the domain for the objective
-function is the cross product of the domains for the individual
-variables $\vardomain_1 \times \dots \times \vardomain_n$. The
-solution to a PBQP is not necessarily unique, \ie, there are in
-general multiple solution vectors $\bar{X}$ with the same minimal
-objective value.
-
+represented by a cost vector $\vec{c_i}$ enumerating the costs
+of the elements.
 A PBQP problem has an underlying graph structure graph $G=(V,E,C,c)$,
-which we refer to as a PBQP graph. For each decision vector
-$\vec{x_i}$ we have a corresponding node $v_i \in V$ in the graph, and
+which we refer to as a PBQP graph. For each decision variable
+$x_i$ we have a corresponding node $v_i \in V$ in the graph, and
 for each cost matrix ${\matrixfont C}_{i,j}$ that is not the zero
 matrix, we introduce an edge $e=(v_i,v_j)$. The cost functions $c$ and
 $C$ map nodes and edges to the original cost vectors and matrices
-respectively. Note, that due to the properties of quadratic forms,
-there is an implicit reverse edge $e'=(v_j,v_i)$ for each edge
-$e=(v_i,v_n)$ and $C(e) = C(e')^T$. A PBQP graph is free of self- and
-multi-edges. We will present an example later in this chapter in the
+respectively.  We will present an example later in this chapter in the
 context of instruction selection.
 
 In general, finding a solution to this minimization problem is NP
@@ -616,268 +430,30 @@ sparse, \ie, many of the cost matrices ${\matrixfont C}_{i,j}$ are
 zero matrices and do not contribute to the overall solution. Thus,
 optimal or near-optimal solutions can often be found within reasonable
 time limits.
-We will discuss two algorithmic approaches for PBQP that have been
+Currently, there are two algorithmic approaches for PBQP that have been
 proven to be efficient in practice for instruction selection problems,
 \ie, a polynomial-time heuristic algorithm and a branch-\&-bound based
 algorithm with exponential worst case complexity.
-
-\subsection{Heuristic Algorithm}
-\label{sec:pbqp:heuristic}
-In this section, we introduce an algorithm for PBQP proposed by
-Scholz and Eckstein \cite{ScholzE02,Eck03}.  For a certain subclass of
-PBQP, their algorithm produces provably optimal solutions in time
+For a certain subclass of PBQP~\cite{ScholzE02,Eck03}, the algorithm 
+produces provably optimal solutions in time
 ${\cal O}(n m^3)$, where $n$ is the number of discrete variables and
 $m$ is the maximal number of elements in their domains, \ie, $m=\max
 \left(|\vardomain_1|,\ldots,|\vardomain_n\right|)$. For general
-{PBQP}s, however, the solution may be sub-optimal.
+{PBQP}s, however, the solution may be sub-optimal. To obtain
+still an optimal solution outside the sub-class, branch-\&-bound 
+techniques can be applied~\cite{DBLP:conf/jmlc/HamesS06}. 
 
-\begin{algorithm}
-\caption{PBQP Heuristic}
-\label{alg:pbqp:heuristic}
-\begin{algorithmic}
-  \STATE \COMMENT{\textbf{\emph{Phase I: reduction}}}
-  \WHILE{$\exists v \in V : \deg v > 0$}
-  \STATE choose vertex $v \in V: 0 < \deg (v) \leq \deg (v') \ \forall v'
-  \in V : \deg(v') > 0$
-  \IF{$\deg(v) == 1$}
-  \STATE \textbf{RI}(v)
-  \ELSIF{$\deg(v) == 2$}
-  \STATE \textbf{RII}(v)
-  \ELSE
-  \STATE \textbf{RN}(v) \COMMENT{solution may be sub-optimal if RN is applied}
-  \ENDIF
-  \STATE remove $v$ from the graph
-  \ENDWHILE
-  \STATE
-  \STATE \COMMENT{\textbf{\emph{Phase II: trivial solution}}}
-  \FORALL{$v_i \in V$}
-  \STATE determine solution for $v_i$ by finding the minimum element
-  in $c_i$
-  \ENDFOR
-  \STATE
-  \STATE \COMMENT{\textbf{\emph{Phase III: back-propagation}}}
-  \STATE re-insert the remaining nodes in reversed elimination order
-  until a solution for the original graph is obtained
-\end{algorithmic}
-\end{algorithm}
-The algorithm works in three phases as shown in
-Algorithm~\ref{alg:pbqp:heuristic}. First, the PBQP graph is reduced
-until only nodes of degree $0$ are left. For these nodes, a solution
-can easily be found using a local minimum computation. In a last step,
-the eliminated nodes are re-inserted in reversed order thereby
-computing a solution for the original problem instance.
-
-\subsubsection{Phase I: Reduction.} Eliminating nodes from the PBQP graph
-is equivalent to the elimination of decision vectors from the original
-problem. The algorithm removes nodes from the graph until only nodes
-of degree $0$ remain. Nodes to be removed are chosen according to
-their degree in increasing order. In practice, this can be
-accomplished efficiently by putting nodes into buckets according to
-their degree. The algorithm selects a node from the bucket with the
-smallest index that is non-empty.
-
-Nodes with degree one or two can be eliminated without loss of
-optimality using reductions RI and RII respectively. If the algorithm
-reaches a point where only nodes with degree three or more are left,
-the problem becomes irreducible and a heuristic is applied, which is
-called RN. The heuristic chooses a beneficial discrete variable and a
-good assignment for it by searching for local minima. The obtained
-solution is guaranteed to be optimal if the reduction RN is not
-used~\cite{Eck03}.
-
-\paragraph{RI Reduction.}
-Let $v_i$ be a node with degree one and let $v_j$ denote its only
-adjacent vertex in the PBQP graph, we can eliminate $v_i$ and the
-incident edge $(v_i, v_j)$ simply by removing them from the PBQP
-graph. The cost vector associated with $v_j$ is incremented by the
-minimum costs over all possible choices of $v_i$. More formally, the
-updated cost vector $\vec{c_j}'$ is given by
-$$\vec{c_j}'(a) = \vec{c_j}(a) + \min({\matrixfont C}_{j,i}(a,:) +
-\vec{c_i}).$$ As for the reduction RII, it is easy to show that the
-optimal objective value for the modified graph corresponds to the
-optimal value of the original problem. A formal proof is given by
-Eckstein \cite{Eck03}.
-
-\paragraph{RII Reduction.}
-Reduction RII follows the same idea as reduction RI. The operation is
-applied to nodes $v_i$ with degree two. The two adjacent nodes are
-denoted by $v_j$ and $v_k$ respectively. Vertex $v_i$ is removed and
-the minimal costs for $v_i$ depending on choices for $v_j$ and $v_k$
-are added to the cost matrix ${\matrixfont C}_{j,k}$. The new cost
-matrix ${\matrixfont C}'_{j,k}$ is defined as follows:
-$${\matrixfont C}'_{j,k}(a,b) = {\matrixfont C}_{j,k}(a,b) +
-\min({\matrixfont C}_{j,i}(a,:) + {\matrixfont C}_{k,i}(b,:) + \vec{c_i}.$$
-
-\paragraph{RN Reduction.}
-PBQP graphs that cannot be reduced using reductions RI and RII are
-called \emph{irreducible}. The smallest example for an irreducible
-graph is the complete graph with four nodes $K_4$. One possibility to
-deal with irreducible graphs is recursive enumeration. However,
-recursive enumeration has exponential worst-case complexity which
-makes it an infeasible approach for most applications. Instead, a
-heuristic called RN is applied that reduces a node using a local
-minimum computation. The basic idea is to make a decision as if the
-node and the adjacent vertices are disconnected from the rest of the
-PBQP graph. While reductions RI and RII can be shown to maintain the
-optimality of the obtained solution, RN does not and leads to
-sub-optimal solutions in general. Let $v_i$ denote a vertex of degree
-three or more, we heuristically select the index with minimal costs
-from the cost vector $\vec{c}'$ defined as follows:
-$$\vec{c}'(a) = \vec{c_i}(a) + \sum_{(v_i,v_j) \in E}{\min({\matrixfont C}_{i,j}(a,:)
-  + \vec{c_j})}.$$ Let $s_i$ denote such an index with minimal costs
-in $\vec{c}'$, it remains to update the cost vectors for adjacent
-nodes accordingly. For each adjacent node $v_j$, the new modified cost
-vector $\vec{c_j}'$ evaluates to $\vec{c_j}' = \vec{c_j} +
-{\matrixfont C}_{i,j}(s_i,:)$.
-
-\subsubsection{Phase II: Trivial Solution.}
-Upon completion of the reduction phase, there are only nodes with
-degree $0$ left in the PBQP graph. This corresponds to a PBQP in
-matrix notation where all cost matrices are the zero matrix and the
-cost function is reduced to $$\min f(X) = \sum_{1 \leq i \leq n}
-\vec{x_i}^{T} \vec{c_i}.$$ Since there are no dependencies among the
-decision variables, the minimization problem is equivalent to the
-evaluation of the term $$\sum_{1 \leq i \leq n} \min
-_{x_i}\vec{x_i}^{T} \vec{c_i}.$$ Thus, we can determine the solution
-for each decision variable $x_i$ by finding the smallest element in
-its associated cost vector $c_i$.
-
-\subsubsection{Phase III: Back-Propagation.}
-\begin{algorithm}
-\caption{Back-Propagation}
-\label{alg:pbqp:back-propagation}
-\begin{algorithmic}
-  \FORALL{$v_i \in V$}
-  \STATE $s_{v_i} = k : c_i(k) = \min(c_i)$
-  \ENDFOR
-  \WHILE{$S$ not empty}
-  \STATE pop node $v_i$ from S
-  \STATE $\vec{c} = \vec{c_i}$
-  \FORALL{$(v_j,v_i) \in E$}
-  \STATE $\vec{c} += {\matrixfont C}_{j,i}(s_{v_j},:)$
-  \ENDFOR
-  \STATE $s_{v_i} = k : c(k) = \min(c)$
-  \ENDWHILE
-\end{algorithmic}
-\end{algorithm}
-In the back-propagation phase, nodes are re-inserted in reversed
-elimination order. At each step, the solution for the newly inserted
-node can be easily determined as the decision vectors for adjacent
-nodes are already known; see \cite{Eck03} for a formal proof. The
-algorithm for a PBQP graph $G=(V,E,C,c)$ is shown in pseudo-code in
-Algorithm~\ref{alg:pbqp:back-propagation}. We denote with $S$ the
-stack of eliminated nodes from Phase I.
-
-\subsection{Branch~\&~Bound}
-\label{sec:pbqp:bab}
-Branch~\&~Bound (BAB) is a very generic and efficient enumeration
-scheme for combinatorial optimization problems that has been
-successfully applied to a large set of NP hard optimization problems,
-\eg, integer programming, knapsack problem, traveling salesman
-problem, or maximum satisfiability problem.
-
-The main idea is to arrange the search space such that large parts can
-be explored only implicitly. At any point in the optimization process,
-we maintain a pool of yet unexplored subspaces together with the best
-solution found so far. Initially, there is only one subset
-representing the whole solution space and the best solution is set to
-$\infty$\footnote{Without loss of generality, we assume minimization
-  problems within this chapter.}. Subspaces are created dynamically
-and arranged in a so-called search tree. The key-idea is that large
-portions of these subspaces can be eliminated by comparing their lower
-bounds with the best solution found so far.
-
-Any BAB algorithm consists of the following key ingredients:
-\begin{enumerate}
-\item \emph{Bounding procedure:} for a given subspace of the solution
-  space, compute a \emph{tight} lower bound on the best solution value
-  that is obtainable within this subspace.
-\item \emph{Selection strategy:} select the next live subproblem to be
-  investigated in the search procedure. Popular techniques are breath
-  first search (BFS), depth first search (DFS), and best first
-  search. The latter always selects the subproblem with the lowest
-  bound among the set of live subproblems. An experimental evaluation
-  of the various strategies for QAP can be found in \cite{ClausenP99}.
-\item \emph{Branching rule:} divide the considered subspace into two
-  or more subspaces to be considered in subsequent iterations of the
-  algorithm.
-\end{enumerate}
-
-An advantage of BAB based algorithms that becomes more and more
-important with the rise of multi- and many-core systems is their
-ability to scale naturally with the number of cores.
-
-\begin{figure}
-  \begin{center}
-%     \begin{tikzpicture}
-%       \tikzstyle{fbox} = [rectangle, draw, sharp corners, text
-%       width=2cm,minimum width=2cm, minimum height=1cm,text badly centered,
-%       node distance=3cm, inner sep=2pt, fill=LightBlue]
-
-%       \node at (0,0)     [fbox] (v1) {P};
-%       \node at (-2,-2) [fbox] (v2) {$x_{i_1} = (1, 0,\dots,0)$};
-%       \node at (0,-2)  [] (v3) {$\dots$};
-%       \node at (2,-2)  [fbox] (v4) {$x_{i_1} = (0, 0,\dots,1)$};
-
-%       \node at (-4,-4)   [fbox] (v5) {$x_{i_2} = (1, 0,\dots,0)$};
-%       \node at (-2,-4)   [] (v6) {$\dots$};
-%       \node at (0,-4)    [fbox] (v7) {$x_{i_2} = (0, 0,\dots,1)$};
-
-%       \path [arrow,->] (v1) -- (v2);
-%       \path [arrow,->] (v1) -- (v4);
-%       \path [arrow,->] (v2) -- (v5);
-%       \path [arrow,->] (v2) -- (v7);
-%     \end{tikzpicture}
-    \includegraphics{pgf-fig005}
-  \end{center}
-  \caption{A fragment of the search tree for a BAB based PBQP algorithm.}
-  \label{fig:pbqp:bab-tree}
-\end{figure}
-
-PBQP allows for a natural mapping to the BAB scheme outline so far
-\cite{DBLP:conf/jmlc/HamesS06}. As in
-Section~\ref{sec:pbqp:heuristic}, reductions RI and RII can be applied
-until a irreducible graph remains. A subspace of the solution space is
-represented by a node in a search tree as shown in
-Figure~\ref{fig:pbqp:bab-tree}. A subspace is divided into smaller
-subspaces by selecting a yet unconsidered decision vector $x_i$ from
-one of the leaf nodes and creating $|\vardomain_i|$ child nodes, each
-of which representing one of the possible assignments for $x_i$. The
-whole set of partial assignments for a subspace of the solution space
-can be obtained by walking the search tree back to the root node.
-
-A simple lower bound $f_l$ on the objective function can be obtained
-using the following term:
-$$f_l = \sum_{1 \leq i \leq n} \min c_i + \sum_{1 \leq i < j  \leq n}
-\min {\matrixfont C}_{i,j}.$$ For inner nodes on the search tree, some
-of the variables $x_i$ are already included in the partial assignment
-and evaluate to constants that replace the minimum computation and
-lead to tighter bounds in general. Note that we can derive the new
-lower bound after a branching operation in an incremental way using
-the lower bound of the parent node.
-
-Leaf nodes that are not yet solved are called \emph{live} and usually
-kept in a priority queue according to their lower
-bound. Various selection strategies are possible. The
-\emph{best first search} strategy leads to good results in practice
-for instruction selection problems.
-
-A whole subspace can be pruned from the search if its lower bound
-exceeds a global upper bound on the value of the optimal
-solution. Initially, the global upper bound can be set to
-$\infty$. However, faster convergence can be achieved in general by
-applying a heuristic algorithm such as the method proposed in
-Section~\ref{sec:pbqp:heuristic} in a pre-processing step. This will
-allow the BAB algorithm to prune large subspaces early in the
-optimization process.
-
-\section{Code Selection for Tree Patterns}
-% \emph{5 pages}; modeling, continued example
-The matching problem for SSA graphs reduces to PBQP
-\cite{EcksteinKS03} in a straightforward fashion. In the basic
-modeling, SSA and PBQP graphs coincide. This means that the number of
-decision vectors and cost matrices in the PBQP is determined by the
-number of nodes and edges in the SSA graph respectively. A solution
+\subsection{Code Selection with PBQP}
+In the following we describe the modelling of code selection for SSA graphs
+as a PBQP problem.  In the basic modeling, SSA and PBQP graphs coincide. 
+The variables $x_i$ of the PBQP are decision variables reflecting the 
+choices of applicable rules (represented by $\vardomain_i$) for the 
+corresponding node of $x_i$. The local costs reflect the costs of the rules
+and the related costs reflect the costs of chain rules making rules compatible
+with each other.  This means that the number of
+decision vectors and the number of cost matrices in the PBQP are determined by the
+number of nodes and edges in the SSA graph respectively.  The sizes of $\vardomain_i$
+depend on the number of rules in the grammar. A solution
 for the PBQP instance induces a complete cost minimal cover of the SSA
 graph.
 
@@ -900,6 +476,13 @@ $\texttt{nt}'$ is a new non-terminal symbol and $\alpha,\beta$ and
 $\gamma$ denote arbitrary pattern fragments.  This transformation can
 be iteratively applied until all production rules are either chain
 rules or base rules.
+To illustrate this transformation, consider the grammar in
+Figure~\ref{fig:pbpq-example}, which is a normalized version of the
+tree grammar introduced in Figure~\ref{fig:tpm}. Temporary nonterminal
+symbols $\texttt{t1}$, $\texttt{t2}$, and $\texttt{t3}$ are used to
+decompose larger tree patterns into simple base rules. Each
+base rule spans across a single node in the SSA graph.
+
 
 \begin{figure}
   \begin{center}
@@ -1044,12 +627,6 @@ rules or base rules.
     introducing additional nonterminals.}\label{fig:pbpq-example}
 \end{figure}
 
-To illustrate this transformation, consider the grammar in
-Figure~\ref{fig:pbpq-example}, which is a normalized version of the
-tree grammar introduced in Figure~\ref{fig:tpm}. Temporary nonterminal
-symbols $\texttt{t1}$, $\texttt{t2}$, and $\texttt{t3}$ are used to
-decompose larger tree patterns into simple base rules. Each of these
-base rules spans across a single node in the SSA graph.
 
 The instruction selection problem for SSA graphs is modeled in PBQP as
 follows. For each node $u$ in the SSA graph, a PBQP variable $x_u$ is
@@ -1059,7 +636,6 @@ node, \eg, there are three rules ($R_4$, $R_5$, $R_6$) that can be
 used to cover the shift operation $\texttt{SHL}$ in our example. The
 last rule is the result of automatic normalization of a more complex
 tree pattern.
-
 The cost vector $\vec{c_u}= w_u \cdot \langle c(R_1), \dots,
 c(R_{k_u}) \rangle$ of variable $x_u$ encodes the local costs for a
 particular assignment where $c(R_i)$ denotes the associated cost of
@@ -1354,7 +930,6 @@ postincrement store pattern. Dependencies among these instances
 (denoted in the following by $\prec$) arise from real dependencies
 among individual nodes (edges in the SSA graph) and eventual memory
 dependencies as outlined in Figure~\ref{fig:rms}.
-
 For instances of DAG patterns, additional decision variables are
 required that encode if the particular pattern is to be
 selected. Thus, we have two sets of decision variables
@@ -1610,14 +1185,14 @@ domain is defined by the simple base rule with costs two and the proxy
 state obtained from the decomposition of the postincrement store
 pattern. Nodes 7, 8, and 9 correspond to the three instances
 identified for the postincrement store pattern. As noted before, we
-have to to guarantee the existence of a topological order among the
+have to guarantee the existence of a topological order among the
 chosen nodes.  One approach is to exploit the property that every
 acyclic directed subgraph gives rise to a not necessarily unique
 topological order.  We can refine the state \textit{on} such that it
 reflects a particular index in a concrete topological order. Matrices
 among these nodes account for data dependencies, \eg, consider the
 matrix established among nodes 7 and 8. Assuming instance 7 is
-\textit{on} at index 2, The only remaining choices for instance 8 are
+\textit{on} at index 2, the only remaining choices for instance 8 are
 not to use the pattern or to enable it at index three, as node 7 has
 to precede node 8.
 
@@ -1640,15 +1215,12 @@ a large integer value $M$ to the costs for all proxy states. In
 exchange, we subtract these costs from the cost vector of
 instances. Thus, the penalties for the proxy states are effectively
 eliminated unless an invalid solution is selected.
-
 Cost matrices among nodes one to six do not differ from the basic
 approach discussed before and reflect the costs of converting the
 nonterminal symbols involved.
-
 It should be noted that for general grammars and irreducible graphs,
-the heuristic algorithm proposed in Section~\ref{sec:pbqp:heuristic}
-cannot be guaranteed to deliver a solution that satisfies all
-constraints modeled in terms of $\infty$ costs. This would be a
+that the heuristic solver of PBQP cannot guarantee to deliver a solution 
+that satisfies all constraints modeled in terms of $\infty$ costs. This would be a
 NP-complete problem. One way to work around this limitation is to
 include a small set of rules that cover each node individually and
 that can be used as a fallback rule in situations where no feasible
@@ -1657,8 +1229,8 @@ techniques and ensures a correct but possibly suboptimal matching. In
 practice, this is no severe limitation as grammars are usually written
 by defining a simple but complete set of rules covering each node
 individually and adding more complex rules later on. These limitations
-do not apply to exact techniques such as the branch-\&-bound algorithm
-introduced in Section~\ref{sec:pbqp:bab}. It is also straight-forward
+do not apply to exact techniques such as the branch-\&-bound algorithm. 
+It is also straight-forward
 to extend the heuristic algorithm with a backtracking scheme on RN
 reductions, which would clearly also be exponential in the worst case.
 
@@ -1676,40 +1248,22 @@ solution for this problem can be found in polynomial time. There is a
 trade-off among performance and code size that is captured accurately
 in the proposed network flow model.
 
-Consider the example in Figure~\ref{fig:crp-example}(a) which shows a
-fraction of the control flow graph. The nodes of the graph represent
-basic blocks in the control flow graph and edges represent flow of
-control between basic blocks. Execution frequencies are given for each
-basic block which are obtained by profiling. Assume that the example
-is in pruned SSA form, and in node $d$ is a definition of the form
-\texttt{x$_0$ = ...} and in node $u$ is a use of the definition
-\texttt{...x$_0$...}. For a given graph grammar, let's assume we need
-to place a chain rule that has to be executed at least once on all
-paths from $d$ to $u$. To find a cost optimal placement, we reduce the
-problem to an $s-t$ min cut as shown in the
-Figure~\ref{fig:crp-example}(b). Each node $v$ in the control flow
-graph corresponds to two vertices $v_e$ and $v_x$ in the network of
-the $s-t$ min cut. An edge between $v_e$ and $v_x$ represents the cost
-of placing the chain rule in node $v$.  For each edge $(v,w)$ in the
-control flow graph, there exists an edge $(v_x,w_e)$ in the network
-that has infinite cost weights. Nodes $s$ and $t$ have connections to
-the definition node $d_e$ and the use node $u_x$ respectively. A cut
-of such a network can only consists of edges $(v_e,v_x)$ because all
-other edges have infinite costs. All cut edges represent nodes where
-we can place chain rules rules optimally and ensure that on all paths
-from $d$ to $u$ the chain rule is executed. An $s-t$ min cut of the
-newly constructed network, gives us an optimal placement of chain
-rules. For the example the optimal cut is node $b$ since $(b_e,b_x)$
-separates node $s$ from node $t$ in the network with only a single
-cost unit.
 
+\section{Summary}
 
-\begin{figure}
-\begin{center}
-\includegraphics[width=0.5\textwidth]{Example.pdf}
-\end{center}
-\caption{Example for Chain Rule Placement}\label{fig:crp-example}
-\end{figure}
+Instruction selection on SSA-graph enables aggressive code
+selection optimisations. The whole flow of a function is taken
+into account rather a local scope. Hence, code selection
+for SSA graphs goes beyond the state-of-the-art tree-pattern
+matching techniques. 
+For the compiler implementor the move from tree-pattern
+matches to SSA matching is a small step as long as a
+PBQP library and some basic infrastructure (graph grammar
+translator, etc.) is provided. The complexity of the
+approach is hidden in the discrete optimisation problem called
+PBQP. Free PBQP libraries are available 
+from the web-pages of the authors and a library is implemented
+as part of the LLVM framework for register allocation. 
 
 %%% Local Variables:
 %%% mode: latex
