@@ -13,13 +13,12 @@ This chapter presents an extension of the \SSA{} under which the
 extraction of the reducible loop tree can be done only on the \SSA{}
 graph itself.  This extension of the \SSA{} representation captures
 more than the scalar computations: the phi nodes and the scalar
-assignments encode the structure of the CFG and the strongly connected
-components of the CFG that are the reducible natural loops.  This
-chapter will present two analysis algorithms: the extraction of the
-reducible loop tree and the analysis of induction variables based on
-the \SSA{} representation.
+assignments encode the strongly connected components of the CFG that
+are the reducible loops.  This chapter will present two analysis
+algorithms: the extraction of the reducible loop tree and the analysis
+of induction variables based on the \SSA{} representation.
 
-\section{\CFG{} and Loop Tree can be discovered from the \SSA{}}
+\section{Part of the \CFG{} and Loop Tree can be exposed from the \SSA{}}
 
 During the construction of the \SSA{} representation based on a \CFG{}
 representation, a large part of the \CFG{} information is translated
@@ -29,22 +28,22 @@ precise rules to place the phi nodes in special points of the \CFG{}
 of uses and definitions, it is possible to expose the \CFG{} structure
 from the \SSA{} representation.
 
-Furthermore, it is possible to identify, based on the \SSA{}
-definitions and uses patterns, higher level constructs inherent to the
-\CFG{} representation, such as strongly connected components of basic
-blocks (or natural loops).  The induction variable analysis, that we
-will see in this chapter, is based on the detection of self references
-in the \SSA{} representation, and on the characterization of these
-cyclic definitions.
+Furthermore, it is possible to identify higher level constructs
+inherent to the \CFG{} representation, such as strongly connected
+components of basic blocks (or reducible loops), based only on the
+patterns of the \SSA{} definitions and uses.  The induction variable
+analysis, that we will see in this chapter, is based on the detection
+of self references in the \SSA{} representation, and on the
+characterization of these cyclic definitions.
 
 This first section shows that the classical \SSA{} representation is
 not enough to represent the semantics of the original program.  We
 will see the minimal amount of information that has to be added to the
 classical \SSA{} representation in order to represent the loop
-information in an elegant way: the loop closed \SSA{} form adds an
-extra variable at the end of a loop for each variable defined in a
-loop and used after the loop.  This is similar to the Gated \SSA{}
-form presented in Chapter~\ref{chap:vsdg}.
+information in an elegant way: similar to the eta function used in the
+Gated \SSA{}, the loop closed \SSA{} form adds an extra variable at
+the end of a loop for each variable defined in a loop and used after
+the loop.
 
 \subsection{An \SSA{} representation without the \CFG{}}
 
@@ -100,7 +99,7 @@ statements would produce the same result:
   return c;
 \end{verbatim}
 
-\subsection{Discovering natural loop structures on the \SSA{}}
+\subsection{Natural loop structures on the \SSA{}}
 We will now see how to represent the natural loops in the \SSA{} form
 by systematically adding extra phi nodes at the end of loops, together
 with extra information about the loop exit predicate.
@@ -141,7 +140,7 @@ Pretty printing, with a random order traversal, we could obtain this
 We can remark that some information is lost in this pretty printing:
 the exit condition of the loop disappeared: we will have to record
 this information in the extension of the \SSA{} representation.  The
-information about the natural loop is still available under the form
+information about the loop is still available under the form
 of a cyclic definition: by simple substitutions, we can rewrite this
 \SSA{} code to expose the self reference to ``i'', as:
 \begin{verbatim}
@@ -151,7 +150,7 @@ of a cyclic definition: by simple substitutions, we can rewrite this
 \end{verbatim}
 Thus, we have the definition of the \SSA{} name ``i'' defined in
 function of itself.  This pattern is characteristic of the existence
-of a natural loop.  We can remark that there are two kinds of phi
+of a loop.  We can remark that there are two kinds of phi
 nodes used in this example:
 \begin{itemize}
 \item \loopphi{} nodes ``i = phi (x, j)'' have an invariant argument
@@ -177,10 +176,8 @@ disappears during the basic pretty printing of the \SSA{}.  To capture
 the semantics of the computation of the loop, we have to specify in
 the \closephi{} node, which value will be available in the end of the
 loop.  And thus we have to slightly modify the syntax of the
-\closephi{} nodes to also contain the loop exit condition.  This
-representation is also known under the name of Gated \SSA{}, as
-presented in Chapter~\ref{chap:vsdg}.  With this extension, the
-\SSA{} pretty printing of the above example would be:
+\closephi{} nodes to also contain the loop exit condition.  With this
+extension, the \SSA{} pretty printing of the above example would be:
 \begin{verbatim}
   x = 3;
   i = loop-phi (x, j)
@@ -209,13 +206,12 @@ induction variable of a loop starts at zero with a step of one for
 each iteration of the loop) or an approximation of the values taken
 during the execution of the loop represented by values in an abstract
 domain.  In this section, we will see a possible characterization of
-induction variables in terms of scalar sequences.  The domain of
-scalar sequences will be represented by the chains of recurrences: as
-we will see in more detail in this section, the canonical induction
-variable will be syntactically represented by the chain of recurrence
-$\CHREC{0, +, 1}_x$ the initial value of the canonical induction
-variable is $0$, the stride is $1$, and the evolution happens in loop
-number $x$.
+induction variables in terms of sequences.  The domain of sequences
+will be represented by the chains of recurrences: as an example, a
+cannonical induction variable with an initial value $0$ and a stride
+$1$ that would occur in loop $x$, will be syntactically represented by
+the chain of recurrence $\CHREC{0, +, 1}_x$ the initial value of the
+canonical induction variable is $0$, the stride is $1$.
 
 \subsection{Stride detection}
 
@@ -246,7 +242,8 @@ progression:
     \includegraphics[width=1.2\textwidth]{iv_step}
   \end{center}
   \vspace{-50em}
-  \caption{Detection of the cyclic definition.}
+  \caption{Detection of the cyclic definition using a depth first
+    search traversal of the use-def chains.}
   \label{spop:fig:ivstep}
 \end{figure}
 
@@ -284,26 +281,27 @@ the number of times the body of loop number $x$ has been executed.
 
 When ``base'' or ``step'' translates to sequences variating in outer
 loops, the resulting sequence is represented by a multivariate chain
-of recurrences.  For example $\CHREC{\CHREC{0, +, 1}_3, +, 2}_4$
+of recurrences.  For example $\CHREC{\CHREC{0, +, 1}_x, +, 2}_y$
 defines a multivariate chain of recurrence with a step of $1$ in loop
-number $3$ and a step of $2$ in loop number $4$.
+$x$ and a step of $2$ in loop $y$, where loop $y$ is enclosed in loop
+$x$.
 
 When ``step'' translates into a sequence variating in the same loop,
 the chain of recurrence represents a polynomial of a higher degree.
-For example, $\CHREC{0, +, \CHREC{4, +, 5}_3}_3$ represents a
-polynomial evolution of degree $2$ in loop number $3$.  In this case,
+For example, $\CHREC{3, +, \CHREC{8, +, 5}_x}_x$ represents a
+polynomial evolution of degree $2$ in loop $x$.  In this case,
 the chain of recurrence is also written omitting the extra braces:
-$\CHREC{0, +, 4, +, 5}_3$.  The semantics of the chains of recurrences
-is defined, using the binomial coefficients $\binom{n}{p}$, by the
+$\CHREC{3, +, 8, +, 5}_x$.  The semantics of the chains of recurrences
+is defined, using the binomial coefficients $\binom{n}{p} = \frac{n!}{p!(n-p)!}$, by the
 equation:
 \begin{equation*}
-  \CHREC{c_0,+,c_1,+,c_2,+,\ldots,+,c_n}_k(\vec{\ell})=
-  \sum_{p=0}^{n}c_{p}\binom{\ell_k}{p}.
+  \CHREC{c_0,+,c_1,+,c_2,+,\ldots,+,c_n}_x(\vec{\ell_x})=
+  \sum_{p=0}^{n}c_{p}\binom{\ell_x}{p}.
 \end{equation*}
 with $\vec{\ell}$ the iteration domain vector (the iteration loop
 counters for all the loops in which the chain of recurrence variates),
-and $\ell_k$ the iteration counter for loop number $k$.  This
-semantics allows the rewriting rule:
+and $\ell_x$ the iteration counter for loop $x$.  This semantics allows
+the rewriting rule:
 \begin{equation*}
   \CHREC{c_0, +, \CHREC{c_1, +, c_2}_x}_x = \CHREC{c_0, +, c_1, +, c_2}_x
 \end{equation*}
@@ -375,8 +373,8 @@ the evolution function (of the scalar variable) in the varying loop.
 For example, the following code
 \begin{verbatim}
 x = 0;
-for (i = 0; i < N; i++)
-  for (j = 0; j < M; j++)
+for (i = 0; i < N; i++)   // loop_1
+  for (j = 0; j < M; j++) // loop_2
     x = x + 1;
 \end{verbatim}
 would be written in loop closed \SSA{} form as:
@@ -425,26 +423,29 @@ the other variables defined in the loop closed \SSA{} form as follows:
   < N, b) = \CHREC{0, +, M}_1 (N) = M * N$.
 \end{itemize}
 
-The computation of the end of loop value can also be used for
+The computation of the end of loop value can also be used for scalar
 optimization purposes, for example in the case of the constant
 propagation or the value range propagation after loops.  It enables
 more scalar transformations when the induction variable is used after
-its defining loop.  Another interesting use of the end of loop value
-is the estimation of the worst case execution time (WCET) where one
-tries to obtain an upper bound approximation of the time necessary for
-a program to terminate.
+its defining loop.  Loop transformations also benefit from the
+replacement of the end of loop value as this removes scalar
+dependences between consecutive loops.  Another interesting use of the
+end of loop value is the estimation of the worst case execution time
+(WCET) where one tries to obtain an upper bound approximation of the
+time necessary for a program to terminate.
 
-\section{Conclusion}
-As we have seen in this chapter, the \CFG{} representation is embedded
-in the \SSA{} structure, and properties of the \CFG{} like the
-execution order and the natural loops can be detected by only looking
-at the \SSA{} definitions and uses.  The detection of natural loops is
-the first step in the analysis of induction variables: after the
-detection of self referent definitions, it is practical to use the
-chains of recurrences \cite{BWZ94,KMZ98,Zim01} to characterize the
-sequence of values taken by a variable during the execution of a loop.
-The number of iterations of loops can be computed based on the
-characterization of induction variables.  This paves the way to
-advanced loop optimizations that need both the number of iterations
-and induction variable characterizations.
+\section{Further reading}
+
+% As we have seen in this chapter, the \CFG{} representation is embedded
+% in the \SSA{} structure, and properties of the \CFG{} like the
+% execution order and the natural loops can be detected by only looking
+% at the \SSA{} definitions and uses.  The detection of natural loops is
+% the first step in the analysis of induction variables: after the
+% detection of self referent definitions, it is practical to use the
+% chains of recurrences \cite{BWZ94,KMZ98,Zim01} to characterize the
+% sequence of values taken by a variable during the execution of a loop.
+% The number of iterations of loops can be computed based on the
+% characterization of induction variables.  This paves the way to
+% advanced loop optimizations that need both the number of iterations
+% and induction variable characterizations.
 
