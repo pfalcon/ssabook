@@ -4,7 +4,7 @@
 
 \section{Introduction}
 
-Hashed SSA (or in short HSSA), as described in [Chow...], is an SSA extension that can effectively represent how aliasing relations affect a program in SSA form. It works equally well for aliasing among local variables and, more generally, for indirect load and store operations on arbitrary memory locations. This allows the application of all common SSA based optimizations uniformly both on local variables and on external memory areas.
+Hashed SSA (or in short HSSA), as described in [Chow...], is an SSA extension that can effectively represent how aliasing relations affect a program in SSA form. It works equally well for aliasing among scalar variables and, more generally, for indirect load and store operations on arbitrary memory locations. This allows the application of all common SSA based optimizations to perform uniformly both on local variables and on external memory areas.
 
 It should be noted, however, that HSSA is a technique useful for representing aliasing effects, but not for detecting aliasing. For this purpose, a separate alias analysis pass must be performed, and the effectiveness of HSSA will be influenced by the accuracy of this analysis.
 
@@ -18,9 +18,9 @@ Aliasing is the situation when, inside a compilation unit, one single storage lo
 This can happen in one of the four following ways:
 \begin{itemize}
 \item First, when two or more storage locations partially overlap. This, for instance, happens with the C "union" construct, where different parts of a program can access the same storage location under different names.
-\item Second, when a local variable is referred by a pointer used in an indirect operation. In this case the two ways in which the variable can be accessed are {\em directly}, through the variable name, and {\em indirectly}, through its address stored in another variable.
+\item Second, when a local variable is referred by a pointer used in an indirect operation. In this case the two ways in which the variable can be accessed are {\em directly}, through the variable name, and {\em indirectly}, through its address used in the memory operation (read or write).
 \item Third, when the address of a local variable is passed to a function, which in turn can then access the variable indirectly.
-\item Finally, variables that are not local can obviously be accessed by different functions, and in this case every function call can potentially access every global variable, unless the compiler uses global optimizations techniques where every function is analyzed before the actual compilation takes place.
+\item Finally, storage locations with global scope can obviously be accessed by different functions. In this case every function call can potentially access every global location, unless the compiler uses global optimizations techniques where every function is analyzed before the actual compilation takes place.
 \end{itemize}
 
 The real problem with aliasing is that these different accesses to the same program variable are difficult to predict. Only in the first case (explicitly overlapping locations) the compiler has full knowledge of when each access takes place. In all the other cases (indirect accesses through the address of the variable) the situation becomes more complex, because the access depends on the address that is effectively stored in the variable used in the indirect operation.
@@ -44,11 +44,11 @@ i = 2; if (j) {f();} else {a = *p; *p = 3;} return i;
 and assume that p might alias i, and that function f might indirectly use i but not alter it.
 The code, after the $\mu$ and $\chi$ insertion pass, becomes the following:
 \begin{verbatim}
-i = 2; if (j) {$\mu$(i); f();} else {*p = 3; i = $\chi$(i);} return i;
+i = 2; if (j) {$\mu$(i); f();} else {$\mu$(i); a = *p; *p = 3; i = $\chi$(i);} return i;
 \end{verbatim}
 The same code in SSA form becomes:
 \begin{verbatim}
-i1 = 2; if (j1) {$\mu$(i1); f();} else {*p = 3; i2 = $\chi$(i1);} i3 = $\phi$(i1,i2); return i3;
+i_1 = 2; if (j_1) {$\mu$(i_1); f();} else {$\mu$(i_1); a_1 = *p; *p = 3; i_2 = $\chi$(i_1);} i_3 = $\phi$(i_1,i_2); return i_3;
 \end{verbatim}
 where it is clear that the SSA renaming and $\phi$ insertion must be applied in the usual way, handling $\mu$ and $\chi$ operators as every other expression and statement.
 
@@ -61,7 +61,7 @@ In practice the resulting IR would be needlessly large, not in terms of instruct
 
 Intuitively, the solution to this problem is to factor all these useless variable versions together, so that no space is wasted to distinguish among them. We assign number 0 to this special variable version, and call it "{\em zero version}".
 
-The formal definition of zero version relies on the concept of "{\em real occurrence}", which is an occurrence of a variable in the original program. Therefore, in SSA form variable occurrences in $\mu$, $\chi$ and $\phi$ operators are not "real occurrences". The idea is that variable versions that have no real occurrence do not influence the program output (because once the program is converted back from SSA form these variables are removed from the code).
+The formal definition of zero version relies on the concept of "{\em real occurrence}", which is an actual definition or use of a variable in the original program. Therefore, in SSA form variable occurrences in $\mu$, $\chi$ and $\phi$ operators are not "real occurrences". The idea is that variable versions that have no real occurrence do not influence the program output (because once the program is converted back from SSA form these variables are removed from the code).
 Since they do not directly appear in the code, and their value is unknown, distinguishing among them is almost pointless.
 A direct definition of zero versions is that they are versions of variable that have no real occurrence, and whose value  comes from at least one $\chi$ operator (optionally through $\phi$ functions). An equivalent, recursive definition is the following:
 \begin{itemize}
@@ -95,16 +95,17 @@ On the other hand, when performing DEADCE zero versions must be assumed live. Th
 There is only one case in DEADCE where the information loss is evident. A zero version can be used in a $\mu$ and defined in a $\chi$, which in turn can have a real occurrence as argument. If the $\mu$ is eliminated by some optimization, the real occurrence used in the $\chi$ becomes dead but we cannot detect it (because the $\chi$ will not be eliminated). According to [Chow...] this case is sufficiently rare in real world code that using zero versions is anyway convenient.
 
 
-\section{SSA and indirect memory operations: indirect variables}
+\section{SSA and indirect memory operations: virtual variables}
 
 The techniques described in the previous sections ($\mu$ and $\chi$ operators introduction and using zero version for SSA variables with no real occurrences or meaningful values) only apply to ''regular`` variables in a compilation unit, and not to arbitrary memory locations accessed indirectly.
 So, using them we can apply SSA based optimizations to variables also when they are affected by aliasing, but memory access operations are still excluded from the SSA form.
 
 This situation is far from ideal, because code written in current mainstream imperative languages (like C++, Java or C\#) typically contains many operations on data stored in global memory areas.
-Every heap allocated object is referred through pointers, and typically to access individual object fields offsets are added to the pointer values. Code that works with those objects will usually access the fields directly inside expressions and statements, and the result is that a lot of operations are performed on values stored in indirectly accessed global memory locations.
-It is also worth noting that operations on array element suffer from the same problem.
-
-The situation is not ideal because conventional SSA techniques only handle local variables without aliasing. By annotating the code with $\mu$ and $\chi$ operators we can deal with aliasing in local variables, but we are still unable to optimize memory accesses (indirect loads and stores) and all the operations that use values that come from them.
+For instance, in C we can imagine to define bidimensional vector as a struct: "typedef struct \{double x; double y;\} point;", and then to have a piece of code that computes the modulus of a vector of address "p": "m = (p->x * p->x) + (p->y * p->y);".
+Looking at the code it is obvious that "x" is accessed twice but both accesses give the same value so the second access could be optimized away (the same for "y").
+The problem is that "x" and "y" are not ''regular`` variables: "p" is a variable while "p->x" and "p->y" are indirect memory operations.
+Putting that code snipped in SSA form tells us that the value of "p" never changes, but it reveals nothing about the values stored in the locations "p->x" and "p->y".
+It is worth noting that operations on array elements suffer from the same problem.
 
 The purpose of HSSA is to handle direct and indirect operations uniformly, and be able to apply all SSA based optimizations on them.
 To do this, in the general case, we assume that the code intermediate representation supports a {\em dereference} operator, which performs an indirect load (memory read) from the given address. This operator can be placed in expressions on both the left and right side of the assignment operator, and we will represent it with the usual "*" C language operator. We will then, for simplicity, represent indirect stores with the usual combination of dereference and assignment operators, like in C.
@@ -116,36 +117,26 @@ Some examples of this notation are:
 \item *p = expression: indirect store.
 \end{itemize}
 
-An intuitive approach to deal with indirect operations in SSA form would be to consider, in each indirect operation, the referred location as an "indirect variable".
-In this approach we would first put in SSA form all direct variables. At this point each occurrence of the "*" operator would have as argument an address expression, with all its variables in SSA form (in the simplest case this expression would be a single variable). We can then consider each "(*expression)" construct as an indirect variable, because it represents the location referred by the "*" operator, and apply the SSA construction algorithm again on these "variables".
-For instance, the code "i = *p; p = p + 1; j = *p;", when put in SSA form, becomes "i1 = *p1; p2 = p1 + 1; j1 = *p;".
-Applying SSA to indirect variables we obtain the notation "i1 = (*p1)1; p2 = p1 + 1; j1 = (*p2)2;". In this notation it is evident that (*p1)1 and (*p2)2 have different values, while, for the properties of SSA code, identical expressions will have the same value.
-If the code contains multiple indirections (like "*(*p + 1)"), the renaming process must be run separately (and sequentially) for each subsequent level of indirection.
+As we noted above indirect memory operations cannot be handled by the SSA construction algorithm because they are {\em operations} while SSA construction works renaming {\em variables}.
 
+What HSSA does is to represent the "target" locations of indirect memory operations with {\em virtual variables}.
+In order to do so, first of all we observe that every indirect memory operation operates on an {\em address expression}, and that alias analysis must have already partitioned these expressions into sets of addresses that do not alias each other.
+We can then define a set of {\em virtual variables}, one for each address expression used in an indirect memory operation (FIXME: add a note here on the issue of correspondence between virtual variables and address expressions, or just explain it later?).
+The idea is that each virtual variable represents the location (or better the set of potential locations) referred by the address expression associated with it.
 
-\section{From \em{indirect} variables to \em{virtual} variables}
-
-Indirect variables, as described in the previous section, are intuitive but impractical.
-The biggest problem they have, from a practical point of view, is that they require the application of the SSA renaming algorithm multiple times.
-But they also raise the issue of dealing with aliasing among indirect variables in a sound way, just like we do with direct variables using $\mu$ and $\chi$ operators: the algorithm we showed for placing them only works for direct variables.
-
-To deal with this, we introduce the concept of "{\em virtual variable}".
-The virtual variable of an indirect variable is an imaginary scalar variable that has identical aliasing characteristics as the indirect variable.
-It represent the location (or better the set of potential locations) referred by the indirect memory operation of the indirect variable.
-Contrast this with the indirect operation itself, which is the actual code that is emitted by the compiler (the dereferencing operation).
-
-The key part of the definition of "virtual variable" is that it must have identical aliasing characteristics as its indirect variable.
-In this sense, while an indirect variable intuitively {\em is} the referred memory location, its corresponding virtual variable is a "formal placeholder" for the memory location, with the same aliasing properties.
-As a placeholder, we handle it like every other scalar variable, and particularly $\mu$ and $\chi$ operators are inserted in he code in the same pass and according to the same rules.
-Therefore, each occurrence of an indirect variable is annotated with the $\mu$ and $\chi$ of its virtual variable.
-As an added bonus, to improve the accuracy of aliasing information, alias analysis can take into account their address expressions to deduce that two indirect variables do not alias each other (because this means that also their virtual variables will not alias each other).
-For example, it is clear that *p and *(p + 1) do not alias each other.
+The key property of virtual variables is that each of them must have identical aliasing characteristics as the address expressions it represents.
+The address expression is the {\em value} that refers to the referred memory location and its corresponding virtual variable is a "formal placeholder" for the memory location, with the same aliasing properties.
+As a placeholder we can handle it like every other scalar variable, and particularly $\mu$ and $\chi$ operators for virtual variables are inserted in the code in the same pass and according to the same rules.
+Therefore each occurrence of an indirect variable is annotated with the $\mu$ and $\chi$ of its virtual variable.
 
 SSA renaming on virtual variables works as usual, and in the same pass as with scalar variables.
 In this context, use-def relationships of virtual variables now represent use-def relationships of indirect variables.
 Note how this approach effectively solves the SSA renaming problem for indirect variables: their SSA version is the version numbers of their virtual variable (unless the address expression itself has changed version, in which case we need to generate a new number).
 It is the fact that virtual variables have the same aliasing properties as indirect variables that allow us to perform one single, uniform SSA renaming pass, with $\mu$ and $\chi$ operators automatically imposing new version numbers as a consequence of indirect operations.
 Also the zero versioning technique can be applied unaltered to virtual variables.
+
+As an added bonus, to improve the accuracy of aliasing information, alias analysis can take into account their address expressions to deduce that two address expressions do not alias each other (because this means that also their virtual variables will not alias each other).
+For example, it is clear that *p and *(p + 1) will never alias each other.
 
 
 \section{GVN and indirect memory operations: HSSA}
