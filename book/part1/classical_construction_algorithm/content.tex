@@ -29,7 +29,10 @@ generally
 takes place in an optimizing compiler after all SSA optimizations have
 been performed, and prior to code generation. However note that there are
 specialized code generation techniques that work directly on SSA-based
-intermediate representations such as code selection (see Chapter~\ref{chapter:code_selection}), if-conversion (see Chapter~\ref{chap:if_conversion}), or register allocation (see Chapter~\ref{chap:register_allocation}).
+intermediate representations such as code selection (see
+Chapter~\ref{chapter:code_selection}), if-conversion (see
+Chapter~\ref{chap:if_conversion}),
+and register allocation (see Chapter~\ref{chap:register_allocation}).
 
 The algorithms presented in this chapter are
 based on material from the seminal research papers on SSA.
@@ -49,6 +52,8 @@ we assume that a `program' is represented as an
 intra-procedural control flow graph (CFG)
 with a single entry node $r$, from which every other
 node is reachable.
+Each node is a basic block, containing a straightline
+sequence of program statements.
 Data flow occurs through definitions and uses of 
 variables, with no pointer indirection.
 %% FIXME - forward reference to Part II ...
@@ -60,14 +65,15 @@ Figure \ref{fig:examplecfg} shows an example CFG
 program. The set of nodes is $\{ r, A, B, C, D, E\}$.
 The set of variables is $\{ x, y, \mathit{tmp} \}$.
 Note that the program shows the complete control flow structure,
-denoted with directed edges between the nodes.
+denoted by directed edges between the nodes.
 However the program only shows 
 statements that define relevant variables, together with the
 unique \texttt{return} statement at the exit point of the CFG.
 All of the program variables are undefined on entry. On certain
 control
-flow paths, some variables may be used without being defined.
-We discuss this issue later in the section.
+flow paths, some variables may be used without being defined, 
+e.g.\ $x$ on the path $r \rightarrow A \rightarrow C$. 
+We discuss this issue later in the chapter.
 We intend to use this program as a running example
 throughout the chapter,
 to demonstrate various aspects of SSA construction.
@@ -93,11 +99,12 @@ there are different flavors of SSA with distinct properties.
 In this chapter, we focus on the \textit{minimal} SSA form.
 Construction of minimal SSA 
 requires for each variable $v$ the insertion of \phiops\ at $\join(D_v)$.
-Here $D_v$ is the set of definition points of $v$, and,
-for a given set of program points $S$, $\join(S)$ is the set of
+Here $D_v$ is the set of nodes that contain definitions of $v$, and,
+for a given set of nodes $S$, $\join(S)$ is the set of
 \textit{join nodes} of $S$
 i.e., nodes in the CFG that can be reached by
 two (or more) distinct elements of $S$ using disjoint paths.
+Join sets were introduced in Section \ref{sec:properties:domfrontiers}.
 
 Let us consider some join set examples from the
 program in Figure \ref{fig:examplecfg}.
@@ -111,10 +118,12 @@ the program.
 
  
 The original construction for SSA form uses an over-approximation of
-join sets, the iterated dominance frontier $\iDF(S)=\join(S\cup
+join sets, the
+\emph{iterated dominance frontier}, $\iDF(S)=\join(S\cup
 \{r\})$, i.e.\ it assumes an \emph{implicit} definition of every
 variable at the entry node $r$.
-The iterated dominance frontier is the limit of the sequence:
+The iterated dominance frontier is the limit $DF_{i\rightarrow\infty}(S)$
+of the sequence:
 $$\begin{array}{lll}
 \DF_1(S) & = & \DF(S)\\
 \DF_{i+1}(S) & = & \DF\left(S\cup \DF_i(S)\right)
@@ -123,26 +132,29 @@ $$\begin{array}{lll}
 % described dominance frontiers? In chapter 2?
 Recall the definition of dominance frontiers from Section
 \ref{sec:properties:domfrontiers}.
-Informally, the dominance frontier of a node $n$, $\DF(n)$,
-is the border of the CFG region that is dominated by $n$.
+Informally, the dominance frontier of a node $A$, $\DF(A)$,
+is the border of the CFG region that is dominated by $A$.
 Also note that $\DF$ is defined over individual nodes, 
 but for simplicity of presentation, we overload it to 
 operate over sets of nodes too, i.e.\ 
-$\DF(\{n_a,n_b\}) = \DF(n_a) \cup \DF(n_b)$.
+$\DF(\{A,nB\}) = \DF(A) \cup \DF(B)$.
 
-We end up with a straightforward algorithm that places \phiops\
+This naturally leads to a
+straightforward approach that places \phiops\
 on a per-variable basis.
 For a given variable $v$, we place \phiops\ at the
 iterated dominance frontier $\iDF(S)$ where
-$S$ is the set of definition points for $v$.
-As discussed earlier, this leads to building a form that has
-the dominance property (see Chapter~\ref{chapter:properties_and_flavors}).
+$S$ is the set of nodes containing definitions of $v$.
+This leads to the construction of a form that has 
+the dominance property, recall
+Section \ref{sec:properties:ssawithdominance}.
 
 Consider again our running example from Figure 
-\ref{fig:examplecfg}. The set of definition points for variable
+\ref{fig:examplecfg}. The set of nodes containing definitions
+of variable
 $x$ is $\{ B,C,D \}$. The iterated dominance frontier of this set
 is $\{ A, D, E \}$. Hence we need to insert 
-\phiops\ for $x$ at the heads of nodes $A$, $D$, and $E$.
+\phiops\ for $x$ at the beginning of nodes $A$, $D$, and $E$.
 Figure \ref{fig:examplecfg_varx} shows the example CFG program
 with inserted \phiops\ for $x$ marked in red.
 
@@ -156,7 +168,7 @@ inserted \phiops\ for variable $x$
 
 
 As far as the actual algorithm for \phiops\ insertion
-is concerned, we assume that the dominance
+is concerned, we will assume that the dominance
 frontier of each CFG node is precomputed. However
 it is not reasonable to assume that the iterated dominance frontier is
 precomputed.
@@ -164,7 +176,8 @@ Thus the iterated dominance frontier is computed just-in-time,
 as the algorithm proceeds.
 The algorithm works by inserting \phiops\ iteratively
 using a worklist of definition points, and flags (to avoid multiple
-insertions). The corresponding pseudo-code is given in
+insertions). The corresponding pseudo-code for
+\phiop\ insertion is given in
 Algorithm~\ref{alg:classical_construction:phi_insertion}.
 
 Since a \phiop\ is itself a 
