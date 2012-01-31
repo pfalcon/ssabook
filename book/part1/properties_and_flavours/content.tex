@@ -6,100 +6,56 @@
 
 \section{Preliminaries}
 
-Any operation of the form $v \leftarrow \ldots$ that assigns a value
-to variable $v$ is called a \emph{definition} of $v$. Any operation
-of the form $\ldots \leftarrow v$ that reads a value of $v$ is called
-a \emph{use} of $v$. One of the key properties of SSA Form is that
-each variable is defined only once; however, renaming each variable 
-alone is insufficient, and $\phi$-functions are needed to merge
-the disparate redefinitions of each variable. The remaining 
-sections of this chapter provide the theoretical foundations that
-describe precisely how $\phi$-functions are inserted, and then
-derives important properties of the SSA Form that result. 
+Recall from the previous chapter that a procedure is in SSA Form if it
+every variable is defined once, and every use of a variable corresponds
+to exactly one definition. Many variations, or flavors, of SSA Form that 
+satisfy these criteria can be defined, each offering its own considerations.
+For example, different flavors vary in terms of the number of $\phi$-functions,
+which affects the size of the intermediate representation; some vary in
+terms of the number of variables defined, which affects the size of the 
+symbol table; and some are more difficult to construct, maintain, and destruct
+compared to others. This chapter explores these SSA flavors and provides
+insight onto the contexts that favor some over others. 
 
-\section{Dominance}
+\section{Def-Use and Use-Def Chains}
 
+Under SSA Form, each variable is defined once. This simplifies 
+the def-use and use-def chains that a compiler may construct to help
+with analysis and optimization. Each def-use chain contains the
+single definition of a variable followed by all of its uses; each use-def
+contains two elements: the use and the unique definition of the variable.
 
-The concepts of \emph{dominance}, introduced in this section, and 
-\emph{post-dominance}, introduced in the following section, form the
-foundations of a collection of compiler techniques called 
-\emph{control flow analysis}. Intuitively dominance and post-dominance
-respectively tell us which basic blocks are \emph{guaranteed} to
-execute before or after others. Historically, this information has
-been used to identify hierarchies of nested loops. Although this
-problem may seem trivial, given the prevalence of programming 
-constructs to express loops, such as \emph{for}, \emph{while} and
-\emph{do-while}, the problem becomes significantly more complicated
-when trying to account for \emph{irreducible loops}, which can be
-constructed using arbitrary \emph{goto} statements
-~\cite{RamlingamSep02}. Our interest, however, is SSA Form
-rather than loop analysis; as we shall see, extensions to these
-basic definitions, in the sections that follow, are necessary to
-understand the criteria for instantiating $\phi$-functions 
-during the construction of SSA Form. 
+The explicit representation of use-def chains simplifies backward 
+propagation, which favors algorithms such as dead-code elimination. 
+Even without def-use chains, some forward propagation algorithms
+are efficient using use-def chains, as many definitions can be processed
+prior to the uses, as is the case when the program contains no loops
+and operations are processed in topological order. 
 
-In a CFG, basic block $n_{1}$ \emph{dominates} basic block $n_{2}$
-if every path in the CFG from the entry point to $n_{2}$ includes
-$n_{1}$. By convention, every basic block in a CFG dominates itself. Basic 
-block $n_{1}$ \emph{strictly dominates} $n_{2}$ if $n_{1}$ dominates
-$n_{2}$ and $n_{1} \neq n_{2}$. We use the symbols $n_{1} dom n_{2}$
-and $n_{1} sdom n_{2}$ to denote dominance and strict dominance 
-respectively.
+\section{Minimality}
 
-The \emph{immediate dominator} of a basic block $n_{2}$, denoted by
-$idom(n_{2})$, is the basic block $n_{1}$ such that $n_{1} sdom n_{2}$, and
-there does not exist any basic block $n_{3}$ such that 
-$n_{1} sdom n_{3} sdom n_{2}$. Intuitively, this means that $n_{1}$ is the
-closest basic block to $n_{2}$ that strictly dominates $n_{2}$. 
-Every basic block other than the entry point has exactly one immediate 
-dominator. 
+SSA construction is a two-phase process: placement of $\phi$-functions,
+followed by renaming. Minimality is a property of the code with 
+$\phi$-functions inserted, but prior to renaming; Chapter 
+\label{chap:classical_construction} describes the classical SSA
+construction algorithm in detail, while this section focuses
+primarily on describing the Minimality Property. 
 
-The \emph{dominator tree} is a data structure that links every basic block
-to its immediate dominator. The entry point of the CFG, itself a basic block,
-is the root of the dominator tree. If $N$ is the set of basic blocks in 
-the CFG and $r$ represents the entry point, then the
-dominator tree is the graph $T = (N, E_{T})$, where 
-$E_{T} = \{(n, idom(n))| n \in N \wedge n \neq r \}$. In other words,
-each edge in the dominator tree points from each basic block, other than $r$,
-to its immediate dominator. 
+A definition $D$ of variable $v$ reaches a point $p$ in the CFG
+if there exists a path from $D$ to $p$ that does not pass through another
+definition of $v$; we assume that the CFG entry node includes a 
+pseudo-definition of every variable in the procedure. Some languages
+permit the pseudo-definition of a $v$ reaches a use $U$ of $v$; if this
+path is taken through the CFG, then $v$ will be used without ever
+being assigned a value. Although this may be permissible in
+some cases, it is usually indicative of a programmer error or
+poor software design. 
 
-\section{Post-dominance}
-
-Post-dominance is similar in principle to dominance, as we will see below.
-In fact, all of the post-dominance information described below can be 
-constructed using the basic methods required to compute dominance 
-information. It suffices to reverse every edge in the CFG, and then
-swap the roles of the entry and exit node. The dominance information
-computed for the resulting CFG is wholly equivalent to the post-dominance
-information for the original CFG. 
-
-In a CFG, basic block $n_{2}$ \emph{post-dominates} basic block $n_{1}$
-if every path in the CFG from $n_{1}$ to the exit point includes
-$n_{2}$. By convention, every basic block in the CFG post-dominates itself. 
-Basic block $n_{2}$ \emph{strictly post-dominates} $n_{1}$ if $n_{2}$ 
-post-dominates $n_{1}$ and $n_{2} \neq n_{1}$. We use the symbols 
-$n_{2} pdom n_{1}$ and $n_{2} spdom n_{1}$ to denote post-dominance and 
-strict post-dominance respectively.
-
-The \emph{immediate post-dominator} of a basic block $n_{1}$, denoted by
-$ipdom(n_{1})$, is the basic block $n_{2}$ such that $n_{2} spdom n_{1}$, and
-there does not exist any basic block $n_{3}$ such that
-$n_{2} spdom n_{3} spdom n_{1}$. Intuitively, this means that $n_{2}$ is the
-closest basic block to $n_{1}$ that strictly post-dominates $n_{1}$.
-Every basic block other than the exit point has exactly one immediate 
-post-dominator.
-
-The \emph{post-dominator tree} is a data structure that links every
-basic block to its immediate post-dominator. The exit point of the CFG is
-the root of the post-dominator tree. If $N$ is the set of basic blocks
-in the CFG, and $t$ is the unique exit point, then the post-dominator 
-tree is the graph $P = (N, E_{P})$, where
-$E_{P} = \{(n, ipdom(n)), n \in N \wedge n \neq t\}$. In other words,
-each edge in the post-dominator tree points from each basic block, other 
-than $t$, to its immediate post-dominator.  
-
-\section{Join Sets and Dominance Frontiers}
-\label{sec:properties:domfrontiers}
+The Minimality Property states that exactly one definition (or
+pseudo-definition$ of each variable $v$ reaches every point in
+a procedure. The instantiation of $\phi$-functions enforces this
+constraint. To better understand the Minimality Property, we next
+introduce the notion of a Join Set. 
 
 Let $n_{1}$ and $n_{2}$ be distinct basic blocks in a CFG. A basic block
 $n_{3}$, which may or may not be distinct from $n_{1}$ or $n_{2}$, is 
@@ -120,258 +76,146 @@ Generalizing this statement, if $S$ is the set of basic blocks containing
 definitions of $v$, then $\phi$-functions should be instantiated in
 every basic block block in $\J(S)$. 
 
-That being said, we still require an efficient method to compute join sets. 
-In principle, we may require join sets for every subset of basic blocks
-in the CFG, although in principle, we are likely to require fewer. For 
-this reason, we will turn, briefly, to an alternative structure based
-on dominance, rather than paths in a graph.
+Computing join sets is actually quite challenging however, if we include 
+the CFG entry node in $S$, then the join set $\J(S)$ becomes much easier 
+to compute; in this case, then  then the set $\J(S)$ is
+called the iterated dominance fronter, $DF^{+}(S)$, and can be
+computed much more efficiently, as described in Chapter 
+\label{chap:classical_construction} .
 
-The \emph{dominance frontier} of a basic block $n_{1}$ in a CFG,
-denoted $DF(n_{1})$, is the set of basic blocks $X$, such that
-$n_{1}$ \emph{does not} strictly dominate $X$, but \emph{does} 
-dominate at least one predecessor block of $X$. The dominance 
-frontier of a set $S$ of basic blocks, denoted $DF(S)$, is the union
-of the dominance frontiers of the elements of $S$. 
+\section{SSA Form with the Dominance Property}
 
-The following section will make a connection between join sets
-and dominance frontiers.
+In a CFG, basic block $n_{1}$ \emph{dominates} basic block $n_{2}$
+if every path in the CFG from the entry point to $n_{2}$ includes
+$n_{1}$. By convention, every basic block in a CFG dominates itself. Basic 
+block $n_{1}$ \emph{strictly dominates} $n_{2}$ if $n_{1}$ dominates
+$n_{2}$ and $n_{1} \neq n_{2}$. We use the symbols $n_{1} dom n_{2}$
+and $n_{1} sdom n_{2}$ to denote dominance and strict dominance 
+respectively.
 
-\section{Iterated Join Sets and Dominance Frontiers}
-
-Let $S$ be a set of basic blocks, and let $\J^{0}(S) = \J(S)$. 
-Now, let us recursively define 
-$\J^{i}(S) = \J(S \cup \J^{i \minus 1}(S))$. By
-construction, it is straightforward to see that
-$\J^{i}(S) \supseteq \J^{i-1}(S)$ for all $i$, as there is
-no process to facilitate vertex removal. If we compute these sets
-iteratively, we will eventually converge to a situation where
-$\J^{i}(S) = \J^{i-1}(S)$ in a finite number of steps, 
-as each CFG contains a finite number of basic blocks. The resulting
-set, denoted by $\J^{+}(S)$, is called the 
-\emph{iterated join set} of $S$. 
-
-We can do something similar with dominance frontiers. Given a set
-$S$ of basic blocks, let $DF^{0}(S) = DF(S)$, and let
-$DF^{i}(S) = DF(S \cup DF^{i-1}(S))$. Once again, we can iteratively
-compute $DF^{i}(S)$ from $DF^{i-1}(S)$, stopping when the two sets
-are equal. The resulting set, denoted by $DF^{+}(S)$ is called
-the \emph{iterated dominance frontier} of $S$. 
-
-There is, in fact, a connection between iterated join sets and 
-iterated dominance frontiers. Let $X$ be any set of CFG nodes
-that contains the CFG entry node. Cytron et al.~\cite{CytronOct91}
-proved that $\J^{+}(X) = DF^{+}(X)$. Weiss~\cite{WeissJun92}
-proved a slightly stronger version, that $\J(X) = DF^{+}(X)$.
-Weiss also conjectured that $\J^{+}(S) = \J(S)$ for any 
-set of CFG nodes $S$, and this conjecture was formally proven
-by Wolfe~\cite{WolfeJul94}. 
-
-For reasons that we will discuss in greater detail below, each
-variable in an SSA Form program has an \emph{implicit} definition
-at the CFG entry point. Based on the results above, either the
-join set or iterated dominance frontier could be used, in principle
-to instantiate $\phi$-functions. Cytron et al.~\cite{CytronOct91} 
-compute iterated dominance frontiers using a worklist algorithm. 
-As noted by Wolfe~\cite{WolfeJul94}, join and iterated join sets 
-are too complicated to compute directly, and no algorithms exist
-that call for their explicit use, outside of any context where
-iterated dominance frontiers suffice.  
-
-Intuitively, dominance frontiers are not enough, which is why
-iterated dominance frontiers are needed. Ignoring the subtle
-differences between dominance frontiers and join sets, consider
-a variable $v$ defined in basic blocks $n_{1}$ and $n_{2}$. Initially,
-we will instantiate a $\phi-$function for $v$ in some basic block
-$n_{3} \in DF(n_{1}, n_{2})$; however, before renaming, this
-$\phi$-function itself is a new definition of $v$, so we will need
-to instantiate additional $\phi$-functions in $DF(n_{3})$ as well.
-Taken ad-infinitum, this line of reasoning is precisely why we
-use iterated dominance frontiers instead of dominance frontiers. 
-
-\section{Split Sets and (Iterated) Post-dominance Frontiers}
-
-We have already noted the existence of a duality between the 
-dominance and post-dominance relations. The \emph{dual} of
-a join set is called a \emph{split set}: given two distinct
-basic blocks $n_{2}$ and $n_{3}$, basic block $n_{1}$ belongs
-to their split set, denoted $\S(n_{1}, n_{2})$ if there 
-are non-empty paths from $n_{3}$ to $n_{1}$ and $n_{2}$
-respectively, such that the only basic block common to both
-paths is $n_{3}$. Clearly, if all of the CFG edges are
-reversed, $n_{3}$ would belong to the join set of $n_{1}$
-and $n_{2}$. Based on Wolfe's~\cite{WolfeJul94} proof,
-there is no need to define an \emph{iterated split set}, 
-as it is equivalent to the split set. 
-
-Similarly, the dominance fronter can be generalized 
-to the \emph{post-dominance frontier} by replacing the
-dominance with the post dominance relation in the definition.
-For a set of basic blocks, $S$, we let $PDF(S)$ denote
-the post-dominance frontier of $S$. Furthermore, we can
-define an \emph{iterated post-dominance frontier} in a 
-manner that is exactly similar to the iterated dominance
-frontier. The iterated post-dominance frontier of a set
-$S$ of vertices is denoted $PDF^{+}(S)$. 
-
-\section{Philip's comment}
-
-From the outline, I budgeted 2 pages for the text of
-the preceding sections, and 2 pages for illustrations.
-
-\section{SSA Form, Def-Use, and Use-Def Chains}
-
-A procedure is defined to be in SSA Form if it satisfies
-two properties. Firstly, each variable can only be defined
-once. This property is easily achieved: assuming that varible
-$v$ is defined $k$ times in the procedure, rename each of the
-definites to $v_{1}, v_{2}, \cdots, v_{k}$ respectively. 
-The second property is that each use of $v$ must now be
-renamed to correspond to precisely one definition. Without
-loss of generality, if there is a use of $v$ in a basic block
-that belongs to the join set of two (or more) definitions
-$v_{i}$ and $v_{j}$, then the second property is implicitly
-unsatisfied: renaming this use of $v$ to be a use of $v_{i}$ or
-$v_{j}$ will not maintain correct program semantics. In order
-to rectify the situation, a $\phi$-function must be instantiated
-to merge the definitions of $v_{i}$ and $v_{j}$ into a new 
-variable $v_{l}$, and the use of $v$ is replaced with a use
-of $v_{l}$. 
-
-Note: insert a figure here to illustrate. 
-
-Two important data structures that are used in compilers are
-\emph{Definition-Use (DU) Chains} and 
-\emph{Use-Definition (UD) Chains}. A definition $D$ of variable
-$v$ reaches a use $U$ of $v$ if there is a path in the CFG
-from $D$ to $U$ that does not include another definition of $v$. 
-A DU Chain connects $D$ to all uses of $v$ that are reachable
-from $D$; a UD Chain connects a use $U$ of $v$ to all of the 
-definition of $v$ from which $U$ is reachable. 
-
-Under SSA Form, as mentioned above, each variable is defined 
-once and each use corresponds to a single definition. Therefore,
-there is exactly one DU Chain per variable (the definition points
-to all of the uses), and one UD Chain per use, which points to the
-single definition. Thus, the UD chains are explicit, and do not
-need to be represented.
-
-Note: Insert a figure here to illustrate what happens to DU
-and UD chains by the conversion to SSA Form.  
-
-\section{Dead Code Elimination Under SSA}
-
-Note: In an email on October 19, 2009, Fabrice suggested that
-I include this section. If I choose to write it and include it
-here, I will base the discussion on The SSA DCE algorithm from
-Robert Morgan's textbook, which was used in MachSUIF (among 
-other places). Alternativly, I could use the DCE algorithm
-from the classic Cytron et al. 1991 paper. 
-
-I have not yet written this section, because I am not sure
-whether an introductory chapter is the appropriate place
-to insert a discussion of DCE, or whether it is better moved
-to a chapter on SSA-based optimizations. 
-
-\section{SSA with dominance property}
-\label{sec:properties:ssawithdominance}
+The minimality property discussed previously mandates that each
+program point be reachable by exactly one definition (or pseudo-definition)
+of each variable. If a program point $U$ is a use of variable $v$, then the
+reaching definition $D$ of $v$ will dominate $U$; otherwise, there is a path
+from the CFG entry node to $U$ that does not include $D$, which contradicts
+the Minimality Property. If such a  path existed, then the program would not
+be in SSA Form, and a $\phi$-function would need to be inserted somewhere
+in $DF^{+}(D)$.  
 
 A procedure is defined to be \emph{strict} if every variable
 is defined before it is used along every path from the entry
 to exit point~\cite{BudimlicJun02}; otherwise, it is \emph{non-strict}. 
 Some languages, such as Java, impose strictness as part of the language
 definition; others, such as C/C++, impose no such restrictions. 
+ 
+Adding a pseudo-definition of each variable to the procedure's entry
+point ensures strictness. After $\phi$-functions have been placed
+for each variable in the program, the presence of the pseudo-definition
+as a parameter of a $\phi$-function indicates a potential problem with
+an uninitialized variable, as illustrated by the following example:
 
-It is possible to define SSA Form in a manner that ensures strictness,
-even if the original procedure itself is non-strict; it is also possible
-to define SSA Form in a way that does not ensure strictness. The designer
-of an SSA-based compiler must determine which definition is most appropriate.
-
-Any existing SSA construction algorithm can ensure strictness: it suffices
-to add a pseudo-definition of each variable at the entry point of the 
-procedure. This pseudo-definition does not affect the live range of the
-variable: it is only used to guide the placement of $\phi$-functions.
-Any SSA construction algorithm that uses iterated dominance frontiers,
-as we will shortly show, uses this implicit definition. 
-
-Let $v_{0}$ denote the pseudo-definition corresponding to variable $v$ in
-a pre-SSA procedure. Any instruction that uses $v_{0}$ indicates a likely
-programmer error. The instruction will use a non-initialized variable; in
-the general case, this leads to unpredictable program behavior whenever
-this instruction is executed.
-Similarly, a $\phi$-function may also contain $v_{0}$ as a parameter. 
-If the corresponding path is taken into the basic block containing the
-$\phi$-function, then an uninitialized variable (denoted by the pseudo-
-definition) will be copied to the variable defined by the $\phi$-function.
-As these programs are still legal, depending on the language definition,
-the best that a compiler can do is to present a warning to the user in
-order to alert him or her of the situation. 
-
-Let $S_{v}$ be the set of basic blocks containing definitions of variable 
-$v$, and let $n_{0}$ denote the entry point of the CFG. Conceptually, 
-non-strict SSA Form can be constructed by placing $\phi$-functions at the
-entry points of each basic block belonging to $J(S_{v}) = J^{+}(S_{v})$, 
-i.e., using join sets. Using iterated dominance frontiers, in contrast, 
-ensures strict SSA Form, since $DF^{+}(S_{v}) = J(S_{v} \cup n_{0})$.  
-
-As there are no known efficient algorithms to compute join sets, the
-most straightforward way to compute non-strict SSA Form is to first
-built strict SSA Form and then remove $\phi$-functions that are 
-otherwise extraneous. Consider, for example, a $\phi$-function that
-defines variable $v_{j}$: one of the parameters is another definition of
-$v$, denoted by $v_{i}$, while \emph{all} of the remaining parameters 
-are $v_{0}$: the implicit definition. It is possible, in this case, to
-eliminate this $\phi$-function by replacing all uses of $v_{j}$ with
-uses of $v_{i}$ instead. Although this destroys the dominance property,
-it does reduce the number of $\phi$-functions in the program. 
-
-Note: Insert an example here, as described in an email from Fabrice:
-'example of a double diamond with a def and used on the left and b def 
-and used on the right: no interference'. I also have some decent examples
-from a paper published at IWLS 2007 (no official proceedings). 
-
-There are certainly situations where one would want the dominance property
-as well. Most of these situations exploit properties relating to liveness
-and interference, which are briefly outlined in the following sections 
-of this chapter, and are described in much greater detail in subsequence
-chapters. 
-
-It is also important to note that many program transformations may
-cause strict SSA Form to become non-strict. Examples of such transformations
-include copy propagation and spilling. Techniques to convert non-strict
-to strict SSA Form without explicitly destroying and rebuilding SSA 
-Form will be discussed in Section ...
-
-(requires coordination with Sebastian).
-(possibly put an example here showing how copy propagation destroys
-strictness property; spilling works too). 
+(Fabrice: Please insert a print-quality version of the figure
+"dom_property.jpeg" which is a scan of a handwritten note. The
+content of the figure is correct in its current form. I do not feel
+comfortable creating this figure myself, as I cannot ensure that
+it will be synergistic with the style of the other figures in the book).  
+ 
+Under the Dominance Property, each use of each variable is dominated
+by exactly one definition. As shown in the preceding figure, a strict
+program converted to SSA Form satisfies the dominance property;
+however, it is also possible to construct a non-strict version of SSA
+Form that does not satisfy the Dominance Property.  
 
 \section{Minimal SSA Form}
 
-\emph{Minimal SSA Form} is computed in a straightforward manner,
-given the preceding discussion. Let $S_{v}$ be the set of
-basic blocks containing definitions of variable $v$. Then
-$\phi$-functions for $v$ are instantiated in every basic
-block in $DF^{+}(S_{v})$. This is followed by a pass over
-the program that renames each variable so that it has a
-unique definition, and renames each use to correspond
-precisely to one definition. Detailed pseudocode for these
-procedures can be found in ... 
+Minimal SSA Form is a variant of SSA Form that satisfies both the 
+Minimality and Dominance Properties ~\cite{CytronOct91}. Chapter
+\label{chap:classical_construction} describes an algorithm to
+construct Minimal SSA. The construction of Minimal SSA Form
+requires two steps: instantiation of $\phi$-functions, which
+satisfies the Minimality Property, and a renaming of variables
+to satisfy the Dominance Property. 
 
-As we will soon see, Minimal SSA Form is hardly minimal, as
-other algorithms that insert considerably fewer $\phi$-functions
-have been developed; however, Minimal SSA Form does insert
-fewer $\phi$-functions compared to the naive alternative,
-which is to instantiate a $\phi$-function for each variable
-at the entry point of each basic block in the program that
-has more than one predecessor. 
+If the original procedure is non-strict, conversion to Minimal SSA
+will create a strict SSA-based representation. Here, strictness refers
+solely to the SSA representation; if the input program is non-strict,
+conversion to and from Minimal SSA Form cannot address errors due
+to uninitailized variables. Minimal SSA Form maintains the strictness
+property due to the pseudo-definition of each variable that exists
+implicitly in the CFG entry node; as the pseudo-definition does not
+assign a value, Minimal SSA achieves the property of strictness, but
+without changing the semantics of the program. Another issue is
+that program optimizations, such as copy propagation through
+$]phi$-functions, can cause a Minimal SSA Form program to
+become non-strict, and therefore violate the dominance property.
 
-\section{Semi-pruned SSA Form}
+Minimal SSA is useful for many reasons. Most importantly, the liveness
+and interference properties of variables under Minimal SSA have favorable
+properties. For example, there is a fast and efficient method to query whether
+a variable is live at point $p$ under SSA ~\cite{BoissinotApr08}. 
+There are also efficient algorithms to test whether two variables interfere
+~\{BudimlicJun02, BoissinotApr09}. 
 
-\emph{Semi-pruned SSA From}, introduced by Briggs et al.
-~\cite{BriggsJul98}, was based on the observation that
+Moreover, each live range is a subtree of the dominator tree of the CFG. 
+As a consequence, the interference graph belongs to a special class of
+graphs called chordal graphs, which are the intersection graphs of a set
+of subtrees of a tree. Chordal graphs are significant because several
+problems that are NP-complete on general graphs have efficient linear-time
+solutions on chordal graphs, including graph coloring, which plays
+an important role in register allocation in compilers. In particular,
+a traversal of the dominator tree called a tree-scan can color all of
+the variables in the program, without requiring the explicit construction
+of an interference graph. The trees-scan algorithm can be used
+for register allocation ~\cite{ColumbetOct11}, which is discussed
+in greater detail in Section XYZ. 
+
+
+\section{Pruned SSA Form}
+
+One drawback of Minimal SSA Form is that it may place $\phi$-functions
+for a variable at a point in the control flow graph where the variable was
+not actually live prior to SSA. Many program analyses and optimizations,
+including register allocation, are only concerned with the region of a 
+program where a given variable is live. To extend these analyses and
+optimizations to use SSA, it is preferable to eliminate all
+of these dead $\phi$-functions, while still maintaining the minimality
+and dominance properties otherwise. The new constraint is that every
+$live$ program point for a given variable must be reached by exactly one
+definition, as opposed to all program points.  Pruned SSA Form
+~\cite{ChoiJan91} satisfies these properties. 
+
+Figure XYZ shows an example of Minimal and Pruned SSA. 
+(Fabrice: Please create the example yourself, so that it has an appropriate
+style and syntax that is synergistic with the rest of the book. I do not have
+time to look into this issue myself; perhaps take the example from Briggs). 
+
+The primary advantage of Pruned SSA over Minimal is that it has far
+fewer $\phi$-functions in most cases. 
+Under Minimal SSA, $\phi$-functions for variable $v$ are placed at
+the entry points of basic blocks belonging to the set $DF^{+}(S)$. 
+Under Pruned SSA, we suppress the instantion of a $\phi$-function
+at the beginning of a basic block in $DF^{+}(S)$ if $v$ is not live
+at the entry point of that block. The simplest way to do this is to
+perform liveness analysis prior to SSA construction, and then
+use the liveness information to suppress the placement of $\phi$-functions
+as described above; another approach is to construct Minimal SSA
+and then remove the dead $\phi$-functions using dead code
+elimination. Details can be found in Chapter 
+\label{chap:classical_construction}.
+
+
+\Section{Semi-pruned SSA Form}
+
+\emph{Semi-pruned SSA From} ~\cite{BriggsJul98}, 
+is based on the observation that
 many variables are never used outside of the basic blocks
 where they are defined. Consequently, there is no need 
-to instantiate any $\phi$-functions for any of them. 
+to instantiate any $\phi$-functions for these variables.
+Such variables can be identified by a linear traversal
+over each basic block of the CFG, which is less costly
+than the iterative dataflow analysis presumably required
+to construct Pruned SSA. 
+ 
 Specifically, if every use of variable $v$ occurs after
 a definition of $v$ in the same basic block, then no
 $\phi$-functions are necessary, although each definition
@@ -385,213 +229,25 @@ and avoids the corresponding increase in the size of the
 symbol table to accommmodate variables that would otherwise
 be defined by $\phi$-functions. 
 
-
-\section{Liveness and Liveness Analysis}
-
-Now, we turn our attention to variables and their lifetimes. By
-exploiting this information, we can further reduce the 
-number of $\phi$-functions instantiated during the conversion
-to SSA Form. 
-
-Variable $v$ is \emph{live} at some point $p$ in a program if:
-\begin{enumerate}
-\item There is a path from some definition of $v$ to $p$, and
-\item There is a use of $v$ reachable from $p$, meaning that
-there is a path from from $p$ to the use of $v$ that does not
-include a definition of $v$. 
-\end{enumerate}
-
-The \emph{live range} of a variable is the set of points
-at which it is live. A variable must reside in a storage 
-location, in a register, in memory or both, throughout
-its live range.  
-
-\emph{Liveness Analysis} is the process of computing the
-live range of each variable in a procedure. The bulk of
-the work is performed by an iterative data flow analysis
-that computes either the \emph{Live-In} or the 
-\emph{Live-Out} sets of each basic blocks, i.e., the set
-of variables that are live at the entry or exit of
-each basic block in the program. Given this information,
-a linear traversal of each basic block yields the 
-exact set of variables that are live at each program
-point. In general, the sets of program points that
-constitute each variable's live range are not computed.
-
-Here, we will show how to compute the Live-Out set of
-each basic block. $LIVEOUT[n]$ will denote the Live-Out
-set of basic block $n$. Each of the sets is represented
-as a bit-vector, with one bit corresponding to each
-variable. If $V$ is the set of variables in the procedure,
-then each bit-vector contains $|V|$ bits. To simplify
-notation, we will associate each variable $v_{i}$ with
-its index $i$, so $LIVEOUT[n][i] = 1$ if $v_{i}$ is live
-at the exit point of basic block $n$, and 
-$LIVEOUT[n][i] = 0$ otherwise. 
-
-To perform liveness analysis, we need two other sets for
-each basic block. $UEVAR[n]$ is defined to be the set of
-\emph{upwards exposed} variables in basic block $n$, i.e.,
-those variables that are used in $n$, but do not have a 
-definition preceding them in $n$. Clearly, the variables
-belonging to $UEVAR[n]$ are live at the entry point of $n$;
-Liveness analysis is a backward dataflow analysis, as
-variable lifetimes are propagated backwards from
-$UEVAR[n]$ and into the predecessors of $n$. 
-
-$VARKILL[n]$ contains the set of variables that are defined
-in basic block $n$. As liveness analysis is a backward
-data flow analysis, the backward propagation of liveness
-information ends with the definition of a variable. 
-The $VARKILL$ sets effectively stop the backward 
-propagation of variables that are live at their definition
-points.
-
-Initially, the sets $LIVEOUT[n]$ are empty for each basic 
-block, and a linear traversal of each basic block yields
-the sets $UEVAR[n]$ and $VARKILL[n]$. Once the initial sets
-are established, the following data flow equations are
-repeatedly computed for each basic block $n$; this is 
-called an \emph{iteration}. The process repeats until an 
-entire iteration fails to change any of the $LIVEOUT$ sets.
-At this point, stability is reached, and the information
-contained in the $LIVEOUT$ sets is wholly accurate.
-
-[Insert liveness equations here]
-
-The results of liveness analysis are generally used in
-three contexts: the construction of Pruned SSA Form,
-as described in the following section; register allocation;
-and the translation out of SSA Form. 
-
-\section{Pruned SSA Form}
-
-Minimal SSA Form does not take variable liveness information
-into account when instantiating $\phi$-functions. Semi-pruned
-SSA recognizes that many variables are never live across
-the boundaries of the basic blocks that contain their 
-definition, and does not instantiate any $\phi$-functions
-for these variables. Under both Minimal and Semi-pruned
-SSA Form, the $\phi$-functions that are instantiated are
-done so on the basis of iterated dominance frontiers alone,
-and do not account for any additional liveness information
-about the corresponding variable. Therefore, $\phi$-functions
-are often instantiated for variables at the entry point of
-basic blocks where the variable is not actually live. 
-\emph{Pruned SSA Form}, in contrast, requires that 
-$\phi$-functions are only instantiated for a variable $v$
-at the entry point of basic blocks where $v$ is live
-~\cite{ChoiJan91}.  
-
-There are two possible methods to construct Pruned SSA Form.
-The direct method is to perform liveness analysis upfront, and
-check whether a variable is live at the entry point of a 
-basic block before instantiating a $\phi$-function for that
-variable. This approach is straightforward, but requires
-performing liveness analysis upfront. 
-
-Briggs et al.~\cite{BriggsJul98}, who introduced Semi-pruned
-SSA Form, compared the runtimes of constructing Minimal SSA,
-Semi-pruned SSA, and the direct method of constructing Pruned
-SSA Form. Minimal SSA Form instantiated an exorbitant number
-of $\phi$-functions, and, as a consequence, it had the slowest
-runtime. Semi-pruned SSA Form was the fastest to construct,
-because Pruned SSA Form required liveness analysis in advance.
-Although Semi-pruned SSA Form instantiated significantly 
-more $\phi$-functions than Pruned SSA Form, the overhead of
-liveness analysis was significantly greater than the overhead
-of instantiating the extra $\phi$-functions. 
-
-It is also possible to construction Pruned SSA by first
-building Semi-Pruned SSA and then using a simplified dead code
-elimination algorithm on $\phi$-functions to convert the
-resulting program into Pruned SSA Form; in fact, a more
-algorithm that eliminates dead code as well as dead $\phi$
-functions also suffices. To the best of our knowledge, such
-an algorithm has not been formally published; however, Choi
-et al.~\cite{ChoiJan91} suggested that such an algorithm
-may exist, and the method has even been patented
-[I'm not sure how to cite this]. As long as the runtime of
-the dead code elimination step plus the cost of instantiating
-the extra $\phi$-functions, which are later removed, is 
-cheaper than performing liveness analysis, this latter
-method will run faster. 
-
-\section{Live Range Insersection and Interference}
-\label{part1:ssaprop:subtrees}
-
-Liveness information also plays an important role in
-register allocation. Any variable must reside in a 
-storage location: a register, in memory, or both, at each
-point when it is live; otherwise, its value will be lost.
-The register allocator, therefore, must partition the
-variables between register and memory at each point in
-the program, and make sure that at most one variable is
-allocated to each register at any point. 
-
-The live ranges of two variables \emph{intersect} if
-there is at least one point in a procedure where both
-variables are live. In general, two variables whose live
-ranges intersect cannot share the same storage location;
-however, there is one exception: Chaitin et al.
-~\cite{Chaitin81,ChaitinJun82} suggested that two variables
-whose live ranges overlap, but are known to always hold
-the same value, can share the same register; unfortunately,
-testing whether or not two computations produce the same
-result is undecideable, as it is a generalization of
-the \emph{Halting Problem}. Therefore, Chaitin's more
-general notion of live range \emph{interference} is often 
-simplified to live range intersection, or intersection
-with provisions to account for constant values. 
-
-Many register allocators build an auxiliary data structure
-called an \emph{interference graph} to assist with the
-allocation process. An interference graph is denoted by
-the tuple $G = (V, E, A)$, where $V$ is a set of vertices,
-one for each variable in the procedure, $E$ is a set of
-\emph{interference edges}, and $A$ is a set of 
-\emph{affinity edges}. An interference edge $(v_{i}, v_{j})$
-is placed between every pair of variables $v_{i}$ and 
-$v_{j}$ that interfere with one another; in principle,
-any definition of interference that at least includes
-intersection can be used. An affinity edge $(v_{k}, v_{l})$
-is placed between two variables that are repectively 
-defined and used by a copy operation, i.e., 
-$v_{k} \leftarrow v_{l}$ or $v_{l} \leftarrow v_{k}$;
-in this case, assigning $v_{k}$ and $v_{l}$ to the
-same register eliminates the copy operation. More details
-on this process will be provided in section ...
-
-An SSA Form program that is also strict satisfies a very important
-property: the definition point of each variable dominates each use
-~\cite{BudimlicJun02}; from there, it is fairly straightforward to
-show that the definition point not only dominates each use, but 
-the entire live range of the resulting variable. In other words,
-each live range is a subtree of the dominator tree. The resulting
-interference graph, therefore, is the intersection graph of a set
-of subtrees of a tree, which is precisely the definition of the 
-class of \emph{chordal} graphs. Chordal graphs are significant because
-several problems that are NP-complete for general graphs have efficient
-polynomial-time solutions for chordal graphs, including graph coloring,
-which is often used as a model for register allocation. This theory
-will be presented in much greater detail in future chapters of this book.
-
-\section{Philip's comments}
-
-Detailed example (hopefully, corresponding to
-the procedure illustrated in the preceding 
-section. 
-
-Here, I anticipate 1 page of text and 1 page
-for the illustration.
+To construct Pruned SSA Form via dead code elimination,
+it is generally much faster to first build Semi-pruned SSA
+Form, rather than Minimal SSA Form, and then apply
+dead code elimination. In practice, Minimal SSA Form
+instantiates significantly more $\phi$-functions than
+Semi-pruned SSA Form~\cite{BriggsJul98} and is
+therefore slower to construct and consumes more
+memory. 
 
 \section{Conventional and Transformed SSA Form}
 
 The conversion to SSA form replaces each variable $v$ in the pre-SSA
-program with a set of variables $v_{1}, v_{2}, \ldots, v_{k}$, which
-perfectly partition $v$. At every point in the procedure where $v$ is
+program with a set of variables $v_{1}, v_{2}, \ldots, v_{k}$. In Pruned
+SSA, these variables partition $v$: at every point in the procedure where $v$ is
 live, \emph{exactly} one variable $v_{i}$ is also live; and none of
-the $v_{i}$ are live at any point where $v$ is not. 
+the $v_{i}$ are live at any point where $v$ is not. Under Minimal SSA, 
+one of the $v_{i}$ (including, possibly, a pseudo-definition) is live
+at every point in the procedure, not just at points where the original
+pre-SSA variable $v$ was live. 
 
 Based on this observation, we can partition the variables in a 
 program that has been converted to SSA Form into congruence classes. 
@@ -615,45 +271,104 @@ $\phi$-function belongs to a singleton class.
 Let \emph{$\phi$-CongruenceClass${x}$} denote the equivalence class 
 containing variable $x$. 
 
-The conversion to SSA Form, as described above, ensures that all varibles
-$v_{i}$ introduced for pre-SSA variable $v$ belong to the same $\phi$-
-congruence class. The program can be immediately translated out of SSA
-Form by replacing each definition or use of $v_{i}$ with $v$ instead, 
-and deleting the $\phi$-functions. This simplistic reverse transformation
-is not always possible after SSA-based program transformations and 
-optimizations such as dead code elimination, copy folding and propagation,
-and various forms of code motion are applied~\cite{BriggsJul98}. 
+Under Conventional SSA Form, each congruence $\phi$-congruence class
+is interference-free.  The translation out of Conventional SSA Form
+is straightforward: each congruence class can be replaced with a single
+variable; all definitions and uses are renamed to use the new variable,
+and all $\phi$-functions involving this congruence class are removed. 
 
-In particular, transformations applied to an SSA Form program may
-merge the $\phi$-congruence classes of distinct variables
-$u_{i}$ and $v_{j}$, which respectively correspond to pre-SSA variables
-$u$ and $v$ respectively. Moreover, $u_{i}$ and $v_{j}$ may interfere,
-making it impossible to replace all of the variables in a single
-$\phi$-congruence class with a single variable. 
+Many program optimizations may transform a procedure from Conventional
+to a Nonconventional SSA Form, in which some variables belonging to
+the same congruence class interfere with one another. Figure XYZ
+shows an example of conventional and non-conventional SSA Form. 
 
-Note: A figure showing an example here would be very nice.
+(Fabrice: Please insert a figure here to illustrate the difference.) 
 
-For example, suppose
-that the lifetimes of $u_{i}$ and $v_{j}$ overlap, and we replace all
-of the variables in their $\phi$-congruence class with a new variable $x$
-during the translation out of SSA Form. Then when the program executes,
-there will be a point where $x$ is live, and it will contain one value: 
-either the value corresponding to $u_{i}$ or $v_{j}$, but not both. 
-This is incorrect, as both values are required, because they will be used
-at some point later in the program as per the definition of liveness.
-As a consequence, the semantics of the program have not been preserved
-during the translation out of SSA Form. 
+SSA elimination
+starting from Nonconventional SSA Form requires a conversion to 
+Conventional SSA Form as an intermediate step. This conversion is
+achieved by inserting copy operations that partition $\phi$-congruence
+classes. If $v_{i}$ and $v_{j}$ are interfering variables in a $\phi$-congruence
+class, then $v_{i}$ and $v_{j}$ must be assigned to different partitions. 
+This process repeats until none of the partitions, which are themselves
+$\phi$-congruence classes, contain and more interfering variables
+~\cite{SreedharSep99, BoissinotApr09}. Chapter 
+\label{chap:alternative_ssa_destruction_algorithm}
+describes SSA elimination algorithms in greater detail.
 
-Sreedhar et al.~\cite{SreedharSep99} defines a program to be in 
-\emph{Conventional SSA (CSSA)} if it is possible to replace all occurrences
-of variables in a $\phi$-congruence class with a single variable without
-affecting program correctness; in other words, none of the variables in
-a $\phi$-congruence class interfere with one another under CSSA Form. 
-The basic SSA construction algorithms all build CSSA Form; however, CSSA
-Form is not preserved after numerous transformations and optimizations
-are applied. A program is defined to be \emph{Transformed SSA (TSSA)}
-Form if at least two variables in a $\phi$-congruence class interfere. 
-The conversion from TSSA to CSSA Form is an important and required 
-step in order to translate out of SSA Form. Efficient and effective algorithms
-to translate out of SSA Form will be presented in Sections ... 
+\section{A Stronger Definition of Interference}
+
+Throughout this chapter, two variables have been said to interfere
+if their live ranges intersect. Intuitively, two variables with overlapping
+lifetimes will require two distinct storage locations; otherwise, a write
+to one variable will overwrite the value of the other. In particular,
+this definition has applied to the discussion of interference graphs
+and the definition of Conventional SSA Form, as described above.
+
+This is a fairly restrictive definition of interference, although it suffices
+for correctness. Most importantly, it is an easy definition to test. 
+Several extensions to this definition are also possible, in which,
+under very specific conditions, variables whose live ranges overlap
+one another may not interfere~\cite{Chaitin81, ChaitinJun82}. 
+We present two examples.
+
+Firstly, consider two variables $u$ and $v$, whose live ranges overlap.
+If we can prove that $u$ and $v$ will always hold the same value
+at every place where both are live, then they do not actually interfere
+with one another. Since they always have the same value, a single 
+storage location can be allocated for both variables, because there
+is only one unique value between them.
+
+Secondly, consider the double-diamond graph shown below:
+
+if (cond) then:
+u=...
+else:
+v=...
+endif
+....
+if (samecondition) then:
+ =u
+else:
+ =v
+endif
+
+Although $u$ and $v$ are unique variables with overlapping live
+ranges, the paths along which $u$ and $v$ are respectively used and
+defined are mutually exclusive with one another. In this case, the
+program will either pass through the definition of $u$ and the use
+of $u$, or the definition of $v$ and the use of $v$, since all
+statements involved are controlled by the same condition, albeit
+at different conditional statements in the program. Since only
+one of the two paths will ever execute, it suffices to allocate a 
+single storage location that can be used for $u$ or $v$. Thus, $u$
+and $v$ do not actually interfere with one another. 
+ 
+These definitions of interference are difficult to reason about at 
+compile-time, which is why they are not widely used. In particular,
+determining the equivalence of two variables in the program is
+intractable, since it is equivalent to the Halting Problem. At best,
+one can test for a handful of known common cases where 
+equivalence may occur; the same is true when it comes to considering
+all possible paths of control flow through a CFG. 
+
+This relaxed notion of interference has significant implications if
+applied to SSA Form. In particular, the interference graph of a procedure
+is no longer chordal, as any edge between two variables whose lifetimes
+overlap could be eliminated by this property. Thus, a compiler that
+wishes to exploit the chordal interference graph property of SSA Form, 
+e.g., to improve the performance or code quality of register allocation,
+cannot exploit the relaxed notion of interference as described here.
+
+Secondly, the conversion to Minimal, Semi-pruned, and Pruned SSA Form
+produce a Conventional SSA representation in terms of the relaxed 
+definition of inclusion, but not the more restrictive definition. In other
+words, two variables in the same $\phi$-congruence class may have 
+intersecting lifetimes once SSA has been built; however, they are
+guaranteed not to interfere based on the relaxed definition
+of interference described here. 
+
+
+
+
 
