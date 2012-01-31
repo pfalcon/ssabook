@@ -180,27 +180,37 @@ insertions). The corresponding pseudo-code for
 \phiop\ insertion is given in
 Algorithm~\ref{alg:classical_construction:phi_insertion}.
 
-Since a \phiop\ is itself a 
-definition, it may require further \phiops\ to be inserted.
-This is the cause of node insertions into the  worklist $W$ during
-the iterations of the inner loop.
-Effectively, this is the just-in-time construction of
-the iterated dominance frontier.
 
 The worklist of nodes $W$ is used to record definition points that the
 algorithm
 has not yet processed, i.e.\ it has not yet inserted \phiops\ at their dominance
-frontier.
-The flags array $I$ is used to avoid repeated insertion of \phiops. Dominance
+frontiers.
+Because a \phiop\ is itself a 
+definition, it may require further \phiops\ to be inserted.
+This is the cause of node insertions into the worklist $W$ during
+iterations of the inner loop in Algorithm 
+\ref{alg:classical_construction:phi_insertion}.
+Effectively, this is the just-in-time construction of
+the iterated dominance frontier.
+
+
+The flags array $I$ is used to avoid repeated insertion of \phiops
+at a single node. Dominance
 frontiers
-of multiple nodes may intersect, e.g.\ $\DF(B)$ and $\DF(C)$ both contain $D$. 
-Once a \phiop\ for a variable has been
-inserted, there is no need to insert another, since a single \phiop\ per
-variable handles all incoming definitions of that variable.
+of distinct nodes may intersect, e.g.\ in the example CFG in Figure
+\ref{fig:examplecfg},
+$\DF(B)$ and $\DF(C)$ both contain $D$. 
+Once a \phiop\ for a particular variable has been
+inserted at a node,
+there is no need to insert another, since a single \phiop\ per
+variable handles all incoming definitions of that variable to that node.
 
 Table \ref{tab:classical_construction:walkthru} 
-gives a walkthrough example of the Algorithm 
-\ref{alg:classical_construction:phi_insertion} for inserting \phiops\ for $x$.
+gives a walkthrough example of Algorithm 
+\ref{alg:classical_construction:phi_insertion}.
+It shows the stages of execution for a single iteration of
+the outermost for loop, which is inserting \phiops\
+for variable $x$.
 At the beginning, the CFG looks like Figure \ref{fig:examplecfg}.
 At the end, when all the \phiops\ for $x$ have
 been placed, then the CFG looks like Figure \ref{fig:examplecfg_varx}.
@@ -211,8 +221,8 @@ in the walkthrough?}
 \begin{table}
 \begin{center}
 \begin{tabular}{r|c|c|p{5cm}}
-\textbf{iteration} & $W$ & $I$ & \textbf{actions} \\ \hline 
-init & $\{\}$ & $\{\}$ & insert $B$, $C$ and $D$ into both $W$ and $I$, since
+\textbf{while loop \#} & $W$ & $I$ & \textbf{actions} \\ \hline 
+ -  & $\{\}$ & $\{\}$ & insert $B$, $C$ and $D$ into both $W$ and $I$, since
 $B$, $C$ and $D$ are
 definition points of variable $x$ \\
 0 & $\{B,C,D\}$ & $\{B,C,D\}$ & remove $B$ from $W$ for processing, 
@@ -232,8 +242,9 @@ nothing. \\
 4 & $\{A\}$ & $\{B,C,D,E,A\}$ & remove $A$ from $W$ for processing, 
 $\DF(A)$ is empty since $A$ dominates all nodes in the CFG, so do
 nothing. \\
-5 & $\{\}$ & $\{B,C,D,E,A\}$ & $W$ is empty so the algorithm
-moves onto the next variable. \\
+5 & $\{\}$ & $\{B,C,D,E,A\}$ & $W$ is empty so the while loop
+terminates,
+and the algorithm moves on to consider the next variable. \\
 \end{tabular}
 \end{center}
 \caption{\label{tab:classical_construction:walkthru}Walkthrough of
@@ -250,8 +261,12 @@ moves onto the next variable. \\
 % to reprocess nodes in $\iDF(E)$.
 
 
-(FIXME - do we need the next paragraph here or should we leave this detail until
-the Advanced construction chapter??)
+\emph{FIXME - do we need the following paragraphs about DF
+  construction
+here, or should we leave these details in Chapter 2 (properties and
+flavors),
+ and advanced DJ graph details in Chapter 4 (advanced construction algms)?}
+
 
 Providing the dominance tree as a given, the computation of the dominance frontier is quite straight-forward. This can be understood using the DJ-graph notation. The skeleton of the DJ-graph is the dominator tree of the CFG that makes the $D$-edges. This is augmented with $J$-edges (join edges) that correspond to all edges of the CFG which source do not dominate its destination. A $DF$-edge (dominance frontier edge) is an edge which destination is in the dominance frontier of its source. By definition, there is a $DF$-edge $(a,b)$ between every CFG nodes $a$, $b$ such that there is a CFG-path from $a$ to $b$ but $a$ does not dominate $b$. 
 In other-words, for each  $J$-edge $(a,b)$, all ancestors (including $a$) that do not dominate $b$ have $b$ in their dominance frontier. This leads to the pseudo-code given in Algorithm~\ref{alg:classical_construction:df}. The iterated dominance frontier is nothing else than the transitive closure of the dominance frontier and we can define the $DF^+-graph$ as the transitive closure of the $DF$-graph. We can compute the iterated dominance frontier for each variable independently, as proposed in this chapter, or ``cache'' it to avoid multiple computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chap:alternative_ssa_construction_algorithms}.
@@ -299,14 +314,33 @@ In other-words, for each  $J$-edge $(a,b)$, all ancestors (including $a$) that d
 Once \phiops\ have been inserted using this algorithm, the program may
 still contain several definitions per variable, however now there is a
 single definition statement 
-in the CFG that reaches each use. Moreover, with the following semantics for \phiops\ where its variable uses are considered to be on the corresponding predecessor basic blocks, then use-def chains are aligned with the CFG dominance tree. In other word the unique definition that reaches each use dominates that use.
+in the CFG that reaches each use. 
+It is conventional to treat the each variable use in a \phiop\
+as if it actually occurs at the end of the
+corresponding predecessor node.
+If we follow this convention,  
+% Moreover, with the following semantics for \phiops\ where its
+% variable uses are considered to be on the corresponding predecessor
+% basic blocks,
+then use-def chains are aligned with the CFG dominance tree.
+In other words,
+\emph{the single definition that reaches each use dominates that use}.
 
 To obtain the desired property of a static single assignment per variable,
-it is necessary to perform variable renaming.
+it is necessary to perform \textbf{variable renaming}, which
+is the second phase in the SSA construction process.
 Because of the dominance property outlined above,
-renaming can be easily achieved using a depth-first traversal of the dominance tree.
-During the traversal, for each variable $v$, it is necessary to remember its nearest dominating definition.
+it is straightforward to rename variables
+using a depth-first traversal of the dominance tree.
+During the traversal, for each variable $v$, it is necessary to
+remember its closest dominating definition.
 This gives the following pseudo-code for the variable renaming algorithm:
+
+\emph{FIXME - the actual `classical' algorithm presented by
+Cytron et al uses a stack of SSA names for each original variable.
+Why are we not following this algorithm? Is our algorithm equivalent?
+If it is equivalent, is this alternative easier to understand?
+If it is not equivalent, should we mention the original algorithm?}
 
 \begin{verbatim}
 proc renaming:
@@ -341,13 +375,29 @@ proc v.update_reachingDef(o):
   v.reachingDef:=rd
 \end{verbatim}
 
-Let us review the flavour of SSA form that can is constructed by this simple
-algorithm. (FIXME - Ref back to chapter 2?)
+\subsubsection*{Summary}
+
+Now let us review the flavour of SSA form that this simple
+construction algorithm produces. We refer back to several
+SSA properties that were introduced in
+Chapter \ref{chap:properties_and_flavours}.
+
 \begin{itemize}
-\item It is \textit{minimal} --- FIXME what does minimal mean? 
-\item It is \textit{not pruned} SSA as some dead \phiops\ are possibly inserted.
-\item It is \textit{conventional} SSA as the transformation that renames back all $\phi$-related variables into a unique representative one, and removes all \phiops\ is a correct SSA-destruction algorithm.
-\item Finally, it has the \textit{dominance} property; each variable use is dominated by its unique definition. This is due to the use during the $\phi$-placement phase of iterated dominance frontier instead of join set. Whenever the iterated dominance frontier of the set of definition points of a variable differs from the join set, then at least one program point can be reached both by $r$ (the entry of the CFG) and one of the definition points. In other words, as in the double diamond figure (to be inserted), a use of an inserted \phiop\ does not have any actual reaching definition that dominates it. This corresponds to the undef value used to initialize reachingDef in the renaming phase pseudo code. Actual implementation can use NULL value, create a fake undefined variable at the entry of the CFG, or create on the fly undef pseudo operations just before the concerned used. We choose to use in this book the undef value, represented with the $\undef$ sign.
+\item It is \textit{minimal}, see Section \ref{sec-prop-minimal}.
+After the \phiop\ insertion phase,
+but before variable renaming, the CFG contains the minimal 
+number of inserted \phiops\ to achieve the property that exactly
+one definition of each variable $v$ reaches every point in the graph.
+\item It is \textit{not pruned}, see Section \ref{sec-prop-pruned}.
+Some of the inserted \phiops\
+may be dead, i.e.\ there is no explicit use of the variable subsequent
+to the \phiop.
+\item It is \textit{conventional}, see Section \ref{sec-prop-conventional}.
+The transformation that renames all $\phi$-related variables into a
+unique representative name, and then removes all \phiops\ is a correct SSA-destruction algorithm.
+\item Finally, it has the \textit{dominance} property, see Section
+\ref{sec-prop-dominance}.
+Each variable use is dominated by its unique definition. This is due to the use during the $\phi$-placement phase of iterated dominance frontier instead of join set. Whenever the iterated dominance frontier of the set of definition points of a variable differs from the join set, then at least one program point can be reached both by $r$ (the entry of the CFG) and one of the definition points. In other words, as in the double diamond figure (to be inserted), a use of an inserted \phiop\ does not have any actual reaching definition that dominates it. This corresponds to the undef value used to initialize reachingDef in the renaming phase pseudo code. Actual implementation can use NULL value, create a fake undefined variable at the entry of the CFG, or create on the fly undef pseudo operations just before the concerned used. We choose to use in this book the undef value, represented with the $\undef$ sign.
 \end{itemize}
 
 
