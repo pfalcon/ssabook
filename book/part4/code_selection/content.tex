@@ -330,14 +330,7 @@ problem (PBQP). First, we discuss the instruction selection problem by
 employing a discrete optimisation problem called partitioned boolean
 quadratic problem.  An extension of \emph{patterns} to arbitrary
 acyclic graph structures, which we refer to as DAG grammars, is
-discussed in Sub-Section~\ref{sec:dag_patterns}. As we move from
-acyclic linear code regions to whole-functions, it becomes less
-clear in which basic block, the selected machine instructions should
-be emitted. For chain rules, the obvious choices are often
-sub-optimal. We will discuss in Section~\ref{sec:chain_rule_placement}
-a polynomial-time algorithm based on generic network flows that can be
-applied to generate more efficient code based on a flexible cost
-model.
+discussed in Sub-Section~\ref{sec:dag_patterns}.
 
 \section{Code Selection for Tree Patterns on SSA-Graphs}
 % \emph{5 pages}; modeling, continued example
@@ -672,14 +665,14 @@ the code.
 % TODO (continue here)
 \label{sec:dag_patterns}
 % generalization for DAG patterns; motivation; modeling; example
-In the previous section we have introduced an approach whose
-patterns resemble simple tree fragments, \eg there is not support for
-machine instructions with multiple results. This restricts the
-modeling of advanced features commonly found in embedded
-architectures and SIMD extensions of nowadays CPUs.
+In the previous section we have introduced an approach based on code
+patterns that resemble simple tree fragments. This restriction often
+complicates code generators for modern CPUs with specialized
+instructions and SIMD extensions, \eg there is not support for
+machine instructions with multiple results.
 
 Consider the introductory example shown
-in Figure~\ref{fig:ssa_graph}. Most architectures have some form of
+in Figure~\ref{fig:ssa_graph}. Many architectures have some form of
 auto-increment addressing modes. On such a machine, the load and the
 increment of both \texttt{p} and \texttt{q} can be done in a single
 instruction benefiting both code size and performance. However,
@@ -697,92 +690,18 @@ decrement addressing modes of several embedded systems architectures,
 the \texttt{IRC} instruction of the HPPA architecture, or
 \texttt{fsincos} instructions of various math libraries. Compiler
 writers are forced to pre- or post-process these patterns
-heuristically often missing much of the optimization potential
-\cite{Ebner08}. These architecture-specific tweaks also complicate
+heuristically often missing much of the optimization potential. 
+These architecture-specific tweaks also complicate
 re-targeting, especially in situations where patterns are
 automatically derived from generic architecture descriptions.
 
-Supporting these patterns, however, is complicated by dependency
-constraints among complex patterns. For any graph cover, the existence
-of a topological order is necessary in order to generate correct
-code. Cycles would imply that operations are executed on the target
-hardware before the values of the operands are available. The partial
-order among nodes is defined by the edges in the SSA graph and
-eventual memory dependencies.
-
-\begin{figure}
-  \begin{center}
-    \begin{tabular}{cc}
-      \begin{minipage}[c]{4cm}
-        \begin{tabbing}
-          xx\=xxx\=xxx\=xxx\=\kill
-          \texttt{(1) x$_\texttt{1}$:=*p;} \\
-          \texttt{(2) *q:=1;} \\
-          \texttt{(3) x$_\texttt{2}$:=x$_\texttt{1}$+1;} \\
-          \texttt{(4) *p:=x$_\texttt{2}$;}
-        \end{tabbing}
-      \end{minipage}
-      &
-      \begin{minipage}[c]{\linewidth-4cm}
-        \centering
-%         \begin{tikzpicture}
-%           \matrix [draw, rounded corners, fill=LightGrey, inner sep=10pt] (m) {
-%             \node [fnode, inner sep=0] (st1) {\texttt{ST}};
-%             \node [fnode, inner sep=0, below right of=st1, node distance=1.5cm] (inc) {\texttt{INC}};
-%             \node [fnode, inner sep=5pt, below left of=inc, node distance=1.5cm] (ld) {\texttt{LD}};
-%             \\
-%           };
-
-%           \node [fnode, below left of=ld,node distance=2.5cm] (p) {\texttt{VAR:p}} ;
-%           \node [fnode, below right of=ld, node distance=2.5cm,xshift=1.5cm] (st2) {\texttt{ST}};
-%           \node [fnode, below left of=st2] (q) {\texttt{VAR:q}};
-%           \node [fnode, below right of=st2] (1) {\texttt{1}};
-
-%           \path (m.north west) node [anchor=south west] {RMS Pattern};
-%           \path [arrow,->] (ld) -- (inc);
-%           \path [arrow,->] (inc) -- (st1);
-%           \path [arrow,->] (1) -- (st2);
-%           \path [arrow,->] (q) -- (st2);
-%           \path [arrow,->] (p) -- (ld);
-%           \path [arrow,->] (p) edge [bend left=20] (st1);
-
-%           \node [below right of=ld,node distance=1.5cm] (c1) {};
-%           \node [left of=st2,node distance=1cm,yshift=0.5cm] (c2) {};
-%           \path [arrow,dashed,->] (ld) .. controls (c1.center) and
-%           (c2.center) .. node [fill=white] {\texttt{WAR}}  (st2);
-
-%           \node [above  of=st2,node distance=2cm,xshift=10pt] (c1) {};
-%           \node [right of=st1,node distance=3.5cm] (c2) {};
-%           \path [arrow,dashed,->] (st2) .. controls (c1.center) and
-%           (c2.center) .. node [fill=white] {\texttt{WAW}}  (st1);
-%         \end{tikzpicture}
-        \includegraphics{pgf-fig007}
-      \end{minipage}
-      \\
-      \\
-      (a) Input Block &  (b) SSA Graph \\
-    \end{tabular}
-  \end{center}
-  \caption{Potential memory dependencies for a tree-shaped
-    read-modify-store (RMS) pattern.}\label{fig:rms}
-\end{figure}
-
-In principle, such issues can even arise for tree-shaped patterns. An
-example is given in Figure~\ref{fig:rms}, which shows a typical
-read-modify-store (RMS) pattern (``\texttt{add~r/m32,~imm32}'') for
-the IA32/AMD64 architecture. A corresponding production rule might be
-formulated as
-\begin{alltt}
-  stmt <- ST(\textit{x}:reg, ADD(LD(\textit{x}), imm)).
-\end{alltt}
-If we have to assume that \texttt{p} and \texttt{q} might address the
-same memory location, we have to account for the antidependency among
-statements \texttt{(1)} and \texttt{(2)} and the output dependency
-among statements \texttt{(2)} and \texttt{(4)}; depicted in
-Figure~\ref{fig:rms}\emph{(b)\/} by dotted lines. There is obviously
-no topological order among the highlighted part forming the RMS
-pattern and the store corresponding to instruction~\texttt{(2)}. Thus,
-we cannot apply the pattern without introducing cyclic dependencies.
+We will now outline a possible problem formulation for these
+generalized patterns in the PBQP framework discussed so far. To do so,
+we must ensure that \emph{a)} we end up with a valid graph cover and
+\emph{b)} there exists a topological order that respects the partial
+order defined by edges in the SSA graph. As the latter requirement is
+less obvious, we illustrate it with an example in
+Figure~\ref{fig:topology}.
 
 \begin{figure}[t]
   \centering
@@ -838,54 +757,43 @@ we cannot apply the pattern without introducing cyclic dependencies.
   \caption{DAG patterns may introduce cyclic data dependencies.}\label{fig:topology}
 \end{figure}
 
-However, for tree-shaped patterns, we can always perform a
-\emph{local} check that determines if a particular pattern is or is
-not applicable. For DAG patterns, this is not necessarily the
-case. Again, an example is given in Figure~\ref{fig:topology}.  The
-code fragment contains three feasible examples of a post-increment
-store pattern. Assuming that we know that $p$, $q$, and $r$ point to
-mutually distinct memory locations, there are no further dependencies
-apart from the edges shown in the SSA graph.  However, the situation
-is now different.  The example gives rise to a topological order as
-long as we do not select \emph{all} three instances of the
-post-increment store pattern concurrently. Thus, the existence of a
-topological order is now a global property, which has to be considered
-in the modeling of the problem.
+The code fragment contains three feasible instances of a post-increment
+store pattern. Assuming that $p$, $q$, and $r$ point to mutually
+distinct memory locations, there are no further dependencies apart
+from the edges shown in the SSA graph. The example gives rise to a
+topological order as long as we do not select \emph{all} three
+instances of the post-increment store pattern concurrently. The
+existence of a topological order is a global property, which has
+to be considered in the modeling of the problem.
 
+\LinesNumbered
 \begin{algorithm}
-\caption{Generalized PBQP instruction selection}
-\label{alg:pbqpisel}
-\begin{algorithmic}[1]
-  \STATE identify instances of complex patterns within basic blocks
-  \STATE transform the problem to an instance of PBQP
-  \STATE obtain a solution for the PBQP instance using a generic
-  solver
-  \FORALL{basic blocks $b$}
-    \STATE compute a topological order for the subgraph
-    induced by basic block $b$
-    \STATE apply the semantic rules associated with the chosen
-    productions in the order computed in step \texttt{(5)}.
-  \ENDFOR
-\end{algorithmic}
+  identify instances of complex patterns within basic blocks\;
+  transform the problem to an instance of PBQP\;
+  obtain a solution for the PBQP instance using a generic solver\;
+  \ForAll{basic blocks $b$} {
+    compute a topological order for the subgraph induced by $b$\;
+    apply semantic rules associated with the chosen productions\;
+  }
+  \caption{\label{alg:pbqpisel}Generalized PBQP instruction selection}
 \end{algorithm}
 
-A proper generalization of the PBQP based instruction selection
-\cite{Ebner08} is outlined in Algorithm~\ref{alg:pbqpisel}. Only steps
-\texttt{(1)}, \texttt{(2)}, and \texttt{(5)} differ from the approach
-discussed so far. First, we identify concrete tuples of nodes in the
-SSA graph that can be used to form complex patterns. Next, we
-transform the problem to an instance of PBQP that is processed using a
-generic solver library. The problem formulation ensures the existence
-of a topological order among the chosen productions and allows for a
-straight-forward back-transformation that maps a solution vector of
-PBQP to a complete graph cover. The partial order among the particular
-nodes is defined by the edges in the SSA graph and additional data
-dependencies among load and store instructions.  We can thus use a
-reversed post-order traversal to apply the semantic actions associated
-with the chosen productions in a proper order on the subgraphs induced
-by individual basic blocks.
+Algorithm~\ref{alg:pbqpisel} outlines the generalized algorithm in
+pseudo-code. Only lines \texttt{(1)}, \texttt{(2)}, and \texttt{(5)}
+differ from the approach discussed so far. First, we identify concrete
+tuples of nodes in the SSA graph that can be used to form complex
+patterns. Next, we transform the problem to an instance of PBQP that
+is processed using a generic solver library. The problem formulation
+ensures the existence of a topological order among the chosen
+productions and allows for a straight-forward back-transformation that
+maps a solution vector of PBQP to a complete graph cover. The partial
+order among the particular nodes is defined by the edges in the SSA
+graph and additional data dependencies among load and store
+instructions.  We can thus use a reversed post-order traversal to
+apply the semantic actions associated with the chosen productions in a
+proper order on the subgraphs induced by individual basic blocks.
 
-\subsubsection{Modeling}
+\paragraph{Modeling}
 As for tree patterns, DAG patterns are decomposed into simple base
 rules for the purpose of modeling, \eg the postincrement store
 pattern
@@ -900,41 +808,23 @@ is decomposed into the individual pattern fragments
 The matcher explicitly enumerates \emph{instances\/} of complex
 patterns in step \texttt{(1)} of Algorithm~\ref{alg:pbqpisel}, \ie
 concrete tuples of nodes that match the terminal symbols specified in
-a particular production. In the example shown in
-Figure~\ref{fig:topology}, there are three instances of the
-postincrement store pattern. Dependencies among these instances
-(denoted in the following by $\prec$) arise from real dependencies
-among individual nodes (edges in the SSA graph) and eventual memory
-dependencies as outlined in Figure~\ref{fig:rms}.
-For instances of DAG patterns, additional decision variables are
-required that encode if the particular pattern is to be
-selected. Thus, we have two sets of decision variables
-$X=X_1~\dotcup~X_2$ for regular SSA nodes and instances of complex
-patterns respectively.
+a particular production. There are three instances of the
+postincrement store pattern (surrounded by boxes) in the example shown
+in Figure~\ref{fig:topology}.
 
-The domain for variables in $X_1$ is defined by the set of applicable
-base rules arising from two different sources:
-\begin{enumerate}
-\item Simple productions consisting of a single base rule; these are
-  handled just like before for tree grammars.
-\item Base rules arising from the decomposition of DAG patterns. All
-  identical base rules obtained from the decomposition of complex
-  productions contribute only to a single element in the decision
-  vector.
-\end{enumerate}
-While the former group represents the set of simple patterns that can
-be used to obtain a cover for a particular node, the second class of
-base rules can be seen as a proxy for the whole set of instances of
-(possibly different) complex productions including the node. The
-costs for these proxy states are $0$, otherwise they reflect the
-real costs of the corresponding tree rule.
-
-Variables in set $X_2$ are created for each enumerated instance of a
-complex production. They encode whether a particular instance is
-chosen or not, \ie the domain basically consists of the elements
-\textit{on} and \textit{off}. The local costs reflect the costs for
-the particular pattern except for the \textit{off} state, which is set
-to $0$.
+For our modeling, new variables are created for each enumerated
+instance of a complex production. They encode whether a particular
+instance is chosen or not, \ie the domain basically consists of the
+elements \textit{on} and \textit{off}. The local costs are set to the
+combined costs for the particular pattern for the \textit{on} state
+and to zero for the \textit{off} state. Furthermore, the domain of
+existing nodes is augmented with the base rule fragments obtained from
+the decomposition of complex patterns.  We can safely squash all
+identical base rules obtained from this process into a single
+state. Thus, each of these new states can be seen as a proxy for the
+whole set of instances of (possibly different) complex productions
+including the node. The local costs for these proxy states are set to
+zero.
 
 \begin{figure}
   \centering
@@ -1149,12 +1039,12 @@ to $0$.
     $3-2M$.}\label{fig:pbqpinst}
 \end{figure}
 
-The PBQP for the SSA graph introduced in Figure~\ref{fig:topology} is
-shown in Figure~\ref{fig:pbqpinst}. In addition to the postincrement
-store pattern with costs 3, we assume regular tree patterns for the
-store and the increment nodes with costs two denoted by \texttt{P2}
-and \texttt{P3} respectively. Rules for the \texttt{VAR} nodes are
-omitted for simplicity.
+Continuing our example, the PBQP for the SSA graph introduced in
+Figure~\ref{fig:topology} is shown in Figure~\ref{fig:pbqpinst}. In
+addition to the postincrement store pattern with costs 3, we assume
+regular tree patterns for the store and the increment nodes with costs
+two denoted by \texttt{P2} and \texttt{P3} respectively. Rules for the
+\texttt{VAR} nodes are omitted for simplicity.
 
 Nodes one to six correspond to the nodes in the SSA graph. Their
 domain is defined by the simple base rule with costs two and the proxy
@@ -1172,74 +1062,57 @@ matrix established among nodes 7 and 8. Assuming instance 7 is
 not to use the pattern or to enable it at index three, as node 7 has
 to precede node 8.
 
-A different class of constraint matrices is required to ensure that
-the corresponding proxy state is selected on all the variables forming
-a particular pattern instance. Therefore, we create matrix costs
-$C^{X_1 \rightarrow X_2}_{ul}$ such that the costs are zero if $x_l$
-is set to \textit{off\/} or $x_u$ is set to a base rule that is not
-associated to the instance. Otherwise, costs are set to $\infty$.
-Thus, when one of the instances correlated to a particular node $u$ in
-the SSA graph is selected, the only remaining element in the domain of
-$u$ with costs less than $\infty$ is the associated proxy state
-corresponding to the particular base rule fragment.
+Additional cost matrices are required to ensure that the corresponding
+proxy state is selected on all the variables forming a particular
+pattern instance (which can be modeled with combined costs of zero or
+$\infty$ respectively). However, this formulation allows for the
+trivial solution where all of the related variables encoding the
+selection of a complex pattern are set to \textit{off} (accounting for
+0 costs) even though the artificial proxy state has been selected. We
+can overcome this problem by adding a large integer value $M$ to the
+costs for all proxy states. In exchange, we subtract these costs from
+the cost vector of instances. Thus, the penalties for the proxy states
+are effectively eliminated unless an invalid solution is selected.
 
-So far, the formulation allows the trivial solution where all of the
-related variables encoding the selection of a complex pattern are set
-to \textit{off} (accounting for 0 costs) even though the artificial
-proxy state has been selected. We can overcome this problem by adding
-a large integer value $M$ to the costs for all proxy states. In
-exchange, we subtract these costs from the cost vector of
-instances. Thus, the penalties for the proxy states are effectively
-eliminated unless an invalid solution is selected.
 Cost matrices among nodes one to six do not differ from the basic
 approach discussed before and reflect the costs of converting the
-nonterminal symbols involved.
-It should be noted that for general grammars and irreducible graphs,
-that the heuristic solver of PBQP cannot guarantee to deliver a solution 
-that satisfies all constraints modeled in terms of $\infty$ costs. This would be a
-NP-complete problem. One way to work around this limitation is to
-include a small set of rules that cover each node individually and
-that can be used as a fallback rule in situations where no feasible
-solution has been obtained. This corresponds to macro substitution
-techniques and ensures a correct but possibly suboptimal matching. In
-practice, this is no severe limitation as grammars are usually written
-by defining a simple but complete set of rules covering each node
-individually and adding more complex rules later on. These limitations
-do not apply to exact techniques such as the branch-\&-bound algorithm. 
-It is also straight-forward
-to extend the heuristic algorithm with a backtracking scheme on RN
-reductions, which would clearly also be exponential in the worst case.
+nonterminal symbols involved.  It should be noted that for general
+grammars and irreducible graphs, that the heuristic solver of PBQP
+cannot guarantee to deliver a solution that satisfies all constraints
+modeled in terms of $\infty$ costs. This would be a NP-complete
+problem. One way to work around this limitation is to include a small
+set of rules that cover each node individually and that can be used as
+a fallback rule in situations where no feasible solution has been
+obtained, which is similar to macro substitution techniques and
+ensures a correct but possibly suboptimal matching. These limitations
+do not apply to exact PBQP solvers such as the branch-\&-bound
+algorithm. It is also straight-forward to extend the heuristic
+algorithm with a backtracking scheme on RN reductions, which would of
+course also be exponential in the worst case.
 
-\subsection{Chain Rule Placement}
-\label{sec:chain_rule_placement}
-% \emph{1 page}; optimal chain rule placement
-Chain rules can either be emitted at the basic block corresponding to
-the source node or right before each use, \ie at the destination
-node. In~\cite{1269857}, a more sophisticated technique is introduced
-that allows a more efficient placement of chain rules across basic
-block boundaries. This technique is orthogonal to the generalization
-to complex patterns. An optimal placement is computed by the
-construction of a min-cut problem for the given control flow graph. A
-solution for this problem can be found in polynomial time. There is a
-trade-off among performance and code size that is captured accurately
-in the proposed network flow model.
+\section{Summary and Further Reading}
+Instruction selection on SSA-graph enables aggressive code selection
+optimisations. The whole flow of a function is taken into account
+rather a local scope. The move from basic tree-pattern
+matching~\cite{aj:76} to SSA-based DAG matching is a relative small
+step as long as a PBQP library and some basic infrastructure (graph
+grammar translator, etc.)  is provided. The complexity of the approach
+is hidden in the discrete optimization problem called PBQP. Free PBQP
+libraries are available from the web-pages of the authors and a
+library is implemented as part of the LLVM~\cite{wwwLLVM} framework.
 
+Many aspects of the PBQP formulation presented in this chapter could
+not be covered in detail. The interested reader is referred to the
+relevant literature~\cite{EcksteinKS03,Ebner08} for an in-depth
+discussion.
 
-\section{Summary}
-
-Instruction selection on SSA-graph enables aggressive code
-selection optimisations. The whole flow of a function is taken
-into account rather a local scope. Hence, code selection
-for SSA graphs goes beyond the state-of-the-art tree-pattern
-matching techniques. 
-For the compiler implementor the move from tree-pattern
-matches to SSA matching is a small step as long as a
-PBQP library and some basic infrastructure (graph grammar
-translator, etc.) is provided. The complexity of the
-approach is hidden in the discrete optimisation problem called
-PBQP. Free PBQP libraries are available 
-from the web-pages of the authors and a library is implemented
-as part of the LLVM framework for register allocation. 
+As we move from acyclic linear code regions to whole-functions, it
+becomes less clear in which basic block, the selected machine
+instructions should be emitted. For chain rules, the obvious choices
+are often sub-optimal. In~\cite{1269857}, a polynomial-time algorithm
+based on generic network flows is introduced that allows a more
+efficient placement of chain rules across basic block boundaries. This
+technique is orthogonal to the generalization to complex patterns.
 
 %%% Local Variables:
 %%% mode: latex
