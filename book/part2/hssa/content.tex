@@ -101,13 +101,13 @@ The techniques described in the previous sections ($\mu$ and $\chi$ operators in
 So, using them we can apply SSA based optimizations to variables also when they are affected by aliasing, but memory access operations are still excluded from the SSA form.
 
 This situation is far from ideal, because code written in current mainstream imperative languages (like C++, Java or C\#) typically contains many operations on data stored in global memory areas.
-For instance, in C we can imagine to define bidimensional vector as a struct: "typedef struct \{double x; double y;\} point;", and then to have a piece of code that computes the modulus of a vector of address "p": "m = (p->x * p->x) + (p->y * p->y);".
+For instance, in C we can imagine to define bidimensional vector as a struct: "typedef struct \{double x; double y;\} point;", and then to have a piece of code that computes the modulus of a vector of address "p": "m = (p-\textgreater x * p-\textgreater x) + (p-\textgreater y * p-\textgreater y);".
 Looking at the code it is obvious that "x" is accessed twice but both accesses give the same value so the second access could be optimized away (the same for "y").
-The problem is that "x" and "y" are not ''regular`` variables: "p" is a variable while "p->x" and "p->y" are indirect memory operations.
-Putting that code snipped in SSA form tells us that the value of "p" never changes, but it reveals nothing about the values stored in the locations "p->x" and "p->y".
+The problem is that "x" and "y" are not ``regular'' variables: "p" is a variable while "p-\textgreater x" and "p-\textgreater y" are indirect memory operations.
+Putting that code snipped in SSA form tells us that the value of "p" never changes, but it reveals nothing about the values stored in the locations "p-\textgreater x" and "p-\textgreater y".
 It is worth noting that operations on array elements suffer from the same problem.
 
-The purpose of HSSA is to handle direct and indirect operations uniformly, and be able to apply all SSA based optimizations on them.
+The purpose of HSSA is to handle indirect memory operations just like accesses to scalar variables, and be able to apply all SSA based optimizations uniformly on both of them.
 To do this, in the general case, we assume that the code intermediate representation supports a {\em dereference} operator, which performs an indirect load (memory read) from the given address. This operator can be placed in expressions on both the left and right side of the assignment operator, and we will represent it with the usual "*" C language operator. We will then, for simplicity, represent indirect stores with the usual combination of dereference and assignment operators, like in C.
 Some examples of this notation are:
 \begin{itemize}
@@ -125,42 +125,65 @@ We can then define a set of {\em virtual variables}, one for each address expres
 The idea is that each virtual variable represents the location (or better the set of potential locations) referred by the address expression associated with it.
 
 The key property of virtual variables is that each of them must have identical aliasing characteristics as the address expressions it represents.
-The address expression is the {\em value} that refers to the referred memory location and its corresponding virtual variable is a "formal placeholder" for the memory location, with the same aliasing properties.
+The address expression gives the {\em value} of the pointer to the referred memory location and its corresponding virtual variable is a "formal placeholder" for the memory location, with the same aliasing properties.
 As a placeholder we can handle it like every other scalar variable, and particularly $\mu$ and $\chi$ operators for virtual variables are inserted in the code in the same pass and according to the same rules.
 Therefore each occurrence of an indirect variable is annotated with the $\mu$ and $\chi$ of its virtual variable.
 
-SSA renaming on virtual variables works as usual, and in the same pass as with scalar variables.
-In this context, use-def relationships of virtual variables now represent use-def relationships of indirect variables.
-Note how this approach effectively solves the SSA renaming problem for indirect variables: their SSA version is the version numbers of their virtual variable (unless the address expression itself has changed version, in which case we need to generate a new number).
-It is the fact that virtual variables have the same aliasing properties as indirect variables that allow us to perform one single, uniform SSA renaming pass, with $\mu$ and $\chi$ operators automatically imposing new version numbers as a consequence of indirect operations.
+When the program is put into SSA form virtual variables can be renamed just like scalar variables.
+This effectively gives and "SSA version" to every memory location accessed indirectly, so that accesses to the same definition of the location will be identified by the same version.
+In this context use-def relationships of virtual variables now represent use-def relationships of the memory locations accessed indirectly.
+Note that it is the fact that virtual variables have the same aliasing properties as indirect variables that allow us to perform one single, uniform SSA renaming pass, with $\mu$ and $\chi$ operators automatically imposing new version numbers as a consequence of indirect operations.
 Also the zero versioning technique can be applied unaltered to virtual variables.
 
-As an added bonus, to improve the accuracy of aliasing information, alias analysis can take into account their address expressions to deduce that two address expressions do not alias each other (because this means that also their virtual variables will not alias each other).
+FIXME: the next sentence is an explanation, it is true, but it can be very confusing. I wonder if it should be simply removed...
+The case when an address expression itself changes value is handled naturally: all expression operands are in SSA form, so an occurrence of the expression that generates a "different" value will be an occurrence of a "different" expression (if the expression is ``*(p + 3)'' in SSA form it would become ``*(p1 + 3)'' or ``*(p2 + 3)'').
+
+As an added bonus, to improve the accuracy of aliasing information, alias analysis can take into account the address expressions to deduce that two virtual variables do not alias each other.
 For example, it is clear that *p and *(p + 1) will never alias each other.
 
 
 \section{GVN and indirect memory operations: HSSA}
 
+In the previous sections we sketched the foundations of a framework for dealing with aliasing and indirect operations in SSA form: we identified the effects of aliasing on local variables, introduced $\mu$ and $\chi$ operators to handle them, applied zero versioning to keep the number of SSA versions acceptable, and defined virtual variables as a way to apply SSA also to memory locations accessed indirectly.
 
-In the previous sections we sketched the foundations of a framework for dealing with aliasing and indirect operations in SSA form: we identified the effects of aliasing on local variables, introduced $\mu$ and $\chi$ operators to handle them, applied zero versioning to keep the number of SSA versions acceptable, considered indirect variables as a way to handle arbitrary memory accesses and defined virtual variables as a concrete (and feasible) way to apply SSA also to them.
+However, in practice in HSSA we do not simply renumber virtual variables.
+Instead, we apply {\em Global Value Numbering} (FIXME: Find a bibliographic reference for it) (GVN) to scalar and virtual variables, handling all of them uniformly.
 
-However, in practice in HSSA we do not renumber indirect variables.
-Instead, we apply {\em Global Value Numbering} (FIXME: Find a bibliographic reference for it) (GVN) to both scalar and virtual variables, handling all of them uniformly. In the resulting code representation value numbers have the same role of SSA versions, which can effectively be discarded.
+GVN is normally used as a way to perform \em{redundancy elimination} which means removing redundant expression computations from a program, typically storing the result of a computation in a temporary variable and reusing it later instead of performing the computation again.
+As the name suggests, GVN works assigning a unique number to every expression in the program with the idea that expression identified by the same number are guaranteed to give the same result.
+If the program is in SSA form computing value numbers that satisfy the above property is straightforward: valiables are defined only once, therefore two epressions that apply the same operator to the same SSA variables are guaranteed to give the same result and so can have the same value number.
 
-In this sense virtual variables are just an aid to apply aliasing effects to indirect operations, be aware of liveness and perform SSA renaming (with any of the regular SSA renaming algorithms). They have no real counterpart in the program code, and after GVN has been applied they are not considered anymore.
+While computing global value numbers (GVNs) for code that manipulates scalar variables is benefical because it can be used to implement redundancy elimination, applying GVN to virtual variables has added benefits.
 
+First of all it can be used to determine when two address expressions compute to the same address (this is guaranteed if they have the same GVN).
+It is only useful to construct SSA form among indirect memory operations whose address expressions have the same GVN, because if their GVNs are different they are referring to different memory locations and therefore the values they hold are not necessarily the same.
+
+Another benefit of using GVN is that it allows indirect memory operations that have same GVN for their address expressions and same virtual variable version to become a single entity in the representation. This puts them in the same rank as scalar variables and allown the transparent application of SSA based optimizations on indirect memory operations.
+For instance, in the vector modulus computation described above every occurrence of the expression "p-\textgreater x" will always have the same GVN and therefore will be guaranteed to return the same value, allowing the compiler to emit code that stores it in a temporary register instead of performing the redundant memory reads (the same holds for "p-\textgreater y").
+As another example, after liveness analysis a virtual variable is found to be dead its definition (which is an indirect memory write) can be safely eliminated, which means that HSSA transparently extends DEADCE to work also on indirect memory stores.
+
+A third reason why GVN is benefical in this context is that it enables uniform treatment of indirect memory operations regardless of the levels of indirections (like in the "**p" expression which presents a double indirection).
+This happens naturally because each node of the expression is identified by its value number, and the fact that it is used as an address in another expression does not raise any additional complication.
+
+Having explained why HSSA uses GVN we are ready to explain how the HSSA intermediate representation is structured.
 A program in HSSA form is a sequence of statements (assignments and procedure calls), where the expressions cannot have side effects and are composed by five kinds of nodes:
 \begin{itemize}
 \item Three kinds of leaf nodes: constants, addresses and variables.
-\item Operand nodes.
-\item Indirect variables ("{\em ivar}"), which are half operand and half variable nodes.
+\item Operator nodes.
+\item Indirect variables ("{\em ivar}"), which exhibit the properties of both operator nodes and variable nodes.
 \end{itemize}
 
-{\em Ivar} nodes correspond to indirect operations.
-They have a double role because as operations they behave as operands in the IR (they are not leaf nodes), but as "variables" they represent a memory location that holds a value (identified by its value number).
-We call them {\em indirect} variables to distinguish them from the original program scalar variables, which are leaf nodes.
-But note that ivar nodes, considered as code, are operations and not variables: the compiler back end, when processing them, will emit indirect memory accesses to the address passed as their operand (in practice they correspond to the "*" operator in the C programming language).
-Their value number is needed because through it they can participate to all value based optimizations (like constant folding and propagation, redundancy elimination, register promotion, dead code elimination...).
+{\em Ivar} nodes correspond to indirect memory operations.
+They have a double role because as operators they are intermediate IR nodes (they are not leaf nodes), but as "variables" they represent a memory location that holds a value (identified by its value number).
+These nodes correspond to the occurrences of the "*" operator, and their memory location is the one referred to by the address expression (the argument of the "*" operator).
+We call them {\em indirect} variables to distinguish them from the original program scalar variables, which are accessed directly and are leaf nodes in the IR.
+
+It should be noted that ivar nodes, considered as code, are operations and not variables: the compiler back end, when processing them, will emit indirect memory accesses to the address passed as their operand.
+While each ivar node is \em{related} to a virtual varible (the one corresponding to its address expression), and its GVN is determined taking into account the SSA version of its virtual variable, the virtual variable has no real counterpart in the program code.
+In this sense virtual variables are just an aid to apply aliasing effects to indirect operations, be aware of liveness and perform SSA renaming (with any of the regular SSA renaming algorithms).
+However, even thought virtual variables do not contribute to the emission of machine code, their use-def links can be examined by optimization passes to determine the program data dependency paths (just like use-def links of scalar variables).
+
+Therefore in HSSA value numbers have the same role of SSA versions in "plain" SSA (while in HSSA variable versions can effectively be discarded: values are identified by GVNs and data dependencies by use-def links between IR nodes.
 It is in this way that HSSA extends all SSA based optimizations to indirect operations, even if they were originally designed to be applied to "plain" program variables.
 
 
