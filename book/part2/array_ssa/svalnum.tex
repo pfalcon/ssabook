@@ -1,29 +1,30 @@
-
-In this section, we show how the heap arrays of Extended Array SSA form
-reduce questions of pointer analysis to questions regarding array indices.
-In particular, we show how global value numbering and allocation
+In this section, we show how global value numbering and allocation
 site information can be used to efficiently 
 compute
 {\it definitely-same} ($\DS$) and {\it definitely-different}
 ($\DD$) information for 
-heap array indices.
+heap array indices, thereby 
+reducing pointer analysis queries to array index queries.
+If more sophisticated pointer analyses are available in a compiler,
+they can be used to further refine the $\DS$ and $\DD$ information.
 
-As an example, consider the following Java source
-code fragment annotated with heap array accesses:
-\begin{center}
-\begin{minipage}{3.0in}
-\begin{programa}
- r = p ;\\
- q = new Type1 ;\\
- p.y = $\ldots$ ; \Te // $\H^y[p] := \ldots$\\
- q.y = $\ldots$ ; \Te // $\H^y[q] := \ldots$\\
- $\ldots$ = r.y ; \Te // $\ldots := \H^y[r]$ \\
-\end{programa}
-\end{minipage}
-\end{center}
-One analysis goal is to identify the redundant load of {\tt r.y}, enabling
-the compiler to replace it with
-a use of scalar temporary that captures the value stored into {\tt p.y}.
+As an example, 
+Figure~\ref{fig:ex2} illustrates two different cases of scalar
+replacement (load elimination) for object fields. 
+The notation {\tt Hx[p]} refers to a read/write access of heap array
+element, 
+$\HA^x[p]$.
+For the original program in figure~\ref{fig:ex2}(a),
+introducing a scalar temporary {\tt T1} for the store (def) of {\tt
+p.x} can enable the load (use) of {\tt r.x} to be eliminated \ie\ to
+be replaced by a use of {\tt T1}.  Figure~\ref{fig:ex2}(b)
+contains an example in which a scalar temporary ({\tt T2}) is
+introduced for the first load of {\tt p.x}, thus enabling the second
+load of {\tt r.x} to be eliminated \ie\ replaced by {\tt T2}. 
+In both cases, the goal of our analysis is to determine that the load
+of {\tt r.x} is redundant, thereby enabling
+the compiler to replace it by 
+a use of scalar temporary that captures the value in {\tt p.x}.
 We need to establish two facts to perform this transformation:
 1) object references $p$ and $r$ are identical (definitely same) in 
 all program executions, and 2)
@@ -33,27 +34,25 @@ all program executions.
 As before, we use the notation $\V(i)$ to denote the value number of SSA 
 variable $i$.  Therefore, if $\V(i) = \V(j)$, then 
 $\DS(i,j)$ = {\it true}.  
-For the code fragment above, the  statement, {\tt p~=~r},
-ensures that $p$ and $r$ are given the same value number 
-(\ie\ $\V(p) = \V(r)$), so that $\DS(p,r)$ = {\it true}.
-
+For the code fragment above, the  statement, {\tt p~:=~r},
+ensures that $p$ and $r$ are given the same value number,
+$\V(p) = \V(r)$, so that $\DS(p,r)$ = {\it true}.
 The problem of
 computing $\DD$ for object references is more complex than value numbering, and relates
-to the classical work on pointer alias analysis.  We outline a simple approach below, which can be replaced by more sophisticated techniques that may be available.
-We rely on two observations related to allocation-site information:
+to pointer alias analysis.  We outline a simple  and sound approach
+below, which can be replaced by more sophisticated techniques as needed.
+It relies on two observations related to allocation-sites:
 \begin{enumerate}
 \item Object references that contain the results of distinct allocation-sites
 must be different.
 \item An object reference containing the result of an allocation-site
 must be different from any object reference 
 that occurs at a program point that dominates the allocation site in the control flow graph.
-(As a special case, this implies that the result of an allocation site
-must be distinct from all object references that are method parameters.)
+For example, in Figure~\ref{fig:ex2},
+the presence of the allocation site in {\tt q~:=~new~Type1}
+ensures that $\DD(p,q) = \mbox{\it true}$.
 \end{enumerate}
 
-For example, in the above code fragment,
-the presence of the allocation site in {\tt q~=~new~Type1}
-ensures that $\DD(p,q) = \mbox{\it true}$.
 
 \REM{
 As an example, consider the heap array representation
@@ -76,7 +75,7 @@ Consider the three statements in figure~\ref{fig:DD-ex-source}
 \begin{figure}%[htbp]
 
 \begin{center}
-\parbox{3.0in}{
+\parbox{2.5in}{
 \begin{programa}
 \Ta $p.y := 1$ \\
 \Ta $q.y := \ldots$ \\
@@ -126,7 +125,7 @@ Given scalar variables $I_1$ and $I_2$
 in SSA form, only one of the following three cases
 is possible:
 \begin{center}
-\parbox{3.0in}{
+\parbox{2.5in}{
 \begin{programa}
 $\DS$($I_1$, $I_2$) = FALSE; $\DD$($I_1$, $I_2$) = FALSE \\
 $\DS$($I_1$, $I_2$) = TRUE; $\DD$($I_1$, $I_2$) = FALSE \\
@@ -216,3 +215,100 @@ represent $\DD$ information for integer-valued array indices???
 % $\DD(\vec{j}, \vec{k})$ is {\it true} if and only if vectors $\vec{j}$
 % and $\vec{k}$ have the same size, and at least one pair of elements is
 % definitely-different \ie\ $\DD(j_i,k_i )= \mbox{\it true}$ for some~$i$.
+
+
+\begin{figure}
+{\small
+\begin{tabular}[t]{ll}
+\begin{minipage}[t]{2.5in}
+\setlength{\baselineskip}{10pt}
+Original program: \\
+%-----------------
+\begin{verbatim}
+  r  := p
+  q  := new Type1
+  . . .
+ p.x := ...  // Hx[p] := ...
+ q.x := ...  // Hx[q] := ...
+ ... := r.x  //   ... := Hx[r]
+
+\end{verbatim} 
+\bigskip
+After redundant load elimination: \\
+%---------------
+\begin{verbatim}
+  r  := p
+  q  := new Type1
+  . . .
+  T1 := ...
+ p.x := T1 
+ q.x := ...
+ ... := T1
+\end{verbatim} 
+\begin{center}
+(a)
+\end{center}
+\end{minipage}
+&
+\begin{minipage}[t]{2.5in}
+\setlength{\baselineskip}{10pt}
+Original program: \\
+\begin{verbatim}
+  r  := p
+  q  := new Type1
+  . . .
+ ... := p.x   //   ... := Hx[p]
+ q.x := ...   // Hx[q] := ...
+ ... := r.x   //   ... := Hx[r]
+
+\end{verbatim} 
+\bigskip
+After redundant load elimination: \\
+%---------------
+\begin{verbatim}
+  r  := p
+  q  := new Type1
+  . . .
+  T2 := p.x
+ ... := T2
+ q.x := ...
+ ... := T2
+\end{verbatim} 
+\begin{center}
+(b)
+\end{center}
+\end{minipage}
+% &
+% \begin{minipage}[t]{2.0in}
+% \setlength{\baselineskip}{10pt}
+% Original program: \\
+% \begin{verbatim}
+%   p  := new Type1
+%   q  := new Type1
+%   r  := p
+%   . . .
+%  p.x := ...
+%  q.x := ...
+%  r.x := ...
+% \end{verbatim} 
+% \bigskip
+% After dead store elimination: \\
+% %---------------
+% \begin{verbatim}
+%   p  := new Type1
+%   q  := new Type1
+%   r  := p
+%   . . .
+%  q.x := ...
+%  r.x := ...
+
+% \end{verbatim} 
+% \begin{center}
+% (c)
+% \end{center}
+% \end{minipage}
+\end{tabular}
+}
+\caption{Examples of scalar replacement}
+\label{fig:ex2}
+\end{figure}

@@ -2,21 +2,22 @@
 % 1) Replace earlier Array SSA example by the same one used for
 % constant propagation
 
-The goal of Array SSA form is to provide the same benefits for arrays
-that traditional SSA provides for scalars.
-Section~\ref{sec:full} summarizes  {\it full Array SSA form}, which provides exact use-def information 
-at run-time for each dynamic access of an array element.
-Section~\ref{sec:partial} introduces {\it partial Array SSA form} as a
-static approximation of full Array SSA form.
-Throughout this chapter,
-we assume that all array operations in the input program are
-expressed as reads and writes of individual array elements.  The
-extension to more complex data structures such as arrays of
-structures and nested arrays 
-has been
-omitted to simplify the presentation of this chapter.
+% The goal of Array SSA form is to provide the same benefits for arrays
+% and related data structures
+% that traditional SSA form provides for scalars.
+% Section~\ref{sec:full} summarizes  {\it full Array SSA form}, which provides exact use-def information 
+% at run-time for each dynamic access of an array element.
+% Section~\ref{sec:partial} introduces {\it partial Array SSA form} as a
+% static approximation of full Array SSA form.
+% Throughout this chapter,
+% we assume that all array operations in the input program are
+% expressed as reads and writes of individual array elements.  The
+% extension to more complex data structures such as arrays of
+% structures and nested arrays 
+% has been
+% omitted to simplify the presentation of this chapter.
 
-\subsection{Full Array SSA Form}\label{sec:full}
+%\subsection{Full Array SSA Form}\label{sec:full}
 
 % The full Array SSA form uses $\Phi$ operators instead of $\phi$
 % functions used by traditional SSA form. The semantics of the $\Phi$
@@ -42,19 +43,22 @@ dynamic instance of $S_k$'s enclosing procedure, $f()$.
 % set of loops
 % that enclose the definition. 
 Let $n$ be the number of loops that enclose $S_k$ in procedure $f()$.
+These loops could be for-loops, while-loops, or even loops constructed
+out of goto statements.
 For convenience, we treat the outermost
 region of acyclic control flow in a procedure as a dummy outermost loop
 with a single iteration, thereby ensuring that $n \geq 1$.
+
 A single point in the
 iteration space is specified by the iteration vector
 $\vec{i} = (i_1, \ldots, i_n)$, which is
 an 
-$n$-tuple of iteration numbers
-one for each enclosing loop. 
+$n$-tuple of iteration numbers,
+<one for each enclosing loop. 
 For convenience, this definition of iteration vectors assumes that  
 all loops are single-entry, or equivalently, that the control flow
 graph is {\it reducible}.
-(As we will see in section~\ref{sec:partial}, this assumption is not necessary
+(This assumption is not necessary
 for partial Array SSA form.)
 For single-entry loops, we know that each def executes at most
 once in a given iteration of its surrounding loops, hence the iteration vector
@@ -62,254 +66,24 @@ serves the purpose of a ``timestamp''.
 The key extensions in Array SSA form relative to standard SSA form are as
 follows.
 
-% Next, for each static definition
-% $S_k$, we introduce an {\em @ variable} (pronounced ``at variable'')
-% $@S_k$ that identifies
-% the most recent {\em iteration vector} (``timestamp'') {\it
-% at} which definition $S_k$ was executed..
-% We assume that all @ variables, $@S_k$, are initialized to the empty
-% vector, $@S_k := (\;)$, at the start of program execution.  For each
-% real (non-$\Phi$) definition of a renamed scalar, $S_k$, we assume that a statement of the
-% form $@S_k := \vec{i}$ is inserted immediately after definition
-% $S_k$, where $\vec{i}$
-% is the current iteration vector for all loops that surround
-% $S_k$. 
-% % All @ variables are initialized
-% % to the empty vector because the empty vector is the identity element
-% % for a lexicographic $\max$ operation \ie\ $\max((\;),\vec{i}) =
-% % \vec{i}$, for any @ variable value $\vec{i}$.
-
-
-% As a simple example,
-% figure~\ref{our-phi} shows the
-% Array SSA
-% form for the program in figure~\ref{scalar-source}.
-% Note that @ variables $@S_1$ and $@S_2$ are explicit arguments
-% of the $\Phi$ operator.
-% In this example of acyclic code, there are only two possible
-% values for each @ variable --- the empty vector, $(\;)$, and the unit vector\footnote{The astute reader may have observed that the @ variables do not satisfy the
-% static single assignment property because each $@S_k$ variable has two
-% static definitions, one in the initialization and one at the real
-% definition of $S_k$.  However, the initialization def is executed only
-% once at the start of program execution and is treated as a special-case
-% initial value rather than as a separate definition.},
-% $(1)$.
-
-
-
-% \begin{figure}%[p]
-% \begin{center}
-% \parbox{3.0in}{
-% {\bf Example for-loop:}
-
-% \begin{programa}
-% \Ta  $S := \ldots$ \\
-% \Ta  for $i := 1$ to $m$ do  \\
-% \Tb  $S := \ldots$ \\
-% \Tb  if $(C)$ then  \\
-% \Tc  $S := \ldots$   \\
-% \Tb  end if \\
-% \Ta end for
-% \end{programa}
-
-% \vspace{24pt}
-
-% {\bf After conversion to Array SSA form:}
-
-% \begin{programa}
-% \Ta $@S := (\;)$ ; $@S_1 := (\;)$ ; $@S_2 := (\;)$\\
-% \Ta  $S := \ldots $\\
-% \Ta   $@S := (1)$ \\
-% \Ta  for $i := 1$ to $m$ do  \\
-% \Tb  $S_0 := \Phi (S_3, @S_3, S, @S)$ \\
-% \Tb  $@S_0 := \max(@S_3, @S)$ \\
-% \Tb  $S_1 := \ldots$   \\
-% \Tb   $@S_1 := (1,i)$ \\
-% \Tb  if $(C)$ then  \\
-% \Tc  $S_2 := \ldots$  \\
-% \Tc  $@S_2 := (1,i)$  \\
-% \Tb  end if \\
-% \Tb  $S_3 := \Phi (S_2, @S_2, S_1, @S_1)$ \\
-% \Tb  $@S_3 := \max(@S_2, @S_2)$ \\
-% \Ta end for
-% \end{programa}
-% }
-% \end{center}
-% \caption{A for-loop and its conversion to Array SSA form}
-% \label{fig:for}
-% \end{figure}
-
-% \REM{
-% \begin{figure}%[p]
-% \begin{center}
-% \parbox{3.0in}{
-% {\bf Example nested-if program:}
-
-% \begin{programa}
-% \Ta  $S := \ldots$ \\
-% \Ta  if $(C1)$ then  \\
-% \Tb  if $(C2)$ then  \\
-% \Tc  if $(C3)$ then  \\
-% \Td  $S := \ldots$   \\
-% \Tc  end if \\
-% \Tb  end if \\
-% \Ta  end if \\
-% \Ta  print $S$
-% \end{programa}
-
-% \vspace{24pt}
-
-% {\bf After conversion to traditional SSA form:}
-
-% \begin{programa}
-% \Ta  $S_1 := \ldots$ \\
-% \Ta  if $(C1)$ then  \\
-% \Tb  if $(C2)$ then  \\
-% \Tc  if $(C3)$ then  \\
-% \Td  $S_2 := \ldots$   \\
-% \Tc  end if \\
-% \Tc  $S_3 := \phi(S_1,S_2)$ \\
-% \Tb  end if \\
-% \Tb  $S_4 := \phi(S_1,S_3)$ \\
-% \Ta  end if \\
-% \Ta  $S_5 := \phi(S_1,S_4)$ \\
-% \Ta  print $S_5$
-% \end{programa}
-
-% \vspace{24pt}
-
-% {\bf After conversion to Array SSA form, and simplification:}
-
-% \begin{programa}
-% \Ta $@S_1 := (\;)$ ; $@S_2 := (\;)$\\
-% \Ta  $S_1 := \ldots $\\
-% \Ta   $@S_1 := (1)$ \\
-% \Ta  if $(C1)$ then  \\
-% \Tb  if $(C2)$ then  \\
-% \Tc  if $(C3)$ then  \\
-% \Td  $S_2 := \ldots$   \\
-% \Td  $@S_2 := (1)$ \\
-% \Tc  end if \\
-% \Tb  end if \\
-% \Ta  end if \\
-% \Ta  $S_3 := \Phi(S_1, @S_1, S_2, @S_2)$ \\
-% \Ta  print $S_3$
-% \end{programa}
-% }
-% \end{center}
-% \caption{A nested if and its conversion to traditional SSA form and simplified Array SSA form}
-% \label{fig:nested-if}
-% \end{figure}
-% }
-
-% Figure~\ref{fig:for} shows an example for-loop and its conversion to
-% Array SSA form.  
-% Given a $\Phi$ operator,
-% $S_3 := \Phi(S_2, @S_2, S_1, @S_1)$,
-% the value of $S_3$ is given by the following 
-% conditional expression (where $\succeq$ denotes a lexicographic greater-than-or-equal
-% comparison of iteration vectors):
-% \begin{eqnarray*}
-% S_3 & = &
-%   \begin{array}{llll}
-% \mbox{\bf if} & @S_2 \succeq @S_1 & {\bf then} & S_2 \\
-% \mbox{\bf else} & S_1 \\
-% \mbox{\bf end if} 
-%   \end{array}
-% \end{eqnarray*}
-
-% Each $\Phi$ definition in Array SSA form also has an associated @ variable.
-% Specifically, the statement, $@S_3 := \max(@S_2,
-% @S_1)$, is inserted after the
-% $\Phi$ definition, $S_3 := \Phi(S_2, @S_2, S_1, @S_1)$, where $\max$ represents a {\it lexicographic maximum}
-% operation of iteration vector values $@S_2$ and $@S_1$.
-% No initialization is required
-% for an @ variable for a $\Phi$ definition
-% because its value is completely determined by other @ variables.
-
-
-\begin{figure}%[p]
-\begin{center}
-\parbox{3.0in}{
-\begin{programa}
-\mbox{n1:}
-\Tb $A[*] := \mbox{\rm initial value of $A$}$\\
-\Tb$i := 1$ \\
-\Tb $C := i\ <\ 2 $\\
-\Tb if $C$ then \\
-\mbox{n2:}\Tc $k := 2\ *\ i$ \\
-\Tc $A[k] := i$\\
-\Tc print $A[k]$\\
-\Tb endif \\
-\mbox{n3:}\Tb print $A[2]$
-\end{programa}
-}\\
-\end{center}
-\caption{Example program with array variables}
-\label{fig:ssa-acyclic-array}
-\end{figure}
-
-
-\begin{figure}%[p]
-\begin{center}
-\parbox{3.0in}{
-\begin{programa}
-\mbox{n1:}
-\Tb $@i := (\;)$ ; $@C := (\;)$ ; $@k := (\;)$ ; \\
-\Tb $@A_0[*] := (\;)$ ; $@A_1[*] := (\;)$\\
-\\
-\Tb $A_0[*] := \mbox{\rm initial value of $A$}$\\
-\Tb $@A_0[*] := (1)$\\
-\Tb $i := 1$ \\
-\Tb $@i := (1)$ \\
-\Tb $C := i\ <\ n $ \\
-\Tb $@C := (1)$ \\
-\Tb if $C$ then \\
-\mbox{n2:}
-\Tc $k :=  2\ *\ i$ \\
-\Tc $@k := (1)$ \\
-\Tc $A_1[k] := i$\\
-\Tc $@A_1[k] := (1)$\\
-\Tc $A_2 := d\Phi(A_1, @A_1, A_0, @A_0)$\\
-\Tc $@A_2 := \max(@A_1, @A_0)$\\
-\Tc print $A_2[k]$\\
-\Tb endif \\
-\mbox{n4:} 
-\Tb $A_3 := \Phi(A_2, @A_2, A_0, @A_0)$\\
-\Tb $@A_3 := \max(@A_2, @A_0)$\\
-\Tb print $A_3[2]$ 
-\end{programa}
-}
-\end{center}
-\caption{Conversion of program in figure \protect{\ref{fig:ssa-acyclic-array}} to Full Array SSA Form}
-\label{fig:full-form}
-\end{figure}
-
-% The prior discussion was on full Array SSA form for scalar variables;
-% we now describe full Array SSA form for array variables.
-% Figures~\ref{fig:ssa-acyclic-array} and \ref{fig:full-form}
-% show an example program with an
-% array variable, and the conversion of the program to Array SSA form as
-% defined i.  
 
 
 \begin{enumerate}
 \item {\bf Renamed array variables:}
 All array variables are renamed so as to 
-satisfy the static single assignment property \ie\ each
-definition of an array element is assigned a unique name.  Analogous to standard SSA
+satisfy the static single assignment property.  Analogous to standard SSA
 form, control $\Phi$ operators are introduced to generate new names
-for merging two or more prior definitions, and to ensure that each use
-refers to exactly one definition.
+for merging two or more prior definitions at control flow join points, and to ensure that each use
+refers to precisely one definition.
 
 \item {\bf Array-valued @ variables:}
-Next, for each static definition
+For each static definition
 $A_j$, we introduce an {\em @ variable} (pronounced ``at variable'')
 $@A_j$ that identifies
 the most recent {\em iteration vector} {\it
 at} which definition $A_j$ was executed.
 We assume that all @ variables are initialized to the empty
-vector, $@S_k := (\;)$, at the start of program execution.  
+vector, $ (\;)$, at the start of program execution.  
 % For each
 % real (non-$\Phi$) definition of a renamed scalar, $S_k$, we assume that a statement of the
 % form $@S_k := \vec{i}$ is inserted immediately after definition
@@ -323,13 +97,13 @@ vector, $@S_k := (\;)$, at the start of program execution.
 % Each  array variable, $A_j$, in Array SSA form has an associated 
 % @ variable, $@A_j$, such that $@A_j$ has
 % the same shape (rank and dimension sizes) as array variable $A_j$.
-Each update of a single array element of the form, $A_j[k] := \ldots$, 
-is followed by the statement of the form $@A_j[k] := \vec{i}$
+Each update of a single array element, $A_j[k] := \ldots$, 
+is followed by the statement, $@A_j[k] := \vec{i}$
 where $\vec{i}$ is the iteration vector for the loops surrounding
 the definition of $A_j$.
-Thus, an array-valued @ variable, $@A_j$,  
-can record a separate iteration vector for
-each element that is assigned by definition $A_j$.
+% Thus, an array-valued @ variable, $@A_j$,  
+% can record a separate iteration vector for
+% each element that is assigned by definition $A_j$.
 
 
 \item {\bf Definition $\Phi$'s:}
@@ -342,8 +116,8 @@ such that $A_1[k] := \ldots$
 is an update of a single array element
 and $A_0$ is the prevailing definition at the program point just
 prior to the definition of $A_1$.
-A definition $\Phi$ of the form $A_2 := d\Phi(A_1, @A_1, A_0, @A_0)$ 
-is inserted immediately after the definition for $A_1$ and $@A_1$.
+A definition $\Phi$, $A_2 := d\Phi(A_1, @A_1, A_0, @A_0)$,
+is inserted immediately after the definitions for $A_1$ and $@A_1$.
 % (We use the notation $d\Phi$ when we want to 
 % distinguish a definition $\Phi$ operator from a control $\Phi$ operator.)
 Since definition $A_1$ only updates one element of $A_0$, $A_2$ represents
@@ -358,9 +132,8 @@ the variable.
 Another consequence of renaming arrays is that
 a $\Phi$ operator
 for array variables must also return an
-array value.  Consider a (control or definition) $\Phi$ operator in
-a statement of
-the form, $A_2 := \Phi(A_1, @A_1, A_0, @A_0)$. Its semantics can be specified exactly
+array value.  Consider a (control or definition) $\Phi$ operator of
+the form, $A_2 := \Phi(A_1, @A_1, A_0, @A_0)$. Its semantics can be specified precisely
 by the following conditional expression
 for each element, $A_2[j]$, in the result array $A_2$:
 \begin{eqnarray}
@@ -378,13 +151,74 @@ specifies an element-level merge of arrays $A_1$ and $A_0$.
 
 
 
-\subsection{Partial Array SSA Form}\label{sec:partial}
 
-The previous section described full Array SSA form with @ variables
-and $\Phi$ operators that can be evaluated at run-time.
-This section introduces {\it partial Array SSA form}
-as a  representation for static analysis.  
-Consider a statement of the form, $A_2 := \Phi(A_1, @A_1, A_0, @A_0)$.
+Figures~\ref{fig:ssa-acyclic-array} and \ref{fig:full-form}
+show an example program with an
+array variable, and the conversion of the program to full Array SSA form as
+defined above.
+
+\begin{figure}%[p]
+\begin{center}
+\parbox{3.0in}{
+\begin{programa}
+%\mbox{n1:}
+\Tb $A[*] := \mbox{\rm initial value of $A$}$\\
+\Tb$i := 1$ \\
+\Tb $C := i\ <\ 2 $\\
+\Tb if $C$ then \\
+%\mbox{n2:}
+\Tc $k := 2\ *\ i$ \\
+\Tc $A[k] := i$\\
+\Tc print $A[k]$\\
+\Tb endif \\
+%\mbox{n3:}
+\Tb print $A[2]$
+\end{programa}
+}\\
+\end{center}
+\caption{Example program with array variables}
+\label{fig:ssa-acyclic-array}
+\end{figure}
+
+
+\begin{figure}%[p]
+\begin{center}
+\parbox{3.0in}{
+\begin{programa}
+%\mbox{n1:}
+%\Tb $@i := (\;)$ ; $@C := (\;)$ ; $@k := (\;)$ ; \\
+\Tb $@A_0[*] := (\;)$ ; $@A_1[*] := (\;)$\\
+\\
+\Tb $A_0[*] := \mbox{\rm initial value of $A$}$\\
+\Tb $@A_0[*] := (1)$\\
+\Tb $i := 1$ \\
+%\Tb $@i := (1)$ \\
+\Tb $C := i\ <\ n $ \\
+%\Tb $@C := (1)$ \\
+\Tb if $C$ then \\
+%\mbox{n2:}
+\Tc $k :=  2\ *\ i$ \\
+%\Tc $@k := (1)$ \\
+\Tc $A_1[k] := i$\\
+\Tc $@A_1[k] := (1)$\\
+\Tc $A_2 := d\Phi(A_1, @A_1, A_0, @A_0)$\\
+\Tc $@A_2 := \max(@A_1, @A_0)$\\
+\Tc print $A_2[k]$\\
+\Tb endif \\
+%\mbox{n4:} 
+\Tb $A_3 := \Phi(A_2, @A_2, A_0, @A_0)$\\
+\Tb $@A_3 := \max(@A_2, @A_0)$\\fig:
+\Tb print $A_3[2]$ 
+\end{programa}
+}
+\end{center}
+\caption{Conversion of program in figure \protect{\ref{fig:ssa-acyclic-array}} to Full Array SSA Form}
+\label{fig:full-form}
+\end{figure}
+
+We now introduce a {\it partial Array SSA form} for static analysis,
+that serves as an approximation of full Array SSA form.
+Consider a (control or definition) $\Phi$ statement, $A_2 := \Phi(A_1, @A_1, A_0, @A_0)$.
 A static analysis will need to 
 approximate
 the computation of this $\Phi$ operator by 
@@ -396,18 +230,17 @@ We use the notation $\L(V)$ to denote the lattice element for
 a scalar or array
 variable $V$.
 Therefore, the 
-statement, $A_2 := \Phi(A_1, @A_1, A_0, @A_0)$, will (in general)
-be modeled by the data flow equation 
+statement, $A_2 := \Phi(A_1, @A_1, A_0, @A_0)$, will in general
+be modeled by the data flow equation,
 $\L(A_2) = \L_{\Phi}(\L(A_1), \L(@A_1), \L(A_0), \L(@A_0))$.
 
 While the  {\em runtime} semantics of 
 $\Phi$ functions for array variables critically depends on @ variables (Equation~\ref{eqn:cond-expr}),
-many {\em compile-time analyses} (including the ones discussed in this
-chapter) do not need the full generality of @ variables.  
+many {\em compile-time analyses} do not need the full generality of @ variables.  
 For analyses that do not distinguish among iteration instances,
 it is sufficient to model
 $A_2 := \Phi(A_1, @A_1, A_0, @A_0)$ by
-a data flow equation of the form $\L(A_2) = \L_{\phi}(\L(A_1), \L(A_0))$
+a data flow equation, $\L(A_2) = \L_{\phi}(\L(A_1), \L(A_0))$,
 that does not use lattice variables $\L(@A_1)$ and $\L(@A_0)$.
 For such cases, a {\it partial}
 Array SSA form can be obtained by dropping 
@@ -418,6 +251,8 @@ A consequence of dropping @ variables is that partial Array
 SSA form does not need to deal with iteration
 vectors, and therefore does not require the control flow
 graph to be {\it reducible} as in full Array SSA form.
+For scalar variables, the resulting $\phi$ operator obtained by
+dropping @ variables exactly coincides with standard SSA form.
 % The use of $\phi$ operators without @ variables brings
 % partial Array SSA form closer to traditional SSA form.
 % The key difference is that partial Array SSA form still contains 
