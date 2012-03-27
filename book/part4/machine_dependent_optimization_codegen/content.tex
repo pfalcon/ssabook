@@ -1,131 +1,140 @@
-\chapter{Introduction \Author{M. A. Ertl}}
+\chapter{Introduction \Author{B. Dupont de Dinechin}}
 \inputprogress
 
-Code generation transforms the program from a machine-independent
-intermediate representation (IR) into some representation of the code for
-the target machine.  Traditionally code generation is divided into the
-following subtasks:
+In a compiler for imperative languages like C, C++, or Fortran, the code
+generator covers the set of code transformations and optimizations that operate
+on a program representation close to the target processor ISA, and produce an
+assembly source or relocatable file with debugging information as result.
 
-\begin{description}
+The main duties of code generation are: lowering the program intermediate
+representation to the target processor instruction and calling conventions;
+allocating variable live ranges to architectural registers; scheduling
+instructions to exploit micro-architecture; and producing assembly source or
+object code.
 
-\item[Instruction selection] combines the operations of the IR into
-  target machine instructions.  Instruction selection aims for
-  selecting a set of instructions with the lowest combined cost; the
-  cost of an instruction is its code size and/or its execution time.
+Precisely, in the 1986 edition of
+the ``Compilers Principles, Techniques, and Tools'' Dragon Book by Aho et al.,
+the tasks of code generation are listed as:
+\begin{itemize}
+\item Instruction selection and calling conventions lowering.
+\item Control-flow (dominators, loops) and data-flow (variable liveness) analyzes.
+\item Register allocation and stack frame building.
+\item Peephole optimizations.
+\end{itemize}
+Ten years later, the 1997 textbook ``Advanced Compiler Design \& Implementation''
+by Muchnich extends code generation with the following: \begin{itemize}
+\item Loop unrolling and basic block replication.
+\item Instruction scheduling and software pipelining.
+\item Branch optimizations and basic block alignment.
+\end{itemize}
+In recent releases of compilers such as the Open64 or GCC, code generation
+techniques have significantly evolved, as they are mainly responsible for
+exploiting the performance-oriented features of processor architectures and
+micro-architectures. Code generation techniques implement in these compilers
+include: \begin{itemize}
+\item If-conversion using conditional MOVE, SELECT, or predicated, instructions.
+\item Use of specialized addressing modes such as auto-modified and modulo.
+\item Exploitation of hardware looping instruction or static branch prediction
+hints.
+\item Matching fixed-point arithmetic and SIMD idioms by special instructions.
+\item Memory hierarchy optimizations, including pre-fetching and pre-loading
+data.
+\item Bundling of VLIW instructions, that may interact with instruction
+scheduling.
+\end{itemize}
+To our knowledge, there is no compilation textbook that is up to date with the
+art code generation techniques as implemented in modern production compilers.
+\medskip
 
-\item[Instruction Scheduling] orders the instructions, resulting in a
-  total order; among the many possible orders, instruction scheduling
-  usually aims for one that exploits instruction-level parallelism,
-  i.e., it tries to avoid dependences between instructions that are
-  close together.  Another (conflicting) goal is to reduce register
-  pressure.
+\subsection{Motivation for the SSA form in code generation}
 
-\item[Register allocation] assigns target-machine registers to IR
-  values (aka live ranges or pseudo-registers) and may insert code to
-  spill registers to and refill registers from memory if there are too
-  many values competing for the limited number of registers.  The
-  goals in register allocation are to avoid spill code and
-  moves between registers.
+This increasing sophistication of code generation techniques motivates the
+introduction of SSA-form analyzes and optimizations in the code generator in
+order to simplify analyzes and optimizations. However the applicability of the SSA
+form does not spawn the whole code generation process. The phases that are known
+to benefit from it appear early in the code generation process:
+\begin{itemize}
 
-\end{description}
+\item Analyzes such as induction variable classification, liveness sets, and
+liveness checking (Chapter~\ref{chap:liveness_analysis}).
 
-The ordering of these phases determines the quality of the resulting
-code.  Usually the phases are performed in the order given above, with
-another scheduling pass afterwards to schedule spill code; however,
-there are phase ordering conflicts between these phases as long as the
-phases are treated separately: e.g., instruction scheduling for
-instruction-level parallelism generally increases register pressure,
-while register allocation reduces the exploitable instruction-level
-parallelism.
+\item Instruction selection (Chapter~\ref{chapter:code_selection}). Unlike
+classic techniques that match one IR tree or one DAG at a time, using the SSA
+form as input extends the scope of pattern matching to more complex IR graphs,
+in particular those resulting from control-flow constructs.
 
-Traditionally, instruction selection is performed on IR trees or at
-most at the basic block level. Plain instruction scheduling is
-performed at the basic block level, but there are techniques for
-larger control structures: Trace scheduling and superblock scheduling
-for sequences of basic blocks, and software pipelining for simple
-loops.  Register allocation is usually performed at the function level
-(global register allocation), but in its traditional form this is an
-NP-complete problem, whereas register allocation for
-(already-scheduled) basic blocks can be solved in linear time.
+\item If-conversion or instruction predication (Chapter~\ref{chap:if_conversion})
 
-SSA form can be useful when extending work from basic blocks (and
-superblocks and extended basic blocks\footnote{Both are single-entry
-  multiple-exit control structures; superblocks are limited to
-  sequences of basic blocks, whereas extended basic blocks allow
-  control-flow trees of basic blocks.}) to control structures that
-include control flow joins.  In particular, the three phases of code
-generation interact with SSA form as follows:
+\item Inner loop unrolling or unwinding (Chapter~\ref{chap19:loopTree}
 
-\begin{description}
+\item Memory addressing and memory packing optimizations.
 
-\item[Instruction selection:] When extending instruction selection to
-  larger control structures, SSA form has the usual benefit of being a
-  clean representation of data flow; in particular, it avoids false
-  dependencies.  Such an extension is the topic of
-  Chapter~\ref{chapter:code_selection}.
+\item Cleanups including dead code elimination and instruction
+re-selection.
 
-\item[Instruction scheduling:] The input to instruction scheduling is
-  a data dependence graph; these data dependences include data flow
-  dependences (represented in SSA form), but also other dependences
-  such as write-after-read dependences (aka antidependences) and
-  write-after-write (aka output) dependences through memory (not
-  represented in SSA form at the low level useful as input for code
-  generation).  These other dependencies also have to be taken into
-  account in instruction selection.  They have to be maintained during
-  various transformations on the SSA form.  As a (small) benefit,
-  there is then no need to generate the data dependence graph from the
-  sequence of instructions.
+\end{itemize}
 
-  SSA-based register allocation requires that the conflict graphs for
-  basic blocks are interval graphs; therefore the code has to be in a
-  total order for SSA-based register allocation (whereas the data flow
-  graph represented in SSA form, and the data dependence graph are
-  only partial orders).  Running the scheduler before SSA-based
-  register allocation is therefore necessary if the compiler does not
-  have a totally-ordered IR in addition to SSA form; running the
-  scheduler before register allocation is usually a good idea anyway,
-  because register allocation introduces write-after-read dependences
-  between registers which hinder scheduling.
+Further down the code generator, the next major phase is pre-pass instruction
+scheduling. On innermost loops whose bodies are single basic block or super
+block, software pipelining techniques such as modulo scheduling may apply. On
+innermost loops that are not software pipelined, and for the other program
+regions, acyclic instruction scheduling techniques apply: basic block
+scheduling; super-block scheduling; hyper-block scheduling; tree block
+scheduling; or trace scheduling.
 
-  Apart from these considerations, SSA form does not particularly
-  affect instruction scheduling, so there is no chapter in this book
-  about instruction scheduling.
+By definition, pre-pass instruction scheduling operates before register
+allocation. On a classic code generator, instruction operands are mostly virtual
+registers, except for instructions with ISA or ABI constraints that binds them
+to specific architectural registers. Moreover, preparation to pre-pass
+instruction scheduling include virtual register renaming, also known as register
+web construction, in order to reduce the number of anti dependences and output
+dependences in the instruction scheduling problem. As a result, there is little
+to gain to schedule instructions on a SSA form program representation:
+\begin{itemize}
 
-  \emph{If-conversion} transforms if-statements into predicated code,
-  where each instruction is executed only when some condition holds;
-  the condition is an additional input to the instruction.  I.e.,
-  if-conversion converts control flow into data flow.  One benefit is
-  that this can avoid branch mispredictions (especially if the
-  condition is hard to predict); another benefit is that the
-  applicability of instruction scheduling techniques for limited
-  control structures (such as software pipelining for simple loops)
-  can be extended (for software pipelining, to loops containing ifs).
-  To achieve the latter benefit even when predicated code is not
-  profitable (because the if-statement is too big and too
-  predictable), one can use reverse if-conversion after scheduling.
-  Chapter~\ref{chap:if-conversion} describes an if-conversion
-  algorithm for SSA form.
+\item Except in case of trace scheduling, the scheduling regions considered are
+single-entry and do not have control-flow merge. So there are no
+$\phi$-functions in case of acyclic scheduling, and only $\phi$-functions in the
+loop header in case of software pipelining. Keeping those $\phi$-functions in
+the scheduling problem has no benefits and raises engineering issues, due to
+their peculiar semantics (parallel execution, must be first in basic block).
 
-\item[Register allocation:] The classical view of live ranges leads to
-  arbitrary conflict graphs, for which register allocation is
-  equivalent to graph colouring, which is NP-complete.  The SSA-based
-  view introduces register renaming at control-flow joins.  As a
-  result, in the conflict-graph view we get chordal graphs, which can
-  be coloured in linear time (after spilling, which is still hard).
-  Or, in the direct view, the control flow that register allocation
-  has to consider is an extended basic block, which can be solved
-  through an extension of the linear basic block scheduling algorithm.
-  This topic is discussed in Chapter~\ref{chap:register-allocation}.
+\item Instruction scheduling must account for all the instruction issue slots
+required to execute a code region. If the only ordering constraints between
+instructions, besides control dependences and memory dependences, are limited to
+true data dependences on operands, code motion will create interferences that
+must later be resolved by inserting COPY instruction in the scheduled code
+region. (Except for interferences created by the overlapping of live ranges
+that results from modulo scheduling, as these are resolved by modulo renaming.)
+So scheduling instruction with SSA variables as operands is not effective unless
+extra dependences are added to the scheduling problem to prevent such code
+motion. 
 
-\end{description}
+\end{itemize} These issues need to be addressed before any pre-pass instruction
+scheduling on the SSA form demonstrates advantages over classic approaches.
 
-%Using SSA in code generation has multiple advantages.
-%First, we can reuse the program representation of the ''middle end''.
-%If the middle end's IR is carefully designed, no additional IR has to be incorporated into the compiler.
-%Second, SSA is most natural for many back-end tasks.
-%Register allocation greatly profits from the single-assignment property.
-%Scheduling and instruction selection can directly use the data-dependence graphs inherent to SSA.
-%
-%Furthermore, the representation of low-level details (such as registers, instructions, stack frames, and so on) is most important for any low-level IR.
-%We show how these can be nicely adopted in an SSA-based program representation.
+The last major phase of code generation where SSA form has demonstrated benefits
+is register allocation and its three sub-problems: variable spilling, variable
+coloring, and variable coalescing (Chapter~\ref{chap:register_allocation}). After
+the register allocation, program variables are mapped to architectural registers
+or memory locations, so the SSA form optimizations no longer apply.
+
+\section{Pragmatics of the SSA form on machine code}
+
+2-operands, predicated, phi-sets, multiple outputs, operand pinning, variable
+pinning, computing interference.
+
+%that enabling information such as pointer aliasing and memory dependence be
+%available. The main stand-alone SSA-based analyses useful in a code generator
+%are induction variable classification, and liveness analysis. Other
+
+%Code generation techniques have significantly evolved in the past decades, as
+%they are mainly responsible for exploiting increasingly sophisticated processor
+%architectures and micro-architectures. Features to be addressed
+%by the code generator include: selection of SIMD instructions; selection of
+%conditional moves or predicated instructions; exploitation of hardware looping
+%or branch prediction hints; exploitation of DSP-like addressing modes
+%such as auto-modified; explicit memory hierarchy control, including pre-fetching
+%of pre-loading data; exploitation of wide instruction issuing and instruction pipelining
+%through instruction scheduling and
 
