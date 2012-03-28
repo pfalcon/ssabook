@@ -9,7 +9,7 @@
 
 The objective of a dataflow analysis is to discover facts that are true about a
 program.
-We call such facts {\em informations}.
+We call such facts {\em information}.
 Using the notation introduced in Section~\ref{novillo:sec:prop-engine}, an
 information is a point in the dataflow lattice.
 For example, liveness analysis is interested in finding out the set of
@@ -31,23 +31,21 @@ definition analysis.
 Indeed, the SSA form provides the static single information property to any
 dataflow analysis that obtains information at the definition sites of
 variables.
-These analyses and transformations include classic constant propagation, as
-seen in Chapter~\ref{XXX:chap:constant_propagation_is_easier}, and partial redundancy elimination, as seen in Chapter~\ref{XXX:chap:pre_not_helped}.
+These analyses and transformations include the copy and constant propagation as illustrated in Chapter~\ref{XXX:chap:constant_propagation_is_easier}.
 However, the SSA form does not provide the SSI property to a dataflow analysis
 that derives information from the use site of variables.
 In other words, because the same variable $v$ in a SSA form program might be used
-at different program points, the informations associated with $v$ might not be
-unique.
+at different program points, the information associated with $v$ might not be
+unique along its entire live-range.
 
-There exist extensions of the SSA form that provide the SSI property to more
+There exists extensions of the SSA form that provide the SSI property to more
 dataflow analyses than the original SSA does.
-Two classic examples are the {\em Extended-SSA} (e-SSA) form, and the {\em Static Single Information} (SSI) form.
+Two classic examples, that we will detail further, are the {\em Extended-SSA} (e-SSA) form, and the {\em Static Single Information} (SSI) form.
 The e-SSA form provides the SSI property to analyses that take information from
 the definition site of variables, and also from conditional tests where these
 variables are used.
 Ananian's SSI form gives the static single information property to dataflow
-analyses that extract information from particular use sites of variables, such
-as {\em Busy Expression Analysis}.
+analyses that both extract information from the definition sites of variables, and from last use sites (as defined further).
 These different intermediate representations rely on a common strategy to achieve the SSI property: {\em live range splitting}.
 In this chapter we show how to use live range splitting to build program
 representations that provide the static single information property to different
@@ -65,25 +63,25 @@ Traditionally, data-flow analyses bind information to pairs formed by a variable
 Let's consider, as an example, the problem of estimating the interval of values that any integer variable may assume throughout the execution of a program.
 An algorithm that solves this problem is called a {\em range analysis}.
 A traditional implementation of this analysis would find, for each pair formed by a variable $v$ plus a program point $i$, the interval of possible values that $v$ might assume at $i$.
-Figure~\ref{fig:ProgramPoint} illustrates this analysis with an example.
+Figure~\ref{fig:rangeAnalysis} illustrates this analysis with an example.
 In this case we call a program point any region between two consecutive
 instructions and we let $[v]$ denote the abstract information that is associated
 with variable $v$.
-Because this approach keeps information at each program point, we call it {\em dense}, in contrast with the sparse analyses seen in Section~\ref{novillo:sec:prop-engine}.
+Because this approach keeps information at each program point, we call it {\em dense}, in contrast with the sparse analyses seen in Section~\ref{chapter:constant_propagation_is_easier:sec:prop-engine}.
 
 \begin{figure}[t!]
 \centering
 \includegraphics[width=\linewidth]{ProgramPoint}
 \caption{An example of a dense data-flow analysis that finds the range of
 possible values associated with each variable at each program point.}
-\label{fig:aliasAnalysis}
+\label{fig:rangeAnalysis}
 \end{figure}
 
 The dense approach might keep more redundant information during the
 data-flow analysis.
 For instance, if we let $[v]^i$ denote the abstract state of variable
 $v$ at program point $i$, then we have that, in our example, $[i]^1 = [i]^2$,
-$[i]^3 = [i]^4$ and $[s]^4 = [s]^5$.
+$[s]^3 = [s]^4$ and $[i]^4 = [i]^5$.
 This redundancy happens because some transfer functions are identities.
 For instance, in range analysis, an instruction that neither defines nor uses any variable is associated with an identity transfer function.
 The transfer function that updates the abstract state of $i$ at program point $p_2$ is an identity.
@@ -96,22 +94,22 @@ entire live range, then we can bind this information to the variable itself.
 In other words, we can replace all the constraint variables
 $[v]^i$ by a single constraint variable $[v]$, for each variable $v$
 and every $i\in \textrm{live}(v)$.
-Not every data-flow problem can be easily solved sparsely; however, many of them can, and in the next section we will see a family of such problems.
+Not every data-flow problem can be easily solved sparsely; however, many of them can, as they fit into the family of PVL problems that we describe in the next section.
 
-\subsection{PVP and PVL Data-Flow Problems}
+\subsection{Partitioned Variable Lattice (PVL) Data-Flow Problems}
 \label{sec:ssi:pereira:pvpPvl}
 
 There exists a class of data-flow problems that can be naturally solved via sparse data-flow analyses.
 These problems are called {\em Partitioned Data-flow Analyses} (PDA).
 These analyses, which include live variables, reaching definitions and forward/backward printing, can be decomposed into a set of sparse data-flow problems -- usually one per variable -- each independent on the other.
-We define the PDA family of data-flow problems via the sum of two notions: Partitioned Variable Problem (PVP) and Partitioned Variable Lattice (PVL).
+We define the PDA family of data-flow problems via the sum of two notions: Partitioned Variable Problem (PVP) and Partitioned Variable Lattice (PVL) that we illustrate through liveness and range analysis examples just after giving a formal definition.
 
 \begin{definition}[PVP/PVL]
 \label{pro:pvp}
 \textsc{Partitioned Data-Flow Problem}:\\Let ${\cal V}=\{v_1,\dots,v_n\}$ be the set of program variables.
 We consider, without loss of generality, a forward data-flow analysis.
-This data-flow analysis is an equation system that associates, with each program point $i$, an element of a lattice ${\cal L}$, given by the equation $[x]^i = \bigwedge_{s \in \mathit{pred}(i)} F^s([x]^s)$, where $[x]^i$ denotes the abstract state associated with variable $x$ at program point $i$, and $F^s$ is the transfer function associated with program point $s$.
-The analysis can be written\footnote{As far as we are concerned with finding its maximum solution. See for example Section~1.3.2 of~\cite{Nielson05}.} as a constraint system that binds to each program point $i$ and each $s\in \mathit{pred}(i)$ the equation $[x]^i = [x]^i \wedge  F^s([x]^s)$ or, equivalently, the inequation $[x]^i \sqsubseteq  F^s([x]^s)$.
+This data-flow analysis is an equation system that associates, with each program point $i$, an element of a lattice ${\cal L}$, given by the equation $a^i = \bigwedge_{s \in \mathit{pred}(i)} F^s(a^s)$, where $a^i$ denotes the abstract state associated  program point $i$, and $F^s$ is the transfer function associated with program point $s$.
+The analysis can be written\footnote{As far as we are concerned with finding its maximum solution. See for example Section~1.3.2 of~\cite{Nielson05}.} as a constraint system that binds to each program point $i$ and each $s\in \mathit{pred}(i)$ the equation $a^i = a^i \wedge  F^s(a^s)$ or, equivalently, the inequation $a^i \sqsubseteq  F^s(a^s)$.
 The corresponding Maximum Fixed Point (MFP) problem is said to be a \emph{Partitioned Variable Problem} iff:
 \begin{description}
 \item {\bf [PVL]:} $\cal L$ can be decomposed into the product of ${\cal L}_{v_1}\times \dots \times {\cal L}_{v_n}$ where each ${\cal L}_{v_i}$ is the lattice associated with program variable $v_i$.
@@ -119,10 +117,8 @@ The corresponding Maximum Fixed Point (MFP) problem is said to be a \emph{Partit
 \end{description}
 \end{definition}
 
-Liveness analysis is a partitioned variable problem:
-the liveness information (lattice of Boolean values ${\cal B}$) can be computed for each \emph{individual} (PVL property) variable \emph{independently} (PVP property).
-the overall lattice can be written as a cross product ${\cal L}={\cal B}^n$.
-The liveness information for variable $v$ at program point $i$, e.g., $[v]^i$, can be expressed in term of its state at the successors $s$ of $i$:
+Liveness analysis is a partitioned variable problem.
+The liveness information (lattice of Boolean values ${\cal B}$) can be computed for each \emph{individual} variable (PVL property): the overall lattice can be written as a cross product ${\cal L}={\cal B}^n$. Moreover this computation can be done for each variable \emph{independently} (PVP property): the liveness information for variable $v$ at program point $i$, e.g., $[v]^i$, can be expressed in term of its state at the successors $s$ of $i$,
 $[v]^i = [v]^i \wedge F_v^s([v]^s)$ with $F_v^s$ from $\cal B$ to $\cal B$.
 
 Contrary to liveness analysis, most of the data-flow analyses do not provide the PVP property.
@@ -135,8 +131,6 @@ There are data-flow analyses that do not meet the PVL property.
 Noticeable examples include analyses that rely on relational lattices.
 A typical example are the analyses that use the {\em octagon} domain.
 This domain binds variables together in constraints such as $x + y \leq c$, where $c$ is an integer, and $x, y$ are program variables.
-Analyses on the octagon domain are not PVL because the overall lattice is the product of a quadratic number of lattices.
-In our PVL problems, the underlying lattice is the produce of a linear number of sub-lattices, one per program variable.
 
 
 \subsection{The Single Information Property}
@@ -151,18 +145,18 @@ In the context of range analysis, at the program points $s\in \textrm{live}(v)$ 
 On the other hand, there are two types of program points where the range analysis finds non-identity transfer functions: definitions and conditionals.
 At the definition point of variable $v$, $F_v$ simplifies to a function that depends only on some $[u]$ where each $u$ is an argument of the instruction defining $v$.
 Range analysis can also use conditional tests to acquire more information about a variable.
-Hence, at the conditional tests that use a variable $v$, $F^v$ can be simplified to a function that uses $v$ and possibly other variables that appear in the test.
+Hence, at the conditional tests that use a variable $v$, $F_v$ can be simplified to a function that uses $[v]$ and possibly other variables that appear in the test.
 This gives the intuition on why a propagation engine along the def-use chains of a SSA-form program can be used to solve the constant propagation problem in an equivalent, yet ``sparser'', manner.
 This also paves the way toward a formal definition of the Static Single Information property.
 
 \begin{property}[SSI]
 \label{pro:ssi}\textsc{Static Single Information:} Consider a forward (resp. backward) monotone PVL problem $E_{dense}$ stated as a set of constraints $[v]^i \sqsubseteq F_v^s([v_1]^s,\dots,[v_n]^s)$ for every variable $v$, each program point $i$, and each $s \in \mathit{pred}(i)$ (resp. $s\in \mathit{succ}(i)$).
 A program representation fulfills the Static Single Information property iff:\begin{description}
-\item {\bf [SPLIT]:} for each variable $v$, each $s\in \textrm{live}(v)$ such that $F_v^s\neq \lambda x.\bot$ is not an identity transfer function, should contain a definition (resp. last use) of $v$;
-Let $(Y_v^i)_{(v,i)\in variables\times prog\_points}$ be a maximum solution to $
-E_{dense}$.
-Each join (resp. split) node for which $F_v^s(Y_{v_1}^s,\dots,Y_{v_n}^s)$ has different values on its incoming edges should have a $\phi$-function (resp. $\sigma$ function) for $v$ as defined in Section~\ref{sub:split}.
-\item {\bf [INFO]:} each program point $i\not\in \textrm{live}(v)$ should be bound to an undefined transfer function $F_v^s=\lambda x.\bot$.
+\item {\bf [SPLIT]:} for each variable $v$, each $i\in \textrm{live}(v)$ with a unique predecessor (resp. successor) $s$, such that $F_v^s\neq \lambda x.\bot$ is non-trivial, i.e. is not the simple projection on ${\cal L}_v$, then $s$ should contain a definition (resp. last use) of $v$; 
+Let $(Y_v^i)_{(v,i)\in variables\times prog\_points}$ be a maximum solution to $E_{dense}$. 
+Each join (resp. split) node $i$ for which $F_v^s(Y_{v_1}^s,\dots,Y_{v_n}^s)$ has different values on its incoming edges $(s,i)$ (resp. outgoing edges $(i,s)$) should have a $\phi$-function at the entry of $i$ (resp. $\sigma$ function at the exit of $i$) for $v$
+as defined in Section~\ref{sub:split}.
+\item {\bf [INFO]:} each program point $i\not\in \textrm{live}(v)$ should be bound to an undefined  transfer function, e.g., $F_v^i=\lambda x.\bot$.
 \item {\bf [LINK]:} each instruction {\em inst} for which $F_v^{inst}$ depends on some $[u]^s$ should contain an use (resp. def) of $u$ live-out (resp. live-in) at
 {\em inst}.
 \item {\bf [VERSION]:} for each variable $v$, $\textrm{live}(v)$ is a connected component of the CFG.
@@ -214,33 +208,35 @@ The assignment \[(v_1^1:l^1, \ldots, v_1^q:l^q) = \sigma(v_1) \ \parallel\  \dot
 These assignments happen in parallel, i.e., the $m$ $\sigma$-functions encapsulate $m$ parallel copies.
 Also, notice that variables live in different branch targets are given
 different names by the $\sigma$-function that ends that basic block.
+%TODO FAB: add reference to gated SSA, loop closed form etc.
 
 \subsection{Propagating Information Forwardly and Backwardly}
 
 Let us consider a unidirectional forward (resp. backward) PVL problem $E^{ssi}_{\mathit{dense}}$ stated as a set of equations $[v]^i \sqsubseteq  F_v^s([v_1]^s, \dots, [v_n]^s)$ (or equivalently $[v]^i = [v]^i \wedge    F_v^s([v_1]^s, \dots, [v_n]^s$) for every variable $v$, each program point $i$, and each $s \in \mathit{pred}(i)$ (resp. $s \in \mathit{succ}(i)$). 
-Any $\phi$-function $a=\phi(a_1:l^1,\dots,a_m:l^m)$ (resp. $\sigma$-function $(a_1:l^1,\dots,a_m:l^m)=\sigma(a)$) at program point $i$ leads to as many constraints as the set of predecessors (resp. successors) $S_j$ of $i$.
-In other words, a $\phi$-function such as $a=\phi(a_1:l^1,\dots,a_m:l^m)$, gives us $n$ constraints such as $[a]^i \sqsubseteq [a_j]^{l_j}$, which we can simplify into the classical meet $[a]^i \sqsubseteq \bigwedge_{l_j \in \mathit{pred}(i)} [a_j]^{l_j}$.
-Similarly, a $\sigma$-function $(S_1:a_1,\dots,S_m:a_m)=\sigma(a)$ at program point $i$ yields $n$ constraints such as $[a_j]^{l_j} \sqsubseteq [a]^i$.
+To simplify the discussion, any $\phi$-function (resp. $\sigma$-function) is seen as a set of copies, one per predecessor (resp. successor), which leads to as many constraints.
+In other words, a $\phi$-function such as $a=\phi(a_1:l^1,\dots,a_m:l^m)$, gives us $n$ constraints such as $[a]^i \sqsubseteq  F_v^{l^j}([v_1]^{l^j}, \dots, [v_n]^{l^j})$, which usually simplifies into $[a]^i \sqsubseteq [a_j]^{l^j}$. This last can be written equivalently into the classical meet $[a]^i \sqsubseteq \bigwedge_{l^j \in \mathit{pred}(i)} [a_j]^{l^j}$ used in Chapter~\ref{chapter:constant_propagation_is_easier}.
+Similarly, a $\sigma$-function $(l^1:a_1,\dots,l^m:a_m)=\sigma(a)$ at program point $i$ yields $n$ constraints such as $[a_j]^{l_j} \sqsubseteq  F_v^{l^j}([v_1]^{l^j}, \dots, [v_n]^{l^j})$, which usually simplifies into $[a_j]^{l_j} \sqsubseteq [a]^i$.
 Given a program that fulfills the SSI property for $E^{ssi}_{\mathit{dense}}$ and the set of transfer functions $F_v^s$, we show here how to build an equivalent sparse constrained system.  
 
 \begin{definition}[SSI constrained system]
 \label{def:ssi_eq}
-Consider that a program in SSI form gives us a constraint system that associates with each variable $v$ the constraints $[v]^i = [v]^i \wedge F_v^s([v_1]^s, \dots, [v_n]^s)$. We define a system of sparse equations $E^{ssi}_{sparse}$ as follows:
+Consider that a program in SSI form gives us a constraint system that associates with each variable $v$ the constraints $[v]^i \sqsubseteq  F_v^s([v_1]^s, \dots, [v_n]^s)$. We define a system of sparse equations $E^{ssi}_{sparse}$ as follows:
 
 \begin{itemize}
 
-\item For each instruction at a program point $i$ that defines (resp. uses) a variable $v$, we let $a \dots b$ be its set of used (resp. defined) variables. Because of the LINK property, $F^s_v$ depends only on some $[a]^s \dots [b]^s$.
-Thus, there exists a function $G^s_v$ defined as the restriction of $F^s_v$ on ${\cal L}_a\times \dots \times{\cal L}_b$, i.e. $G^s_v([a], \dots, [b]) = F^s_v([v_1],\dots, [v_n])$.
+\item For each instruction at a program point $i$ that defines (resp. uses) a variable $v$, we let $a \dots b$ be its set of used (resp. defined) variables. Because of the LINK property, $F^i_v$ depends only on some $[a]^i \dots [b]^i$.
+Thus, there exists a function $G^i_v$ defined as the restriction of $F^i_v$ on ${\cal L}_a\times \dots \times{\cal L}_b$, i.e. $G^i_v([a], \dots, [b]) = F^i_v([v_1],\dots, [v_n])$.
 
-\item The sparse constrained system associates with each variable $v$, and each definition (resp. use) point $s$ of $v$, the corresponding constraint $[v]  \sqsubseteq G_v^s([a], \ldots, [b])$ where $a,\dots, b$ are used (resp. defined) at $s$.
+\item The sparse constrained system associates with each variable $v$, and each definition (resp. use) point $i$ of $v$, the corresponding constraint $[v]  \sqsubseteq G_v^i([a], \ldots, [b])$ where $a,\dots, b$ are used (resp. defined) at $i$.
 \end{itemize}
 
 \end{definition}
 
-The propagation engine discussed in Chapter~\ref{XXX:chap:constant_propagation_is_easier} propagates information forwardly along the def-use chains naturally formed by the SSA-form program.
-If a give program fulfills the SSI property for a backward analysis, we can use a very similar propagation algorithm to communicate information backwardly.
-Figure~\ref{fig.propback} shows an algorithm based on chaotic iterations that propagates information forwardly.
-A slightly modified version of this algorithm, seen in Figure~\ref{fig.propforward} propagates information backwardly.
+The propagation engine discussed in Chapter~\ref{chapter:constant_propagation_is_easier} propagates information forwardly along the def-use chains naturally formed by the SSA-form program.
+If a given program fulfills the SSI property for a backward analysis, we can use a very similar propagation algorithm to communicate information backwardly.
+Figure~\ref{alg:ssi:propback} shows a worklist algorithm that propagates information backwardly.
+A slightly modified version of this algorithm, seen in Figure~\ref{alg:ssi:propforward} propagates information forwardly.
+
 
 \def\1{\qquad}
 \def\2{\1\1}
@@ -261,7 +257,7 @@ A slightly modified version of this algorithm, seen in Figure~\ref{fig.propforwa
 
 
 \newcommand\val[1]{[#1]}
-\begin{figure}[t!]
+\begin{algorithm}[t!]
 \begin{tabular}{rl}
 $_1$ & \textsf{function back\_propagate}(transfer\_functions $\cal G$)\\
 $_2$ & \1$\var{worklist} = \emptyset$\\
@@ -275,10 +271,10 @@ $_9$ &  \1 \2  \If $\val{v} \neq \val{v}_{new}$: \\
 $_{10}$& \1   \3 $\var{stack}\ +\hspace{-0.3em}=\var{v.defs}()$\\
 $_{11}$& \1   \3 $\val{v} = \val{v}_{new}$\\
 \end{tabular}
-\caption{\label{fig.propback} Backward propagation engine under SSI}
-\end{figure}
+\caption{\label{alg:ssi:propback} Backward propagation engine under SSI}
+\end{algorithm}
 
-\begin{figure}[t!]
+\begin{algorithm}[t!]
 \begin{tabular}{rl}
 $_1$ & \textsf{function forward\_propagate}(transfer\_functions $\cal G$)\\
 $_2$ & \1$\var{worklist} = \emptyset$\\
@@ -292,61 +288,47 @@ $_9$ &  \1 \2  \If $\val{v} \neq \val{v}_{new}$: \\
 $_{10}$& \1   \3 $\var{stack}\ +\hspace{-0.3em}=\var{v.uses}()$\\
 $_{11}$& \1   \3 $\val{v} = \val{v}_{new}$\\
 \end{tabular}
-\caption{\label{fig.propforward} Forward propagation engine under SSI}
-\end{figure}
+\caption{\label{alg:ssi:propforward} Forward propagation engine under SSI}
+\end{algorithm}
 
-The SSI constrained system might have several inequations for the same left-hand-side.
-Our definition of the SSI property does not ensure the Static Single Assignment or the Static Single Use properties, because such a guarantee is not necessary to every sparse analysis.
-For instance, the sparse constraint system for dead-code elimination has several equations (one per variable use) for the same left-hand-side (one for each variable)
-To solve dead-code elimination sparsely, we can convert the target program to standard SSA-form, and then replace $G_v^i$ in Figure~\ref{fig.propback} by ``\emph{i is a useful instruction or one of its definitions is marked as useful}''. 
+Of course, those algorithms can be made flow sensitive as for Algorithm~\ref{alg:constant_propagation_is_easier:ssa_propagation}. Still we should outline that what is solved here is a constrained system not an equation system as in Chapter~\ref{chapter:ssi}. This explains why in line~8 of algorithms~\ref{alg:ssi:propback} and~\ref{alg:ssi:propforward} $[v]$ appears on the right hand side of the assignment.
+This is required as soon as the SSI constrained system has several inequations for the same left-hand-side which can occur as our definition of the SSI property does not ensure the Static Single Assignment or the Static Single Use properties.
+Indeed such a guarantee is not necessary to every sparse analysis.
+For instance, the sparse constraint system for dead-code elimination has several equations (one per variable use) for the same left-hand-side (one for each variable).
+To solve dead-code elimination sparsely, we can convert the target program to standard SSA-form, and then replace $G_v^i$ in Algorithm~\ref{alg:ssi:propback} by ``\emph{i is a useful instruction or one of its definitions is marked as useful}''. 
 
 \subsection{Examples of sparse data-flow analyses}
 \label{sub:examples}
 
-As we have mentioned before, many data-flow analyses can be classified as PVP/PVL problems.
+As we have mentioned before, many data-flow analyses can be classified as PVL problems.
 In this section we present some meaningful examples.
 
 \paragraph{Range analysis revisited}
-We start this section revising this chapter's initial example of data-flow analysis, given in Figure~\ref{fig:ProgramPoint}.
+We start this section revising this chapter's initial example of data-flow analysis, given in Figure~\ref{fig:rangeAnalysis}.
 A range analysis acquires information from either the points where variables are defined, or from the points where variables are tested.
-In Figure~\ref{fig:ProgramPoint} we know that $i$ must be bound to the interval $[0, 0]$ at program point 1, for it has been assigned zero by the instruction immediately before.
-Similarly, we know that this variable is upper bounded by 100 at program point 3, due to the conditional test that happens before.
+In Figure~\ref{fig:rangeAnalysis-sparse} we know that $i$ must be bound to the interval $[0, 0]$ immediately after program point $l_1$.
+Similarly, we know that this variable is upper bounded by 100 at entry of program point $l_4$, due to the conditional test that happens before.
 Therefore, in order to achieve the SSI property, we should split the live ranges of variables at their definition points, or at the conditionals where they are used.
-Figure~\ref{fig:rangeAnalysis}(a) shows the original example after live range splitting.
+Figure~\ref{fig:rangeAnalysis-sparse}(a) shows the original example after live range splitting.
 In order to ensure the SSI property in this example, the live range of variable $i$ must be split at its definition, and at the conditional test.
 The live range of $s$, on the other hand, must be split only at its definition point, as it is not used in the conditional.
 Splitting at conditionals is done via $\sigma$-functions.
-Figure~\ref{fig:rangeAnalysis}(b) shows the solution to the range analysis problem.
+Figure~\ref{fig:rangeAnalysis-sparse}(b) shows the solution to the range analysis problem.
 We can see that each variable is associated with a unique range interval.
 The representation that we obtain by splitting live ranges at definitions and conditionals is called the Extended Static Single Assignment (e-SSA) form.
-This very representation can be used to solve many problems different than range analysis, such as taint analysis.
+%% This representation can be used to solve many problems different than range analysis, such as taint analysis. 
 
 \begin{figure}[t!]
 \centering
-\includegraphics[width=\linewidth]{RangeAnalysis}
-\caption{(a) The example from Figure~\ref{fig:ProgramPoint} after live range splitting.
+\includegraphics[width=\linewidth]{RangeAnalysis-refs}
+\caption{(a) The example from Figure~\ref{fig:rangeAnalysis} after live range splitting.
 (b) A solution to this instance of the range analysis problem.}
-\label{fig:taintAnalysis}
+\label{fig:rangeAnalysis-sparse}
+% TODO FAB rappeler l'example de la fig 1.1. 
+%TODO FAB: add the equations in (b): [i_1]=[i_0] \cups [i_3]; [i_2]=[i_1] \cap [-\infty,99]; [i_3]=[i_2]+1; [s_1]=[s_0]\cups[s_2]; [s_2]=[s_1]+[i_3] (widening required here)
 \end{figure}
 
 
-\paragraph{Taint analysis} The objective of taint analysis~\cite{Rimsa11} is to find program vulnerabilities.
-In this case, a harmful attack is possible when input data reaches sensitive program sites without going through special functions called sanitizers.
-Figure~\ref{fig:taintAnalysis} illustrates this type of analysis.
-We have used $\phi$ and $\sigma$-functions to split the live ranges of the variables in Figure~\ref{fig:taintAnalysis}(a) producing the program in Figure~\ref{fig:taintAnalysis}(b).
-Lets assume that {\em echo} is a sensitive function, because it is used to generate web pages.
-For instance, if the data passed to {\em echo} is a JavaScript program, then we could have an instance of cross-site scripting attack.
-Thus, the statement $\mathit{echo} \ v_1$ may be a source of vulnerabilities, as it outputs data that comes directly from the program input.
-On the other hand, we know that $\mathit{echo} \ v_2$ is always safe, for variable $v_2$ is initialized with a constant value.
-The call $\mathit{echo} \ v_5$ is always safe, because variable $v_5$ has been sanitized; however, the call $\mathit{echo} \ v_4$ might be tainted, as variable $v_4$ results from a failed attempt to sanitize $v$.
-The def-use chains that we derive from the program representation leads naturally to a constraint system, which we show in  Figure~\ref{fig:taintAnalysis}(c).
-
-\begin{figure}[t!]
-\centering
-\includegraphics[width=\linewidth]{taintAnalysis}
-\caption{Taint analysis as an example of forward data-flow analysis that takes information from the definitions of variables and conditional tests on these variables.}
-\label{fig:taintAnalysis}
-\end{figure}
 
 \paragraph{Class Inference} Some dynamically typed languages, such as Python, Java\-Scrip, Ruby or Lua, represent objects as tables containing methods and fields.
 It is possible to improve the execution of programs written in these languages if we can replace these simple tables by actual classes with virtual tables.
@@ -357,42 +339,22 @@ Figure~\ref{fig:classInference}(b) shows the control flow graph of the program, 
 Because type inference is a backward analysis that extracts information from use sites, we split live ranges at these program points, and rely on $\sigma$-functions to merge them back, as we see in Figure~\ref{fig:classInference}(e).
 The use-def chains that we derive from the program representation lead naturally to a constraint system, which we show in Figure~\ref{fig:classInference}(f), where $[v_j]$ denotes the set of methods associated with variable $v_j$.
 A fix-point to this constraint system is a solution to our data-flow problem.
-This instance of class inference is a Partitioned Variable Problem~(PVP), because the data-flow information associated with a variable $v$ can be computed independently from the other variables.
+This instance of class inference is a Partitioned Variable Problem~(PVP)~\footnote{Actually class inference is no more a PVP as soon as we want to propagate the information through copies.}, because the data-flow information associated with a variable $v$ can be computed independently from the other variables.
 
 \begin{figure}[t!]
 \centering
 \includegraphics[width=\linewidth]{classInference}
 \caption{Class inference analysis as an example of backward data-flow analysis that takes information from the uses of variables.}
 \label{fig:classInference}
+%TODO FAB: virer les new dans la figure. Virer les points de programme qui ne servent à rien en (d) (car erreur sur l7)
 \end{figure}
 
-\paragraph{Constant Propagation}
-
-\begin{figure}[t!]
-\centering
-\includegraphics[width=\linewidth]{ConstPropSsaBook}
-\caption{Constant propagation as an example of forward data-flow analysis that takes information from the definitions of variables.}
-\label{fig:constantProp}
-\end{figure}
-
-There exist many data-flow analyses that are not Partitioned Variable Problems.
-Constant propagation is an example:
-in this analysis, the abstract state of a variable $v$ is determined by the abstract state of the variables used to define $v$.
-Figure~\ref{fig:constantProp} illustrates constant propagation.
-We want to find out which variables in the program of Figure~\ref{fig:constantProp}(a) can be replaced by constants.
-The CFG of this program is given in Figure~\ref{fig:constantProp}(b).
-Constant propagation has a very simple lattice, which we show in Figure~\ref{fig:constantProp}(c).
-In this data-flow problem, information is produced at the program points where variables are defined.
-Thus, in order to provide Property~\ref{pro:ssi}, we must guarantee that each program point is dominated by a single definition of a variable -- exactly what the SSA form does.
-Figure~\ref{fig:constantProp}(d) shows the intermediate representation that we create for the program in Figure~\ref{fig:constantProp}(b).
-The def-use chains implicit in our program representation lead 
-to the constraint system shown in Figure~\ref{fig:constantProp}(e).
 
 \paragraph{Null pointer analysis} The objective of null pointer analysis is to determine which references may hold null values.
 This analysis allows compilers to remove redundant null-exception tests and helps developers to find null pointer dereferences.
 Figure~\ref{fig:nullAnalysis} illustrates this analysis.
-Because information is produced at use sites, we split live ranges after each variable is used, as we show in Figure~\ref{fig:nullAnalysis}(b).
-For instance, we know that the call $v_2.m()$ cannot result in a null pointer dereference exception, otherwise an exception would have been thrown during the invocation $v_1.m()$.
+Because information is both produced at definition but also at use sites, we split live ranges after each variable is used, as we show in Figure~\ref{fig:nullAnalysis}(b).
+For instance, we know that $v_2$ cannot be null and hence the call $v_2.m()$ cannot result in a null pointer dereference exception, otherwise an exception would have been thrown during the invocation $v_1.m()$.
 On the other hand, in Figure~\ref{fig:nullAnalysis}(c) we notice that the state of $v_4$ is the meet of the state of $v_3$, definitely not-null, and the state of $v_1$, possibly null, and we must conservatively assume that $v_4$ may be null.
 
 
@@ -422,28 +384,22 @@ Similarly, we let $I_\uparrow$ denote a set of points $i$ with backward
 direction.
 The live-range of $v$ must be split at least at every point in $\SS_v$.
 Going back to the examples from Section~\ref{sub:examples}, we have the live range splitting strategies enumerated below.
-The list in Figure~\ref{fig:splittingSt} gives further examples of live range splitting strategies.
+The list in Figure~\ref{fig:splittingSt} gives further examples of live range splitting strategies. Corresponding references are given in the last section of this chapter.
 
 \begin{itemize}
-\item Taint analysis, like range analysis, is a forward analysis that takes information from points where variables are defined, and conditional tests that use these variables.
-For instance, in Figure~\ref{fig:taintAnalysis}, we have that $\SS_{v} = \{l_1, l_2, \Out(l_5)\}_\downarrow$ where $\Out(l_i)$ denotes the exit of $l_i$.
+\item Range analysis, is a forward analysis that takes information from points where variables are defined, and conditional tests that use these variables.
+For instance, in Figure~\ref{fig:rangeAnalysis-sparse}, we have that $\SS_{i} = \{l_1, \Out(l_3), l_4\}_\downarrow$ where $\Out(l_i)$ denotes the exit of $l_i$, and that $\SS_{s}=\{l_2, l_5\}_\downarrow$.
 
 \item Class inference is a backward analysis that takes information from the uses of variables; thus, for each variable, the live-range splitting strategy is characterized by the set $\mathit{Uses}_\uparrow$ where $\mathit{Uses}$ is the set of use points.
 For instance, in Figure~\ref{fig:classInference}(e), we have that
 $\SS_{v} = \{l_4, l_6,l_7\}_\uparrow$.
 
-\item Constant propagation is a forward analysis that takes information from definition sites.
-Thus, for each variable $v$ the live-range splitting strategy is characterized by the set $\mathit{Defs}_\downarrow$ where $\mathit{Defs}$ is the set of
-definition points.
-For instance, in Figure~\ref{fig:constantProp}, we have that
-$\SS_{b} = \{l_2, l_5\}_\downarrow$.
 
-\item Null pointer analysistakes information from definitions and uses and propagates this information forwardly.
+\item Null pointer analysis takes information from definitions and uses and propagates this information forwardly.
 For instance, in Figure~\ref{fig:nullAnalysis}, we have that
 $\SS_{v} = \{l_1, l_2, l_3, l_4\}_\downarrow$.
 \end{itemize}
 
-%TODO: check the PRE described in the citations here; add a reference for alias analysis. Check other references if possible.
 \begin{figure}[t!]
 \begin{center}
 \begin{small}
@@ -495,11 +451,10 @@ program point listed by $\SS_v$.
 However, these points are not the only ones where splitting might be
 necessary.
 As we have pointed out in Section~\ref{sub:split}, we might have, for the same original variable, many different sources of information reaching a common program point.
-For instance, in Figure~\ref{fig:constantProp}(b), there exist two definitions of variable $b$, e.g., $l_2$ and $l_5$, that reach the use of $b$ at $l_3$.
-The information that flows forward from $l_2$ and $l_5$ collides at $l_3$,
-the merge point of the if-then-else.
-Hence the live-range of $b$ has to be split immediately before $l_3$ -- at $\In(l_3)$ --, leading,
-in our example, to a new definition $b_1$.
+For instance, in Figure~\ref{fig:rangeAnalysis}, there exist two definitions of variable $i$, e.g., $l_1$ and $l_4$, that reach the use of $i$ at $l_3$.
+The information that flows forward from $l_1$ and $l_4$ collides at $l_3$, the loop entry.
+Hence the live-range of $i$ has to be split immediately before $l_3$ -- at $\In(l_3)$ --, leading,
+in our example, to a new definition $i_1$.
 In general, the set of program points where information collides can be easily
 characterized by the notion of join sets and iterated dominance frontier ($\mathit{DF^+}$) seen in Chapter~\ref{chap:alternative_ssa_construction_algorithms}.
 Similarly, split sets created by the backward propagation of information can
@@ -550,17 +505,17 @@ These new definitions are created at the iterated post-dominance
 frontier of points that originate information.
 If a program point is a join node, then each of its predecessors
 will contain the live range of a different definition of $v$, as we ensure
-in line 6 of our algorithm.
+in lines 6-7 of our algorithm.
 Notice that these new definitions are not placed parallel to an instruction,
 but in the region immediately after it, which we denote by $\Out(\dots)$.
 In lines 10-16 we perform the inverse operation: we create new definitions of
 variables due to the forward collision of information.
 Our starting points, in this case, include also the original definitions of
 $v$, as we see in line 11, because we want to stay in SSA form in order to
-have access to a fast liveness check.
+have access to a fast liveness check as described in Chapter~\ref{chapter:ssa_tells_nothing_of_liveness}.
 Finally, in lines 17-23 we actually insert the new definitions of $v$.
-These new definitions might be created by $\sigma$ functions (due exclusively
-to the splitting in lines 3-9); by $\phi$-functions (due exclusively to the
+These new definitions might be created by $\sigma$ functions (due to $\SS_v$ or
+to the splitting in lines 3-9); by $\phi$-functions (due to $\SS_v$ or to the
 splitting in lines 10-16); or by parallel copies.
 
 \begin{figure}[t!]
@@ -657,7 +612,7 @@ $_{20}$ & \1  \2 remove \var{inst}\\
 
 \paragraph{Dead and Undefined Code Elimination}
 
-The algorithm in Figure~\ref{fig:clean} eliminates $\phi$-functions that define variables not actually used in the code, $\sigma$-functions that use variables not actually defined in the code, and parallel copies that either define or use variables that do not reach any actual instruction.
+Just as Algorithm~\ref{alg:classical_construction_algorithm:pruning}, the algorithm in Figure~\ref{fig:clean} eliminates $\phi$-functions and parallel copies that define variables not actually used in the code. By symmetry, it also eliminates $\sigma$-functions  and parallel copies  that use variables not actually defined in the code.
 We mean by ``actual'' instructions, those instructions that already existed in the program before we transformed it with {\sf split}.
 In line~3 we let ``web'' be the set of versions of $v$, so as to restrict the cleaning process to variable~$v$, as we see in lines~4-6 and lines~10-12.
 The set ``active'' is initialized to actual instructions in line~4.
@@ -668,19 +623,17 @@ The corresponding version of $v$ is then marked as \emph{used} (line~14).
 Each non live variable (see line~15), i.e. either undefined or dead (non used) is replaced by $\bot$ in all $\phi$, $\sigma$, or copy functions where it appears in.
 This is done by lines~15-18.
 Finally every useless $\phi$, $\sigma$, or copy functions are removed by lines~19-20. 
-As a historical curiosity, the algorithm originally proposed by Cytron {\em et al.}'s procedure to build SSA form produced what is called {\em the minimal representation}.
-Some of the $\phi$-functions in the minimal representation define variables
-that are never used.
-If we remove these variables, then we produce what compiler writers normally call {\em pruned SSA-form}.
 
 \subsection{Implementing parallel copies, $\phi$ and $\sigma$-functions}
 \label{sub:special}
 %TODO: we need to explain how to get rid of copies in parallel with another instruction here.
-Traditional instruction sets, such as x86 or PowerPC, do not provide $\phi$-functions nor $\sigma$-functions.
+Traditional instruction sets do not provide $\phi$-functions nor $\sigma$-functions.
 Thus, before producing an executable program, the compiler must implement these instructions.
-Normally, $\phi$-functions and parallel copies are replaced by ordinary copy instructions, as explained in Section~\ref{sec:classical_destruction}.
+Normally, $\phi$-functions and parallel copies are replaced by ordinary copy instructions, as explained in Section~\ref{sec:classical_construction_algorithm} and Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}.
+A possible solution is to get rid of copies and $\sigma$-functions by simply copy-propagating them; thus, leaving for the SSA elimination module the task of replacing $\sigma$-functions with special instructions.
+As an example, Figure~\ref{fig:sigImpl}(a) shows the result of copy folding applied on Figure~\ref{fig:classInference}(d). 
 The $\sigma$-functions can be implemented as single arity $\phi$-functions.
-As an example, Figure~\ref{fig:sigImpl}(b) shows how we would represent the $\sigma$-functions in Figure~\ref{fig:taintAnalysis}(b).
+As an example, Figure~\ref{fig:sigImpl}(b) shows how we would represent the $\sigma$-functions of Figure~\ref{fig:classInference}(d). 
 If $l$ is a branch point with $n$ successors that would contain a $\sigma$-function $(v_1:l^1, \ldots, v_n:l^n) =\sigma(v)$, then, for each successor $l^j$ of $l$, we insert at the beginning of $l^j$ an instruction $v_j = \phi(v:l)$.
 Notice that it is possible that $l^j$ already contains a $\phi$-function for $v$.
 This case happens when the control flow edge $l \rightarrow l^j$ is {\em critical}.
@@ -690,36 +643,19 @@ If $l^j$ already contains a $\phi$-function $v' = \phi(\ldots, v_j, \ldots)$, th
 
 \begin{figure}[t!]
 \centering
-\includegraphics[scale=0.9]{sigImpl}
+\includegraphics[width=\textwidth]{sigImpl}
 \caption{(a) getting rid of copies and $\sigma$-functions; (b) implementing $\sigma$-functions via single arity $\phi$-functions.}
 \label{fig:sigImpl}
 \end{figure}
 
 
-\subsection{Deriving dense information from sparse analyses}
-\label{sub:dense}
-
-%TODO: this part is not clear. Is missing the fact that some analysis do not require the information at every live points. Is also missing the fact that for other analysis we do not have the mapping but we have the liveness. Actually ``require the information at every program point'' is very vague.
-We can use our sparse data-flow analysis framework to solve even some data-flow problems that demand information at every program point.
-Let's consider, for instance, a bit-width aware register allocator, that assigns to a variable $v$ the smallest register $r$ that is large enough to receive that variable.
-In this setting, the register pressure at a program point $p$ is the sum of the bit sizes of all the variables live at $p$.
-Hence, to know the number of registers at a give program point we must know the width of all the variables live at that point.
-A dense analysis would give us this information immediately.
-In a sparse setting, we may resort to a quick liveness check in order to find it.
-In this case, it is fundamental that the intermediate program representation preserves the SSA-form properties.
-
-Preserving the SSA properties is key for two reasons, which we have already discussed in Chapter~\ref{XXX:chap:ssa_tells_nothing_of_liveness}.
-Firstly, liveness analysis has a non-iterative implementation for SSA-form programs linear on the program size.
-Secondly, if we only need liveness information for some specific variables, at some specific program points, then there is a fast liveness check for
-SSA-form programs.
-The problem of answering the question ``is variable $v$ live at program point $p$" has an algorithm that is $O(U)$, where $U$ is the number of times that $v$ is used in the program code.
 
 \section{Further Reading}
 
 The original description of the intermediate program representation known as Static Single Information was given by Ananian in his Master's thesis~\cite{Ananian99}.
 In particular, we borrow the notation of $\sigma$-functions, used in this chapter, from Ananian's work.
 This program representation was later on revisited by Jeremy Singer in his PhD thesis~\cite{Singer06}.
-Singer proposed new uses for the SSI form, and new algorithms to build it.
+Singer proposed new uses for the SSI form, and new algorithms to build it. He also proposed new uses for the SSI form, in particular truly bidirectional data-flow analysis. We do not address the problem of truly bidirectional analysis here.
 Finally, Boissinot {\em et al.}~\cite{Benoit09} analyzed these two previous works, seeking to clarify some misconceptions related to the process of converting a program to SSI form.
 The Extended Static Single Assignment form was introduced by Bodik {\em et al.} in order to provide a fast algorithm to eliminate array bound checks in the context of a JIT compiler~\cite{Bodik00}.
 
@@ -729,11 +665,19 @@ He also discussed a number of data-flow analyses that fit this category.
 When re-stating Zadeck's definition we mentioned that there are examples of data-flow problems that cannot be classified as Partitioned Variable Lattice.
 Among these examples we cite abstract interpretation problems on relational domains, such as Polyhedrons~\cite{Cousot78}, Octagons~\cite{Mine06} and Pentagons~\cite{Logozzo08}.
 
+In terms of data-structures, the first, and best known method proposed to support sparse data-flow analyses is Choi {\em et al.}'s {\em Sparse Evaluation Graph} (SEG)~\cite{Choi91}.
+The nodes of this graph represent program regions where information produced by the data-flow analysis might change.
+Choi {\em et al.}'s ideas have been further expanded, for example, by Johnson {\em et al.}'s {\em Quick Propagation Graphs}~\cite{Johnson93}, or Ramalingan's {\em Compact Evaluation Graphs}~\cite{Ramalingan02}.
+Nowadays we have efficient algorithms that build such data-structures~\cite{Pingali95,Pingali97,Johnson94}.
+These data-structures are restricted to what we designed as PVP problems.
+As opposed to those approaches, the solution promoted by this chapter is an intermediate representation (IR) based evaluation graph. As for SSA, it has two main disadvantages: first it has to be maintained and at some point destructed; second as it increases the number of variable, it might lead to some overhead for analysis and transformations that do not take advantage of it. On the other hand it allows exact or abstract interpretation. Solving any ``coupled'' data flow analysis problem along with a SEG was mentioned in~\cite{Choi91} as an opened problem. As illustrated by the conditional constant propagation problem described in Chapter~\ref{constant_propagation_is_easier}, coupled data-flow analysis can be solved naturally in IR based evaluation graphs. Last, SSI is compatible with SSA extensions such as gated-SSA described in Chapter~\ref{chapter:vsdg} which allows among others demand driven interpretation.
+
 The data-flow analyses discussed in this chapter are well-known in the literature.
 Class inference was used by Chambers {\em et al.} in order to compile Self programs more efficiently~\cite{Chambers89}.
 Nanda and Sinha have used a variant of null-pointer analysis to find which method dereferences may throw exceptions, and which may not~\cite{Nanda09}.
 Ananian~\cite{Ananian99}, and later Singer~\cite{Singer06}, have showed how to use the SSI representation to do partially redundancy elimination sparsely.
 In addition to being used to eliminate redundant array bound checks~\cite{Bodik00}, the e-SSA form has been used to solve Taint Analysis~\cite{Rimsa11}, and range analysis~\cite{Su05,Gawlitza09}.
 Stephenson {\em et al.}~\cite{Stephenson00} described a bit-width analysis that is both forward, and backwards, taking information from definitions, uses and conditional tests.
-For another example of bidirectional bitwidht analysis, see Mahlke {\em et al.}'s algorithm~\cite{Mahlke01}.
+For another example of bidirectional bitwidth analysis, see Mahlke {\em et al.}'s algorithm~\cite{Mahlke01}.
 The type inference analysis that we mentioned in Figure~\ref{fig:splittingSt} was taken from Hochstadt {\em et al.}'s work~\cite{Hochstadt08}.
+
