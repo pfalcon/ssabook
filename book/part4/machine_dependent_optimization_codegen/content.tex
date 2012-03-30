@@ -56,7 +56,8 @@ to benefit from it appear early in the code generation process:
 \begin{itemize}
 
 \item Analyzes such as induction variable classification, bit-width analysis,
-liveness sets, and liveness checking (Chapter~\ref{chap:liveness_analysis}).
+variable interference, liveness sets, and liveness checking
+(Chapter~\ref{chap:liveness_analysis}).
 
 \item Instruction selection (Chapter~\ref{chapter:code_selection}). Unlike
 classic techniques that match one IR tree or one DAG at a time, using the SSA
@@ -73,7 +74,7 @@ in particular those resulting from control-flow constructs.
 
 \item Instruction re-selection.
 
-\end{itemize}
+\end{itemize} \medskip
 
 Further down the code generator, the next major phase is pre-pass instruction
 scheduling. Innermost loops whose bodies are single basic block or super
@@ -93,12 +94,13 @@ dependences in the instruction scheduling problem. As a result, there is little
 to gain to schedule instructions on a SSA form program representation:
 \begin{itemize}
 
-\item Except in case of trace scheduling, the scheduling regions considered are
-single-entry and do not have control-flow merge. So there are no
+\item Except in case of trace scheduling, the scheduling regions considered
+earlier are single-entry and do not have control-flow merge. So there are no
 $\phi$-functions in case of acyclic scheduling, and only $\phi$-functions in the
 loop header in case of software pipelining. Keeping those $\phi$-functions in
 the scheduling problem has no benefits and raises engineering issues, due to
-their peculiar semantics (parallel execution, must be first in basic block).
+their parallel execution semantics and the constraint to keep them first in
+basic blocks.
 
 \item Instruction scheduling must account for all the instruction issue slots
 required to execute a code region. If the only ordering constraints between
@@ -113,6 +115,7 @@ code motion.
 
 \end{itemize} These issues need to be addressed before any pre-pass instruction
 scheduling on the SSA form demonstrates advantages over classic approaches.
+\medskip
 
 The last major phase of code generation where SSA form has demonstrated benefits
 is register allocation and its three sub-problems: variable spilling, variable
@@ -120,10 +123,59 @@ coloring, and variable coalescing (Chapter~\ref{chap:register_allocation}). Afte
 the register allocation, program variables are mapped to architectural registers
 or memory locations, so the SSA form analyses and optimizations no longer apply.
 
-\section{Pragmatics of the SSA form on machine code}
+\section{Pragmatics of the SSA form on machine instructions}
 
-2-operands, predicated, phi-sets, multiple outputs, operand pinning, variable
-pinning
+Applying the SSA form to a program representation at the level of machine
+instructions appears challenging for a number of reasons:
+\begin{itemize}
+
+\item Machine instructions may have multiple result operands, such as memory
+accesses with auto-modified addressing, or memory loads into register pairs.
+More generally, instructions with a result in register tuple such as long
+multiplies of the ARM imply multiple results as far as the SSA form is
+concerned, whether on the instruction itself, or on a pseudo-instruction
+instructions that extracts the individual components of the register tuple.  So
+there is no longer a one-to-one mapping between variable definitions and
+instructions for the SSA form on machine instructions.
+
+\item Machine instructions may have side effects on stateful resources such as
+the processor condition codes. Representing them as SSA variables even though
+these resources are not operated like the processor architectural registers
+requires special casing. For instance 'sticky' flags definitions of the IEEE~754
+arithmetic imply a OR with the previous value. All such definitions can be
+reordered with regards to the next use and an instruction scheduler is expected
+to do so. However this type of flexibility is cumbersome to represent in the the
+SSA form.
+
+\item Some variables, such as the stack pointer, must be bound to a specific
+register at all points in the program, for instance if interrupt handlers reuse
+the program run-time stack. One possibility for such case is to inhibit the
+promotion of the stack pointer variable to a SSA variable. As a result, all
+instructions that use the stack pointer must be specialized with respect to
+their semantics as far as the SSA form optimizations are concerned.
+
+\item Machine instruction operands may be constrained to specific architectural
+registers, either by the instruction set architecture (ISA constraints), or by
+the run-time software conventions such as the application binary interface (ABI
+constraints). These constraints can be represented by inserting parallel COPY
+instruction that write to the constrained operands or read from the constrained
+results of the instructions. The new SSA variables thus created are pre-colored
+with the required architectural register. These parallel COPY instructions are
+later processed by the coalescing phase of the SSA form register allocation.
+
+\item Machine instruction operands may be constrained to use the same
+architectural register between an argument and a result, or even to use
+different architectural registers between two argument operands (MUL
+instructions on the ARM). Operand constraints between one argument and the
+result are the general case on popular instruction set architectures such as
+\textsf{x68} of the \textsf{ARM~Thumb}.
+
+\item Predicated instructions
+
+\item Unsplittable critical edges
+
+\end{itemize}
+
 
 \section{Interference graphs on the SSA form}
 
