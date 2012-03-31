@@ -13,6 +13,8 @@
 \def\DF{\mathrm{DF}}
 \def\iDF{\mathrm{iDF}}
 \def\join{\cup}
+\SetKwFunction{Let}{let\ }
+
 
 %% jsinger - simple introductory paragraphs
 
@@ -401,57 +403,123 @@ Each variable use is dominated by its unique definition. This is due to the use 
 \end{itemize}
 
 
-\section{Destruction \Author{F. Rastello}}
+\section{Destruction}
 \label{sec:classical_destruction}
 
-SSA form is a simple and efficient means of
-sparsely representing program information used for code analysis and optimization. Once we have completed SSA based optimizations, or at least before code generation, we need to get rid of \phiops\ that are not machine instructions. This phase is called SSA destruction. 
-Destructing freshly constructed SSA code is easy. One simply has to first rename back into a unique representative variable all $\phi$-related variables (which we refer to as \textit{SSA-webs}) that had initially the same name. Then each \phiop\ that has all its operands identical can be removed to coalesce the related live-ranges.
-Finding SSA-webs can be performed efficiently using the classical union-find algorithm for merging sets:
-\begin{verbatim}
-proc find_webs
-// find the ssa web of each variable
-foreach variable v:
-  ssaweb(v) := {v}
-foreach instruction of the form "a=phi(a1,...,an)"
-  foreach ai union(ssaweb(a),ssaweb(ai))
-\end{verbatim}
+SSA form is a 
+sparse representation of program information,
+which enables simple, efficient code analysis and optimization.
+Once we have completed SSA based optimization passes,
+and certainly before code generation,
+it is necessary to eliminate \phiops\ since these
+are not executable machine instructions.
+This elimination phase is known as \textit{SSA destruction}. 
 
-An SSA form is said to be conventional if for each SSA-web, all its variables can be safely renamed into a unique representative one. In other words each SSA-web should be interference free. While freshly constructed SSA code is conventional, this may not be the case after optimizations such as copy folding FIXME - copy propagation???  have been performed.
+The destruction of freshly constructed SSA code is straightforward.
+\emph{Khedker calls this CSSA for canonical SSA - from earlier ref?}
+One simply has to rename all 
+$\phi$-related variables (source and destination operands of
+a single \phiop\ are related)
+into a unique representative variable.
+We refer to a set of $\phi$-related variables as
+an \textit{SSA-web}.
+Then each \phiop\ should have identical names for all its operands,
+and thus can be removed to coalesce the related live-ranges.
 
-The simplest (but not the most efficient) way for destructing non conventional SSA form is to split all (critical) edge, and then replace \phiops\ by parallel copies on predecessor blocks. By splitting an edge say ($s,d)$, we mean replacing it by an edge from $s$ to a freshly created basic block and by another edge from this new basic block to $d$. The corresponding pseudo-code is the following:
+The discovery of SSA-webs can be performed efficiently 
+using the classical \textit{union-find} algorithm 
+with a disjoint-set data structure,
+which keeps track of a set of elements
+partitioned into a number of disjoint (nonoverlapping) subsets.
+The SSA-webs discovery algorithm is presented in 
+Algorithm \ref{alg:ssadestruction:find-webs}.
 
-\begin{verbatim}
-foreach B0: basic block of the CFG
-  let PC0:= "{}" be an empty parallel copy instruction
-  insert PC0 at the beginning of B0 just after the phi instructions
-  let (B1,...,Bn) be the list of basic blocks predecessors of B0
-  foreach Bi
-    let PCi:= "{}" be an empty parallel copy instruction
-    if Bi has several successors
-      create basic block B'i
-      replace edge Bi->B0 by Bi->B'i & B'i->B0
-      insert PCi in B'i
-    else
-      append PCi at the end of Bi
-    
-  foreach phi instruction at the entry of B of the for "a0=phi(B1:a1,..,Bn:an)"
-    let a' be a freshly created variable
-    add copy "a0<-a'" to PC0
-    replace a0 by a' in the phi instruction
-    foreach ai (argument of the phi corresponding to Bi)
-      add copy "a'<-ai" to PCi
-      replace ai by a' in the phi instruction
-    remove the phi instruction (otherwise get conventional SSA)
-\end{verbatim}
+\begin{algorithm}
+%% proc find_webs
+%% // find the ssa web of each variable
+\Begin{
+\For{each variable $v$}{
+  $\mathrm{ssaweb}(v) \leftarrow \{v\}$;
+}
+\For{each instruction of the form $a_{\mathrm{dest}} = \phi(a_1,\ldots,a_n)$}{
+  \For{each source operand $a_i$ in instruction}{
+     union$(\mathrm{ssaweb}(a_{\mathrm{dest}}),\mathrm{ssaweb}(a_i))$
+  }
+}
+}
+\caption{\label{alg:ssadestruction:find-webs}The SSA-webs discovery algorithm, based on the union-find pattern}
+\end{algorithm}
+
+A program expressed in SSA form is said to be 
+\textit{conventional} (equivalently, \textit{canonical})
+if for each SSA-web, all the related variables can be safely renamed into a unique representative variable.
+In other words, each SSA-web should be interference free. 
+While freshly constructed SSA code is conventional, 
+this may not be the case after optimizations 
+such as copy propagation have been performed.
+
+\emph{FIXME - where do we define what a critical edge is?}
+The simplest (although not the most efficient) way to destroy non-conventional SSA form is to split all \textit{critical} edges, and then replace \phiops\ by parallel copies at the end of predecessor basic blocks.
+The process of splitting an edge, say $(b_1,b_2)$,
+involves replacing edge $(b_1, b_2)$ by (i) an
+edge from $b_1$ to a freshly created basic block 
+and by (ii) another edge from this fresh basic block to $b_2$. 
+Algorithm \ref{alg:ssadestruction:splitting} presents
+the corresponding pseudo-code.
+
+\begin{algorithm}
+\Begin{
+ \ForEach{$B$: basic block of the CFG}{
+   \Let{$\mathrm{PC}_0$ be $\{\} \leftarrow \{\}$, an empty parallel copy instruction}\;
+   insert $\mathrm{PC}_0$ immediately  after the \phiops\ at the beginning of $B$\;
+   \Let{$(B_1,\ldots,B_n)$ be the list of predecessor blocks of $B$}\;
+   \ForEach{$B_i$}{
+     \Let{$\mathrm{PC}_i$ be $\{\} \leftarrow \{\}$, an empty parallel copy instruction}\;
+     \If{$B_i$ has several successors}{
+       create fresh empty basic block $B'_i$;
+       replace edge $B_i \rightarrow B$ by edges $B_i \rightarrow B'_i$ and $B'_i \rightarrow B$;
+       insert $PC_i$ in $B'_i$;
+     }
+    \Else{
+       append $PC_i$ at the end of $B_i$;
+     }
+   }
+   \ForEach{\phiop\ at the entry of $B$ of the for $a_0=\phi(B_1:a_1,\ldots,B_n:a_n)$}{
+     \Let{$a'$ be a freshly created variable}\;
+     add copy $a_0 \leftarrow a$ to $\mathrm{PC}_0$\;
+     replace $a_0$ by $a'$ in the \phiop\;
+     \ForEach{$a_i$ (argument of the \phiop\ corresponding to $B_i$)}{
+       add copy $a' \leftarrow a_i$ to $\mathrm{PC}_i$;
+       replace $a_i$ by $a'$ in the \phiop;
+     }
+     remove \phiop \tcc[r]{otherwise get conventional SSA}
+  }
+}
+}
+\caption{\label{alg:ssadestruction:splitting}Critical Edge Splitting Algorithm for destruction of non-conventional SSA form}
+\end{algorithm}
 
 
-Even this extremely conservative algorithm can lead to potential bugs especially when dealing with SSA destruction at code generation level. Indeed, we must make sure that appending a copy at the very end of a basic block is possible. This would, for example be problematic, in the situation where the jump at the end of the basic block defines a variable used in the following \phiop. We should also be careful of duplicated edges, ie when a basic block appears twice in the list of predecessors. This can append after some dead code and empty block eliminations. In that case, the edges should be considered as critical and then split.
+Even this extremely conservative SSA destruction algorithm
+can potentially lead to potential bugs,
+particularly at the code generation stage.
+It is essential to ensure that it is possible
+to append a copy operation at the very end of a basic block.
+This would, for example, be problematic in the situation 
+where the jump at the end of the basic block
+defines a variable used in the following \phiop,
+(such as a Jump-And-Set instruction).
+Care must be taken with duplicated edges, i.e.\
+when the same basic block appears twice in the list of predecessors.
+This can occur after CFG structural optimizations like
+dead code elimination or empty block elimination.
+In such case, the edges should be considered as critical and then split.
 
-We should outline that this technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not allow to split a given edge; second, the obtained code contains many additional temporary-to-temporary copies. In theory, coping with these copies is the role of the coalescer during the register allocation phase. But only decoupled register allocators (such as the one detailed in Chapter~\ref{chap:register-allocation}) with memory and time-consuming coalescing heuristics can handle the removal of these copies effectively. Coalescing can also, with less efforts, be handled prior to the register allocation phase. As opposed to a (so called conservative) coalescer during register allocation, this so called aggressive coalescing would not cope with the interference graph colorability. Still the insertion of copies itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative-destruction} is to cope both with non splittable edges and difficulties related with SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
+We stress that the above destruction technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not permit the splitting of a given edge; second, the resulting code contains many temporary-to-temporary copy operations. In theory, reducing the frequency of these copies is the role of the coalescer during the register allocation phase. But only decoupled register allocators (such as the one detailed in Chapter~\ref{chap:register-allocation}) with memory and time-consuming coalescing heuristics can handle the removal of these copies effectively. Coalescing can also, with less effort, be performed prior to the register allocation phase. As opposed to a (so-called conservative) coalescer during register allocation, this \emph{aggressive} coalescing would not cope with the interference graph colorability. Further, the process of copy insertion itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative-destruction} is to cope both with non-splittable edges and difficulties related with SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
 
-Once, \phiops\ have been replaced by parallel copies, we need to sequentialize parallel copies ie replace them by a sequence of simple copies. This phase can be performed right after SSA destruction or later on even after register allocation have been performed (see Chapter~\ref{chap:register_allocation}). It might be useful to postpone it as it introduces some arbitrary interferences between variables. As an example, $(a_1,b_1)\gets (a_2,b_2)$ can be sequentialized into $a_1\gets a_2;\ b_1\gets b_2$ which would make $b_2$ interfere with $a_1$ while the other way round $b_1\gets b_2;\ a_1\gets a_2$ would not ($a_2$ would interfere with $b_1$ instead).
-If we still decide to replace parallel copies into a sequence of simple copies right after our SSA destruction (with no copy propagation / coalescing in between), this is straightforward: as no variable both appears as a source and as a destination (either all the sources or all the destinations are freshly created variables), any order is correct. Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} will provide the pseudo-code that is required after coalescing have been performed and Chapter~\ref{chapter:register_allocation} will deal with the case under register allocated code.
+Once \phiops\ have been replaced by parallel copies, we need to sequentialize the parallel copies, i.e.\ replace them by a sequence of simple copies. This phase can be performed immediately after SSA destruction or later on, perhaps even after register allocation (see Chapter~\ref{chap:register_allocation}). It might be useful to postpone the copy sequentialization since it introduces arbitrary interference between variables. As an example, $(a_1,b_1)\gets (a_2,b_2)$ can be sequentialized into $a_1\gets a_2;\ b_1\gets b_2$ which would make $b_2$ interfere with $a_1$ while the other way round $b_1\gets b_2;\ a_1\gets a_2$ would make $a_2$ interfere with $b_1$ instead.
+
+If we still decide to replace parallel copies into a sequence of simple copies immediately after SSA destruction (with no copy propagation / coalescing in between), this is straightforward: as no variable appears as both a source and a destination (either all the sources or all the destinations are freshly created variables), any order is correct. Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} will provide the pseudo-code that is required after coalescing have been performed and Chapter~\ref{chapter:register_allocation} will deal with the case involving register-allocated code..
 
 \section{Turning general SSA into minimal/conventional/pruned/dominance property}
 
