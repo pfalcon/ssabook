@@ -65,6 +65,10 @@ form as input extends the scope of pattern matching to more complex IR graphs,
 in particular those resulting from control-flow constructs.
 
 \item If-conversion or instruction predication (Chapter~\ref{chap:if_conversion})
+A predicated instruction behavior includes a traditional data processing part
+such as arithmetic or memory access, and a predicate evaluation part often
+connected to a separate operand. When the predicate evaluates to false, the
+instruction has no architectural effects.
 
 \item Inner loop unrolling or unwinding (Chapter~\ref{chap19:loopTree}).
 
@@ -90,9 +94,9 @@ registers, except for instructions with ISA or ABI constraints that binds them
 to specific architectural registers. Moreover, preparation to pre-pass
 instruction scheduling include virtual register renaming, also known as register
 web construction, in order to reduce the number of anti dependences and output
-dependences in the instruction scheduling problem. As a result, there is little
-to gain to schedule instructions on a SSA form program representation:
-\begin{itemize}
+dependences in the instruction scheduling problem. Other reasons why it seems
+there is little to gain to schedule instructions on a SSA form program
+representation include: \begin{itemize}
 
 \item Except in case of trace scheduling, the scheduling regions considered
 earlier are single-entry and do not have control-flow merge. So there are no
@@ -113,6 +117,15 @@ So scheduling instructions with SSA variables as operands is not effective
 unless extra dependences are added to the scheduling problem to prevent such
 code motion. 
 
+\item Machine instructions may have side effects on stateful resources such as
+the processor condition codes. Representing them as SSA variables even though
+these resources are not operated like the processor architectural registers
+requires special casing. For instance 'sticky' flags definitions of the IEEE~754
+arithmetic imply a OR with the previous value. All such definitions can be
+reordered with regards to the next use and an instruction scheduler is expected
+to do so. However this type of flexibility is cumbersome to represent in the
+SSA form.
+
 \end{itemize} These issues need to be addressed before any pre-pass instruction
 scheduling on the SSA form demonstrates advantages over classic approaches.
 \medskip
@@ -123,29 +136,37 @@ coloring, and variable coalescing (Chapter~\ref{chap:register_allocation}). Afte
 the register allocation, program variables are mapped to architectural registers
 or memory locations, so the SSA form analyses and optimizations no longer apply.
 
-\section{Pragmatics of the SSA form on machine instructions}
+\section{Issues of the SSA form on machine instructions}
 
 Applying the SSA form to a program representation at the level of machine
-instructions appears challenging for a number of reasons:
+instructions raises a number issues that must be correctly addressed:
 \begin{itemize}
+
+\item In compiler code generator, the sequential layout of basic blocks is a key
+component of the program representation, is the target of specific
+optimizations, and is constrained by several factors, including exception
+handling ranges in compilers such as the Open64. A number of embedded processor
+architectures such as the Tensilica Xtensa provide hardware loops, where an
+implicit conditional branch back to the loop header is taken whenever the
+program counter match some address. A number of SSA form optimizations require
+that critical edges be split, however this is not possible with hardware loop
+back edges.
 
 \item Machine instructions may have multiple result operands, such as memory
 accesses with auto-modified addressing, or memory loads into register pairs.
 More generally, instructions with a result in register tuple such as long
 multiplies of the ARM imply multiple results as far as the SSA form is
 concerned, whether on the instruction itself, or on a pseudo-instruction
-instructions that extracts the individual components of the register tuple.  So
+instructions that extracts the individual components of the register tuple. So
 there is no longer a one-to-one mapping between variable definitions and
 instructions for the SSA form on machine instructions.
 
-\item Machine instructions may have side effects on stateful resources such as
-the processor condition codes. Representing them as SSA variables even though
-these resources are not operated like the processor architectural registers
-requires special casing. For instance 'sticky' flags definitions of the IEEE~754
-arithmetic imply a OR with the previous value. All such definitions can be
-reordered with regards to the next use and an instruction scheduler is expected
-to do so. However this type of flexibility is cumbersome to represent in the the
-SSA form.
+\item The SSA form analyses and optimizations assumes that variable definitions
+are kills. As discussed earlier, this is not the case for condition registers
+with sticky bit semantics. Besides sticky bits, any containment or overlap
+between bit-fields abstracted as SSA variables, such as the condition codes of
+the processor status register, implies aliasing between these variables that
+must be worked around so their definition can be processed as kills.
 
 \item Some variables, such as the stack pointer, must be bound to a specific
 register at all points in the program, for instance if interrupt handlers reuse
@@ -157,27 +178,49 @@ their semantics as far as the SSA form optimizations are concerned.
 \item Machine instruction operands may be constrained to specific architectural
 registers, either by the instruction set architecture (ISA constraints), or by
 the run-time software conventions such as the application binary interface (ABI
-constraints). These constraints can be represented by inserting parallel COPY
+constraints). One way to deal with this problem is by inserting parallel COPY
 instruction that write to the constrained operands or read from the constrained
 results of the instructions. The new SSA variables thus created are pre-colored
-with the required architectural register. These parallel COPY instructions are
-later processed by the coalescing phase of the SSA form register allocation.
+with the required architectural register. The parallel COPY instructions are
+coalesced away or sequentialized when going out of SSA.
 
 \item Machine instruction operands may be constrained to use the same
 architectural register between an argument and a result, or even to use
 different architectural registers between two argument operands (MUL
 instructions on the ARM). Operand constraints between one argument and the
 result are the general case on popular instruction set architectures such as
-\textsf{x68} of the \textsf{ARM~Thumb}.
+\textsf{x68} of the \textsf{ARM~Thumb}. These constraints are represented by
+inserting a COPY between the constrained argument operand and a new variable,
+then using this new variable as the constrained argument. The COPY is a parallel
+copy in case of multiple constrained arguments. Again, the (parallel) COPY
+instructions are processed when going out of SSA.
 
-\item Predicated instructions
-
-\item Unsplittable critical edges
+\item Predicated instructions present another aspect of definitions that do not
+kill the result register. Extensions such as $\psi$-SSA
+(Chapter~\ref{chap:psi_ssa}) specifically address the issues of handling
+predicated instructions in the SSA form. A simpler solution is as follows: for
+each result operand of the predicated instruction, add a corresponding argument
+operand in the instruction signature; then add an operand renaming constraint
+between the result operands and the corresponding argument operands. This simple
+transformation enables SSA form analyses and optimizations to remain oblivious
+to predicated instructions; for instance, a conditional MOVE appears as a SELECT
+instruction. The drawback of this solution is that predicated definitions of a
+given variable (before SSA renaming) remain in dominance order across
+transformations, as opposed to $\psi$-SSA where predicate analysis may enable to
+relax this order.
 
 \end{itemize}
 
 
-\section{Interference graphs on the SSA form}
+\section{Engineering a SSA form code generator}
+
+Machine description system
+
+Choices of phi function semantics
+
+Register allocate under SSA or not
+
+%\section{Interference graphs on the SSA form}
 
 %that enabling information such as pointer aliasing and memory dependence be
 %available. The main stand-alone SSA-based analyses useful in a code generator
