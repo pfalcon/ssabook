@@ -9,27 +9,27 @@
 
 \section{Overview/Motivations}
 
-We describe in this chapter an if-conversion algorithm in SSA. If-conversion is the process to optimize a control flow region into an equivalent region where branches have been removed. We start with a description of a full SSA model, taking as input a SSA region producing a SSA region using control speculation techniques. We then describe how this framework is extended to use predicated execution, using the $\psi$-SSA form presented in chapter ???. 
+If-conversion is the process by which all or parts of the CFG are transformed into an equivalent region where branches have been removed, merging multiple flow of execution into a straight line of code. 
+We start with a description of a full SSA model, taking as input a region in SSA form producing a reduced SSA representation using control speculation techniques. We then describe how this framework is extended to use predicated execution, producing the $\psi$-SSA form presented in chapter ???. This if-converted, or predicated representation can then exploited by VLIW or hyperblocks framework scheduling frameworks.
 
 \subsection{Introduction}
 
-A way to increase the instruction throughput is to increase the IPC (number of instructions per cycle), either by increasing pipeline depth, or by increasing the number of instructions that are executed simultaneously. This can be achieved by multiple issue processors. Either out-of-order superscalar execution models, using dynamic scheduling models and expensive hardware complexity or else in-order execution model in embedded processors because of lower hardware complexity, implying lower production and usage costs.
+A way to increase the instruction throughput is to increase the IPC (number of instructions per cycle), either by increasing the pipeline depth, or by increasing the number of instructions that are executed simultaneously, using multiple issue processors. This can be achieved by either out-of-order superscalar execution, using dynamic scheduling models and expensive hardware complexity. An alternative is to use in-order execution model, popular in embedded processors requiring lower hardware complexity and usage costs. 
 
 Instruction Level Parallelism (ILP) was demonstrated to be very effective on embedded processors, for example in the mathematical for evaluation of polynomial expressions \cite{Jeannerod:2010:TTI:1837210.1837212}, or to sustain performance in loop intensive computation required for multimedia applications \cite{FisherFaraboshiYoung}.
 
-In order to exploit this ILP, those applications delegate to the compiler the responsibility to organize the parallel execution of the execution flow \cite{Rau:2003:IP:1074100.1074489}.
+In order to exploit this ILP, The responsibility to organize the parallel execution of the execution flow \cite{Rau:2003:IP:1074100.1074489} can be left to the compiler.
+To help the compiler to organize the parallelism explicitly, VLIW (Very Large Instruction World) or EPIC (Explicitly Parallel Architectures) make the parallelism visible into the ISA representation, relaying on the static scheduler to organize the compiler output so that multiple instructions can be issued for each cycle. 
 
-To permit the compiler to organize the parallelism explicitly, VLIW (Very Large Instruction World) or EPIC (Explicitly Parallel Architectures) make the parallelism visible into the ISA representation, relaying on the static scheduler to organize the compiler output so that multiple instructions can be issued for each cycle. 
-
-Unfortunately, programs contain many sequences of instructions that cannot be parallelized, because of control or data dependencies. Different Instruction Level Parallelism techniques are implemented in the hardware, such as dynamic scheduling, branch prediction, or in the compiler, such as software pipeline, vectorization or loop optimizations. But still, despite those efforts, the execution flow is still disrupted by conditional branches, and many ALU cycles are wasted. 
+Unfortunately, programs contain many sequences of instructions that cannot be parallelized, because of control or data dependencies. In order to remove those dependencies, ILP techniques can be implemented in the hardware, such as dynamic scheduling, branch prediction, or in the compiler, such as software pipeline, vectorization or loop optimizations. But still, despite those efforts, the execution flow is still disrupted by conditional branches, and many ALU cycles are wasted. 
 
 Conditional branches introduce control dependencies between instructions. An instruction is control dependent on a preceding instruction if the first one determines the execution of the second one \cite{Kennedy:2001:OCM:502981}. They limit the scope of ILP optimizations, because they reduce the number of instructions that are not data dependent and thus can be executed in parallel. By reducing the average size of a basic block, they act as a bottleneck for exposing parallelism.
 
-If-conversion is the process of transforming a control flow region containing several basic blocks into a single basic block of conditional instructions. Thus removing control branches from this region \cite{Schlansker97achievinghigh}. The conditional instructions are implemented on the target machine using the predication or speculation techniques described bellow.
+If-conversion is the process of transforming a control flow region containing several basic blocks into a single basic block of conditional instructions. Thus removing control branches from this region \cite{Schlansker97achievinghigh}.
 
-Removing branches improves performance in several ways: by removing the mis-prediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows the static scheduler to schedule earlier long latency operations and to improve the ILP by merging multiple control paths into a single flow of execution. Many compiler optimizations are impacted by branches. Software Pipelining for example, cannot efficiently schedule loops with conditional branches \cite{Warter:1992:EMS:144953.145796}.
+Removing branches improves performance in several ways: by removing the mis-prediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows earlier execution of long latency operations and merge of multiple control paths into a single flow of execution. Many compiler optimizations are impacted by branches. Software Pipelining for example, cannot efficiently schedule loops with conditional branches \cite{Warter:1992:EMS:144953.145796}.
 
-Consider the simple example \ref{fig:example1}, that represents the execution of an if-then-else statement on a 4-issue processor. Branches are highly biased (a branch is highly biased when it is known to be frequently taken or not), so the basic blocks can be reordered to favor the critical path. Even with this optimistic case, the schedule height is still 5 cycles (assuming that all instructions have a one cycle latency), with a maximal schedule height of 6 instructions. 
+Consider the simple example \ref{fig:example1}, that represents the execution of an if-then-else statement on a 4-issue processor. Branches are highly biased (a branch is highly biased when it is known to be frequently taken or not), so the basic blocks can be reordered to favor the critical path. Even with this optimistic case, the schedule height is still 6 cycles (assuming that all instructions have a one cycle latency), with a maximal schedule height of 7 instructions. 
 
 \begin{figure}
 \footnotesize
@@ -45,30 +45,32 @@ Consider the simple example \ref{fig:example1}, that represents the execution of
       & $q \cond br$ $L_1$ & -       & - & - \\
       & $x = 2$            & $y = 3$ & - & - \\
       & $r = x * y$ & - & - & - \\
-$L_2$ & $r = r + 1$ & $return$ $r$  & - & - \\
+$L_2$ & $r = r + 1$ & - & - & - \\
+      & $return$ $r$ & - & - & - \\
 $L_1$ & $x = a$ & $y = 2$ & - & - \\
-      & $r = x + b$ & - & - & - \\
+      & $r = x + y$ & - & - & - \\
       & $br$ $L_2$ & - & - & - \\
      \end{tabular}}
 \vspace{1cm}
   \subfloat[After if-conversion] {
-     \begin{tabular}[t]{llll}
-      ALU1 & ALU2 & ALU3 & ALU 4 \\
+     \begin{tabular}[t]{lllll}
+      & ALU1 & ALU2 & ALU3 & ALU 4 \\
 \hline
-      $q = test$ & - & - & - \\
-      $x_1 = 2$ & $y_1 = 3$ & $x_2 = a$ & $y_2 = 2$ \\
-      $r_1 = x_1 * y_1$ & $r_2 = x_2 + y_2$ & - & - \\
-      $r = q \cond r_1 : r_2$ & $return$ $r$  & - & - \\
-       & & & \\     
-       & & & \\     
-       & & & \\     
-       & & & \\     
+      & $q = test$ & - & - & - \\
+      & $x_1 = 2$ & $y_1 = 3$ & $x_2 = a$ & $y_2 = 2$ \\
+      & $r_1 = x_1 * y_1$ & $r_2 = x_2 + y_2$ & - & - \\
+      & $r = q \cond r_1 : r_2$ & - & - & - \\
+      & $return$ $r$ & - & - & - \\
+      & & & & \\     
+      & & & & \\     
+      & & & & \\     
+      & & & & \\     
      \end{tabular}}
 \caption{Static schedule of a simple region on a 4 issue processor}
 \label{fig:example1}
 \end{figure}
 
-After if-conversion the execution path is reduced to 4 cycles, regardless of the tests outcomes. 
+After if-conversion the execution path is reduced to 5 cycles, regardless of the tests outcomes.
 
 From this introductory example, we can observe that the transformation implies:
 
@@ -80,7 +82,7 @@ From this introductory example, we can observe that the transformation implies:
 \item The production of new data dependencies. If-conversion transforms control dependencies into data dependencies \cite{Allen:1983:CCD:567067.567085}. 
 \end{itemize}
 
-In SSA, the merging point is already materialized into the original control flow by the $\phi$ pseudo operation and that the renaming is a basic property of SSA. the transformation from SSA to if-converted code seems straightforward.
+Thanks to SSA, the merging point is already materialized into the original control flow by the $\phi$ pseudo operation qnd register renaming is a basic property of SSA. Given those similarities between SSA and the if-conversion requirements, the transformation if-converted code seems natural. We describe here the framework to use those properties to more complex regions.
 
 \subsection{Architectural requirements}
 The example illustrates also that the \textit{merge} pseudo operations needs to be mapped to a conditional form of execution on the target's architecture. Depending on the available support, the algorithm must be able to match the ISA, to provide support for conditional execution of instructions, or to conditionally commit the result of an instruction.
