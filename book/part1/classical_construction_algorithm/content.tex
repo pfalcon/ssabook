@@ -325,26 +325,20 @@ In other words,
 \emph{the single definition that reaches each use dominates that use}.
 
 \subsubsection*{Renaming Phase}
-
+\newcommand\reachingDef[1]{v.\mathrm{reachingDef}}
 To obtain the desired property of a static single assignment per variable,
 it is necessary to perform \textbf{variable renaming}, which
 is the second phase in the SSA construction process.
+\phiop\ insertions have the effect of splitting the live-range(s) of each original variable into pieces. The variable renaming phase associates to each individual live-range a new variable name, also called \emph{version}.
 Algorithm \ref{alg:classical:renaming} presents the pseudo-code
 for this process.
 Because of the dominance property outlined above,
 it is straightforward to rename variables
 using a depth-first traversal of the dominance tree.
 During the traversal, for each variable $v$, it is necessary to
-remember its unique reaching definition at some point $p$ in the graph. 
-For SSA graphs, this corresponds to the closest dominating definition
-of $v$ at $p$.
+remember its unique reaching version's definition at some point $p$ in the graph. This corresponds to the closest definition dominating $p$.
 In Algorithm \ref{alg:classical:renaming}, we compute and cache the 
-reaching definition for $v$ in the array $\mathrm{reachingDef}[v]$.
-This array is indexed by variable name, and stores 
-`renamed' variable names as elements. 
-The
-$\mathrm{reachingDef}$ array is updated as the algorithm traverses
-the dominator tree of the SSA graph.
+reaching definition for $v$ in the variable field $\reachingDef{v}$ that is updated as the algorithm traverses the dominator tree of the SSA graph.
 
 The variable renaming algorithm translates our running example 
 from Figure~\ref{fig:classical_construction_algorithm:examplecfg}.
@@ -364,28 +358,28 @@ into the SSA form of Figure
 \tcc{rename variable definitions and uses to have one definition per
   variable name}
 \ForEach{v : Variable}{
-    $\mathrm{reachingDef}[v] \leftarrow \bot$\;
+    $\reachingDef{v} \leftarrow \bot$\;
 }
 \ForEach{ B : basic Block in depth-first search preorder traversal of the dominance tree}{
   \ForEach{ i : instruction in linear code sequence of B}{
       \ForEach{v : variable used as a source operand on right-hand
         side of  non-\phiop\ i}{
         $\mathrm{updateReachingDef}(v,i)$\;
-        replace this use of $v$ by $\mathrm{reachingDef}[v]$ in $i$\;
+        replace this use of $v$ by $\reachingDef{v}$ in $i$\;
       }
       \ForEach{ v : variable defined by i, which may be a \phiop}{
         $\mathrm{updateReachingDef}(v,i)$\;
         create fresh variable $v'$\;
         replace this definition of $v$ by $v'$ in $i$\;
-        $\mathrm{reachingDef}[v'] \leftarrow \mathrm{reachingDef}[v]$ \;
-        $\mathrm{reachingDef}[v] \leftarrow v'$\;
+        $\reachingDef{v'} \leftarrow \reachingDef{v}$ \;
+        $\reachingDef{v} \leftarrow v'$\;
       }
   }
   \ForEach{f: \phiop\ in a successor of B}{
       \ForEach{ v : variable used as a source operand on right-hand
         side of f}{
         $\mathrm{updateReachingDef}(v,f)$\;
-        replace this use of $v$ by $\mathrm{reachingDef}[v]$ in $f$\;
+        replace this use of $v$ by $\reachingDef{v}$ in $f$\;
       }
  }
 }
@@ -399,13 +393,13 @@ into the SSA form of Figure
 \KwData{$i$ : instruction from program}
 \Begin{
   \tcc{search through chain of definitions for v until we find the
-    closest definition that dominates i, then update reachingDef[v] 
+    closest definition that dominates i, then update $\reachingDef{v}$
     in-place with this definition}
-  $r \leftarrow \mathrm{reachingDef}[v]$\;
+  $r \leftarrow \reachingDef{v}$\;
   \While{ not ($r==\bot$ or definition($r$) dominates $i$)}{
-    $r \leftarrow \mathrm{reachingDef}[r]$\;
+    $r \leftarrow \reachingDef{r}$\;
   }
-  $\mathrm{reachingDef}[v] \leftarrow r$\;
+  $\reachingDef{v} \leftarrow r$\;
 }
 \caption{updateReachingDef(v,i) Utility
   function for SSA renaming\label{alg:classical:updateRD}}
@@ -414,24 +408,18 @@ into the SSA form of Figure
 % Some paragraphs summarizing similarities / diffs between this
 % algorithm and standard stack-based renaming algorithm.
 This renaming algorithm uses a single $\mathrm{reachingDef}$ slot 
-per variable to store the in-scope, `new' variable name for each
-variable used in the un-renamed program.
-The original SSA papers (and most subsequent compiler textbooks)
-instead present a stack-based algorithm that has a stack of `new' names for
-each `original' name. A stack value is pushed when a
-variable definition is
-processed (we explicitly update the reachingDefs array at this point).
+per variable to store the in-scope, `new' variable name (version) for each
+variable used in the un-renamed program. An equivalent approach uses a stack that stores all versions that dominate the current program point. 
+A stack value is pushed when a variable definition is
+processed (while we explicitly update the reachingDefs field at this point).
 The top stack value is peeked when a variable use is encountered
-(we read from the reachingDefs array at this point).
+(we read from the reachingDefs field at this point).
 Multiple stack values may be popped when moving to a different node
-in the dominator tree
-(we always check whether we need to update the reachingDefs array
+in the dominator tree 
+(we always check whether we need to update the reachingDefs field
 before we read from it).
 
-We believe our presentation to be conceptually simpler,
-and potentially more efficient. 
-This renaming algorithm is implemented in the STMicro LAO compiler.
-
+While the slot-based algorithm requires more memory, it can take advantage of an existing variable's working field, and be more efficient in practice. 
 
 \subsubsection*{Summary}
 
