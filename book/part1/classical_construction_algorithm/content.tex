@@ -324,58 +324,98 @@ then use-def chains are aligned with the CFG dominance tree.
 In other words,
 \emph{the single definition that reaches each use dominates that use}.
 
+\subsubsection*{Renaming Phase}
+
 To obtain the desired property of a static single assignment per variable,
 it is necessary to perform \textbf{variable renaming}, which
 is the second phase in the SSA construction process.
+Algorithm \ref{alg:classical:renaming} presents the pseudo-code
+for this process.
 Because of the dominance property outlined above,
 it is straightforward to rename variables
 using a depth-first traversal of the dominance tree.
 During the traversal, for each variable $v$, it is necessary to
-remember its closest dominating definition.
-This gives the following pseudo-code for the variable renaming algorithm which translates our running example into the SSA form of Figure~\ref{fig:classical_construction_algorithm:examplecfg}:
+remember its unique reaching definition at some point $p$ in the graph. 
+For SSA graphs, this corresponds to the closest dominating definition
+of $v$ at $p$.
+In Algorithm \ref{alg:classical:renaming}, we compute and cache the 
+reaching definition for $v$ in the array $\mathrm{reachingDef}[v]$.
+This array is indexed by variable name, and stores 
+`renamed' variable names as elements. 
+The
+$\mathrm{reachingDef}$ array is updated as the algorithm traverses
+the dominator tree of the SSA graph.
+
+The variable renaming algorithm translates our running example 
+from Figure~\ref{fig:classical_construction_algorithm:examplecfg}.
+into the SSA form of Figure
+\ref{fig:classical_construction_algorithm:renaming}.
+
+
 
 \begin{figure}
 \includegraphics[width=0.5\textwidth]{renaming.jpg}
 \caption{\label{fig:classical_construction_algorithm:renaming} SSA form of the example of Figure~\ref{fig:classical_construction_algorithm:examplecfg}}
 \end{figure}
-\emph{FIXME - the actual `classical' algorithm presented by
-Cytron et al uses a stack of SSA names for each original variable.
-Why are we not following this algorithm? Is our algorithm equivalent?
-If it is equivalent, is this alternative easier to understand?
-If it is not equivalent, should we mention the original algorithm?}
 
-\begin{verbatim}
-proc renaming:
-// rename variable def and use to have one definition per variable
-  foreach v: Variable
-    let v.reachingDef:=undef
-  foreach B: basicBlock in DFS preorder of the dominance tree
-    foreach inst: instruction from top to bottom of B
-      foreach o: a use operand of inst
-        let v the variable used in o
-        v.update_reachingDef(o)
-        replace v by v.reachingDef in o
-      foreach o: a def operand of inst
-        let v the variable used in o
-        v.update_reachingDef(o)
-        create new variable v'
-        replace v by v' in o
-        v'.reachingDef:=v.reachingDef
-    foreach phi: phi instruction in a successor of B
-      foreach o: a use operand of phi
-        let v the variable used in o
-        v.update_reachingDef(o)
-        replace v by v.reachingDef in o
-\end{verbatim}
+\begin{algorithm}
+%proc renaming:
+\Begin{
+\tcc{rename variable definitions and uses to have one definition per
+  variable name}
+\ForEach{v : Variable}{
+    $\mathrm{reachingDef}[v] \leftarrow \bot$\;
+}
+\ForEach{ B : basic Block in depth-first search preorder traversal of the dominance tree}{
+  \ForEach{ i : instruction in linear code sequence of B}{
+      \ForEach{v : variable used as a source operand on right-hand
+        side of  non-\phiop\ i}{
+        $\mathrm{updateReachingDef}(v,i)$\;
+        replace this use of $v$ by $\mathrm{reachingDef}[v]$ in $i$\;
+      }
+      \ForEach{ v : variable defined by i, which may be a \phiop}{
+        $\mathrm{updateReachingDef}(v,i)$\;
+        create fresh variable $v'$\;
+        replace this definition of $v$ by $v'$ in $i$\;
+        $\mathrm{reachingDef}[v'] \leftarrow \mathrm{reachingDef}[v]$ \;
+        $\mathrm{reachingDef}[v] \leftarrow v'$\;
+      }
+  }
+  \ForEach{f: \phiop\ in a successor of B}{
+      \ForEach{ v : variable used as a source operand on right-hand
+        side of f}{
+        $\mathrm{updateReachingDef}(v,f)$\;
+        replace this use of $v$ by $\mathrm{reachingDef}[v]$ in $f$\;
+      }
+ }
+}
+}
+\caption{\label{alg:classical:renaming}Renaming algorithm for second
+  phase of SSA construction}
+\end{algorithm}
 
-\begin{verbatim}
-proc v.update_reachingDef(o):
-// simply go up along the reachingDef chain until dominance is fulfilled   
-  let rd:=v.reachingDef
-  while not (rd==undef || def(rd) dominates o)
-    rd:=rd.reachingDef
-  v.reachingDef:=rd
-\end{verbatim}
+\begin{procedure}
+\KwData{$v$ : variable from program}
+\KwData{$i$ : instruction from program}
+\Begin{
+  \tcc{search through chain of definitions for v until we find the
+    closest definition that dominates i, then update reachingDef[v] 
+    in-place with this definition}
+  $r \leftarrow \mathrm{reachingDef}[v]$\;
+  \While{ not ($r==\bot$ or definition($r$) dominates $i$)}{
+    $r \leftarrow \mathrm{reachingDef}[r]$\;
+  }
+  $\mathrm{reachingDef}[v] \leftarrow r$\;
+}
+\caption{updateReachingDef(v,i) Utility
+  function for SSA renaming\label{alg:classical:updateRD}}
+\end{procedure}
+
+Some paragraphs summarizing similarities / diffs between this
+algorithm
+and standard stack-based renaming algorithm.
+
+
 
 \subsubsection*{Summary}
 
