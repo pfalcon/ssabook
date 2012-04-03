@@ -12,9 +12,8 @@
 \def\undef{\perp}
 \def\DF{\mathrm{DF}}
 \def\iDF{\mathrm{iDF}}
-\def\join{\cup}
+\def\join{\J}
 \SetKwFunction{Let}{let\ }
-
 
 %% jsinger - simple introductory paragraphs
 
@@ -30,7 +29,7 @@ SSA \emph{destruction} is sometimes called out-of-SSA translation. This phase
 generally
 takes place in an optimizing compiler after all SSA optimizations have
 been performed, and prior to code generation. However note that there are
-specialized code generation techniques that work directly on SSA-based
+specialized code generation techniques that can work directly on SSA-based
 intermediate representations such as code selection (see
 Chapter~\ref{chapter:code_selection}), if-conversion (see
 Chapter~\ref{chap:if_conversion}),
@@ -45,23 +44,24 @@ are widely implemented in current compilers.
 Note that more
 efficient, albeit more complex, alternative algorithms have been devised.
 These are described further in Chapters 
-\ref{chap:alternative_ssa_construction_algorithms}
+\ref{chapter:alternative_ssa_construction_algorithms}
 and
-\ref{chap:alternative_ssa_destruction_algorithm}.
+\ref{chapter:alternative_ssa_destruction_algorithm}.
 
-Throughout this chapter,
-we assume that a `program' is represented as an
-intra-procedural control flow graph (CFG)
-with a single entry node $r$, from which every other
-node is reachable.
-Each node is a basic block, containing a straightline
-sequence of program statements.
-Data flow occurs through definitions and uses of 
-variables, with no pointer indirection.
-%% FIXME - forward reference to Part II ...
-(Part II of this textbook contains chapters dealing with
-SSA extensions for high-level features like
-pointer-based aliasing, arrays, compound data structures, concurrency, etc.)
+% To be put in vanilla if necessary
+%% Throughout this chapter,
+%% we assume that a `program' is represented as an
+%% intra-procedural control flow graph (CFG)
+%% with a single entry node $r$, from which every other
+%% node is reachable.
+%% Each node is a basic block, containing a straightline
+%% sequence of program statements.
+%% Data flow occurs through definitions and uses of 
+%% variables, with no pointer indirection.
+%% %% FIXME - forward reference to Part II ...
+%% (Part II of this textbook contains chapters dealing with
+%% SSA extensions for high-level features like
+%% pointer-based aliasing, arrays, compound data structures, concurrency, etc.)
 
 Figure \ref{fig:examplecfg} shows an example CFG 
 program. The set of nodes is $\{ r, A, B, C, D, E\}$.
@@ -83,7 +83,7 @@ to demonstrate various aspects of SSA construction.
 
 \begin{figure}
 \includegraphics[width=5cm]{initial.jpg}
-\caption{\label{fig:examplecfg}Example control flow graph, before
+\caption{\label{fig:classical_construction_algorithm:examplecfg}Example control flow graph, before
   SSA construction occurs}
 \end{figure}
 
@@ -108,10 +108,10 @@ for a given set of nodes $S$, $\join(S)$ is the set of
 \textit{join nodes} of $S$
 i.e., nodes in the CFG that can be reached by
 two (or more) distinct elements of $S$ using disjoint paths.
-Join sets were introduced in Section \ref{sec:properties:domfrontiers}.
+Join sets were introduced in Section~\ref{sec:properties_and_flavors:minimal}.
 
 Let us consider some join set examples from the
-program in Figure \ref{fig:examplecfg}.
+program in Figure \ref{fig:classical_construction_algorithm:examplecfg}.
 \begin{enumerate}
 \item $\join(\{B,C\}) = \{D\}$, since it is possible to get from $B$ to $D$
 and from $C$ to $D$ along different, non-overlapping, paths.
@@ -134,50 +134,37 @@ $$\begin{array}{lll}
 \end{array}$$
 
 % described dominance frontiers? In chapter 2?
-Recall the definition of dominance frontiers from Section
-\ref{sec:properties:domfrontiers}.
+Recall the definition of dominance frontiers from Section~\ref{sec:properties_and_flavors:minimal}.
 Informally, the dominance frontier of a node $A$, $\DF(A)$,
 is the border of the CFG region that is dominated by $A$.
 Also note that $\DF$ is defined over individual nodes, 
 but for simplicity of presentation, we overload it to 
 operate over sets of nodes too, i.e.\ 
-$\DF(\{A,nB\}) = \DF(A) \cup \DF(B)$.
+$\DF(S) = \bigcup_{s\in S} \DF(s)$.
 
 This naturally leads to a
 straightforward approach that places \phiops\
 on a per-variable basis.
 For a given variable $v$, we place \phiops\ at the
-iterated dominance frontier $\iDF(S)$ where
-$S$ is the set of nodes containing definitions of $v$.
+iterated dominance frontier $\iDF(D_v)$ where
+$D_v$ is the set of nodes containing definitions of $v$.
 This leads to the construction of a form that has 
-the dominance property, recall
-Section \ref{sec:properties:ssawithdominance}.
+the dominance property, i.e. where each variable's definition dominates its entire live-range.
 
 Consider again our running example from Figure 
-\ref{fig:examplecfg}. The set of nodes containing definitions
+\ref{fig:classical_construction_algorithm:examplecfg}. The set of nodes containing definitions
 of variable
 $x$ is $\{ B,C,D \}$. The iterated dominance frontier of this set
 is $\{ A, D, E \}$. Hence we need to insert 
 \phiops\ for $x$ at the beginning of nodes $A$, $D$, and $E$.
-Figure \ref{fig:examplecfg_varx} shows the example CFG program
+Figure \ref{fig:classical_construction_algorithm:examplecfg_varx} shows the example CFG program
 with inserted \phiops\ for $x$ marked in red.
-
-\begin{figure}
-\includegraphics[width=5cm]{ssa_variablex.jpg}
-\caption{\label{fig:examplecfg_varx}Example control flow graph, including
-inserted \phiops\ for variable $x$
-}
-\end{figure}
 
 
 
 As far as the actual algorithm for \phiops\ insertion
 is concerned, we will assume that the dominance
-frontier of each CFG node is precomputed. However
-it is not reasonable to assume that the iterated dominance frontier is
-precomputed.
-Thus the iterated dominance frontier is computed just-in-time,
-as the algorithm proceeds.
+frontier of each CFG node is precomputed and that the iterated dominance frontier is computed just-in-time, as the algorithm proceeds.
 The algorithm works by inserting \phiops\ iteratively
 using a worklist of definition points, and flags (to avoid multiple
 insertions). The corresponding pseudo-code for
@@ -198,11 +185,11 @@ Effectively, this is the just-in-time construction of
 the iterated dominance frontier.
 
 
-The flags array $I$ is used to avoid repeated insertion of \phiops
+The flags array $I$ is used to avoid repeated insertion of \phiops\
 at a single node. Dominance
 frontiers
 of distinct nodes may intersect, e.g.\ in the example CFG in Figure
-\ref{fig:examplecfg},
+\ref{fig:classical_construction_algorithm:examplecfg},
 $\DF(B)$ and $\DF(C)$ both contain $D$. 
 Once a \phiop\ for a particular variable has been
 inserted at a node,
@@ -215,65 +202,98 @@ gives a walkthrough example of Algorithm
 It shows the stages of execution for a single iteration of
 the outermost for loop, which is inserting \phiops\
 for variable $x$.
-At the beginning, the CFG looks like Figure \ref{fig:examplecfg}.
+At the beginning, the CFG looks like Figure \ref{fig:classical_construction_algorithm:examplecfg}.
 At the end, when all the \phiops\ for $x$ have
-been placed, then the CFG looks like Figure \ref{fig:examplecfg_varx}.
-\emph{FIXME - should we include a graphic showing
-the CFG state at intermediate phases 
-in the walkthrough?}
+been placed, then the CFG looks like Figure \ref{fig:classical_construction_algorithm:examplecfg_varx}.
+%FIXME - should we include a graphic showing the CFG state at intermediate phases in the walkthrough?
+%FAB: don't think so. 
+
+%FAB: I found this table too verbose. If we decide to keep it, we should fix I that does not have the same semantic anymore.
+%% \begin{tabular}{r|c|c|p{5cm}}
+%% \textbf{while loop \#} & $W$ & $I$ & \textbf{actions} \\ \hline 
+ %% -  & $\{\}$ & $\{\}$ & insert $B$, $C$ and $D$ into both $W$ and $I$, since
+%% $B$, $C$ and $D$ are
+%% definition points of variable $x$ \\
+%% 0 & $\{B,C,D\}$ & $\{B,C,D\}$ & remove $B$ from $W$ for processing, 
+%% $\DF(B)$ contains only $D$, so insert \phiop\ for $x$ at $D$. Since $D$ is
+%% already in $I$ we do not need to reinsert it into $W$ or $I$. \\
+%% 1 & $\{C,D\}$ & $\{B,C,D\}$ & remove $C$ from $W$ for processing,
+%% $\DF(B)$ contains both $D$ and $E$, $D$ already has a \phiop\ for $x$, so do
+%% nothing more for $D$. $E$ does not have a \phiop\ for $x$, so insert
+%% one. Add $E$ to both $W$ and $I$. \\
+%% 2 & $\{D, E\}$ & $\{B,C,D,E\}$ & remove $D$ from $W$ for processing,
+%% $\DF(D)$ contains both $A$ and $E$. $A$ does not have a \phiop\ for
+%% $x$, so insert one. Add $A$ to both $W$ and $I$. Since $E$ already
+%% has a  \phiop\ for $x$, do nothing more. \\
+%% 3 & $\{E,A\}$ & $\{B,C,D,E,A\}$ & remove $E$ from $W$ for processing, 
+%% $\DF(E)$ is empty since $E$ is the exit node of the CFG, so do
+%% nothing. \\
+%% 4 & $\{A\}$ & $\{B,C,D,E,A\}$ & remove $A$ from $W$ for processing, 
+%% $\DF(A)$ is empty since $A$ dominates all nodes in the CFG, so do
+%% nothing. \\
+%% 5 & $\{\}$ & $\{B,C,D,E,A\}$ & $W$ is empty so the while loop
+%% terminates,
+%% and the algorithm moves on to consider the next variable. \\
+%% \end{tabular}
+\begin{algorithm}
+\Begin{
+ $W \leftarrow \{ \}$ : set of basic blocks\;
+ $I \leftarrow \{ \}$ : set of basic blocks\;
+ \For{$v$ : variable names in original program}{
+  \For{$d \in D_v$ }{
+    \textbf{let} $B$ be the basic block containing $d$\;
+     $W \leftarrow W \cup \{ B \}$\;
+  }
+  \While{$W \neq \{\}$}{
+   remove a basic block $X$ from $W$\;
+   \For{$Y : \mbox{basic block} \in \mathrm{DF}(X)$}{
+    \If{$Y \not\in I$}{
+        add $v \leftarrow \phi(...)$ at entry of $Y$\;
+        $I \leftarrow I \cup \{ Y \}$\;
+        \If{$Y \notin D_v$}{
+          $W \leftarrow W \cup \{ Y \}$\;
+        }
+     }
+    }
+  }
+}
+}
+\caption{\label{alg:classical_construction:phi_insertion}Standard algorithm for inserting $\phi$-functions}
+\end{algorithm}
+
 
 \begin{table}
 \begin{center}
-\begin{tabular}{r|c|c|p{5cm}}
-\textbf{while loop \#} & $W$ & $I$ & \textbf{actions} \\ \hline 
- -  & $\{\}$ & $\{\}$ & insert $B$, $C$ and $D$ into both $W$ and $I$, since
-$B$, $C$ and $D$ are
-definition points of variable $x$ \\
-0 & $\{B,C,D\}$ & $\{B,C,D\}$ & remove $B$ from $W$ for processing, 
-$\DF(B)$ contains only $D$, so insert \phiop\ for $x$ at $D$. Since $D$ is
-already in $I$ we do not need to reinsert it into $W$ or $I$. \\
-1 & $\{C,D\}$ & $\{B,C,D\}$ & remove $C$ from $W$ for processing,
-$\DF(B)$ contains both $D$ and $E$, $D$ already has a \phiop\ for $x$, so do
-nothing more for $D$. $E$ does not have a \phiop\ for $x$, so insert
-one. Add $E$ to both $W$ and $I$. \\
-2 & $\{D, E\}$ & $\{B,C,D,E\}$ & remove $D$ from $W$ for processing,
-$\DF(D)$ contains both $A$ and $E$. $A$ does not have a \phiop\ for
-$x$, so insert one. Add $A$ to both $W$ and $I$. Since $E$ already
-has a  \phiop\ for $x$, do nothing more. \\
-3 & $\{E,A\}$ & $\{B,C,D,E,A\}$ & remove $E$ from $W$ for processing, 
-$\DF(E)$ is empty since $E$ is the exit node of the CFG, so do
-nothing. \\
-4 & $\{A\}$ & $\{B,C,D,E,A\}$ & remove $A$ from $W$ for processing, 
-$\DF(A)$ is empty since $A$ dominates all nodes in the CFG, so do
-nothing. \\
-5 & $\{\}$ & $\{B,C,D,E,A\}$ & $W$ is empty so the while loop
-terminates,
-and the algorithm moves on to consider the next variable. \\
+\begin{tabular}{r|c|c|c|c}
+\textbf{while loop \#} & $X$ & $\textrm{DF}(X)$ & $I$         & $W$\\ \hline
+-                      & -   & -                & $\{\}$      & $\{B,C,D\}$ \\
+0                      & $B$ & $\{D\}$          & $\{D\}$     & $\{C,D\}$ \\
+1                      & $C$ & $\{D,E\}$        & $\{D,E\}$   & $\{D,E\}$ \\
+2                      & $D$ & $\{E,A\}$        & $\{D,E,A\}$ & $\{E,A\}$\\
+3                      & $E$ & $\{\}$           & $\{D,E,A\}$ & $\{A\}$\\
+4                      & $A$ & $\{A\}$          & $\{D,E,A\}$ & $\{\}$\\ \hline
 \end{tabular}
 \end{center}
 \caption{\label{tab:classical_construction:walkthru}Walkthrough of
   placement of \phiops\ for variable $x$ in example CFG}
 \end{table}
 
-% To illustrate this point, in the running example CFG, Figure
-% Figure \ref{fig:examplecfg_varx},
-% the \phiop\ for $x$ at node $E$ could have been inserted because $E$
-% is in the dominance frontier of $D$. However $E$ is also in the dominance
-% frontier of $C$. Once
-% the \phiop\ for $x$ has been inserted at $E$, there is no need
-% to reinsert it or 
-% to reprocess nodes in $\iDF(E)$.
+\begin{figure}
+\includegraphics[width=5cm]{ssa_variablex.jpg}
+\caption{\label{fig:classical_construction_algorithm:examplecfg_varx}Example control flow graph, including
+inserted \phiops\ for variable $x$
+}
+\end{figure}
 
+Providing the dominance tree as a given, the computation of the dominance frontier is quite straight-forward. As illustrated by Figure~\ref{fig:classical_construction_algorithm:iDF}, this can be understood using the DJ-graph notation. The skeleton of the DJ-graph is the dominator tree of the CFG that makes the $D$-edges. This is augmented with $J$-edges (join edges) that correspond to all edges of the CFG which source do not dominate its destination. A $DF$-edge (dominance frontier edge) is an edge which destination is in the dominance frontier of its source. By definition, there is a $DF$-edge $(a,b)$ between every CFG nodes $a$, $b$ such that there is a CFG-path from $a$ to $b$ but $a$ does not dominate $b$. 
+In other-words, for each  $J$-edge $(a,b)$, all ancestors (including $a$) that do not dominate $b$ have $b$ in their dominance frontier. This leads to the pseudo-code given in Algorithm~\ref{alg:classical_construction:df}. The iterated dominance frontier is nothing else than the transitive closure of the dominance frontier and we can define the $iDF-graph$ as the transitive closure of the $DF$-graph. 
 
-\emph{FIXME - do we need the following paragraphs about DF
-  construction
-here, or should we leave these details in Chapter 2 (properties and
-flavors),
- and advanced DJ graph details in Chapter 4 (advanced construction algms)?}
+We can compute the iterated dominance frontier for each variable independently, as proposed in this chapter, or ``cache'' it to avoid multiple computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chap:alternative_ssa_construction_algorithms}.
 
-
-Providing the dominance tree as a given, the computation of the dominance frontier is quite straight-forward. This can be understood using the DJ-graph notation. The skeleton of the DJ-graph is the dominator tree of the CFG that makes the $D$-edges. This is augmented with $J$-edges (join edges) that correspond to all edges of the CFG which source do not dominate its destination. A $DF$-edge (dominance frontier edge) is an edge which destination is in the dominance frontier of its source. By definition, there is a $DF$-edge $(a,b)$ between every CFG nodes $a$, $b$ such that there is a CFG-path from $a$ to $b$ but $a$ does not dominate $b$. 
-In other-words, for each  $J$-edge $(a,b)$, all ancestors (including $a$) that do not dominate $b$ have $b$ in their dominance frontier. This leads to the pseudo-code given in Algorithm~\ref{alg:classical_construction:df}. The iterated dominance frontier is nothing else than the transitive closure of the dominance frontier and we can define the $DF^+-graph$ as the transitive closure of the $DF$-graph. We can compute the iterated dominance frontier for each variable independently, as proposed in this chapter, or ``cache'' it to avoid multiple computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chap:alternative_ssa_construction_algorithms}.
+\begin{figure}
+\includegraphics[width=0.5\textwidth]{iDF.jpeg}
+\caption{An example CFG and it corresponding DJ-graph, DF-graph and iDF-graph}
+\end{figure}
 
 \begin{algorithm}
 \Begin{
@@ -287,32 +307,6 @@ In other-words, for each  $J$-edge $(a,b)$, all ancestors (including $a$) that d
 \caption{\label{alg:classical_construction:df}Algorithm for computing the dominance frontier of each CFG node}
 \end{algorithm}
 
-\begin{algorithm}
-\Begin{
- $W \leftarrow \{ \}$ : set of basic blocks\;
- $I \leftarrow \{ \}$ : set of basic blocks\;
- \For{$v$ : variable names in original program}{
-  \For{$d$ : definition statements of variable $v$}{
-    \textbf{let} $B$ be the basic block containing $d$\;
-     $W \leftarrow W \cup \{ B \}$\;
-     $I \leftarrow I \cup \{ B \}$\;
-  }
-  \While{$W \neq \{\}$}{
-   remove a basic block $X$ from $W$\;
-   \For{$Y : \mbox{basic block} \in \mathrm{DomFrontier}(X)$}{
-    \If{$Y$ does not contain a $\phi$-function for $v$}{
-        add $v \leftarrow \phi(...)$ at start of $Y$\;
-        \If{$Y \notin I$}{
-          $W \leftarrow W \cup \{ Y \}$\;
-          $I \leftarrow I \cup \{ Y \}$\;
-        }
-     }
-    }
-  }
-}
-}
-\caption{\label{alg:classical_construction:phi_insertion}Standard algorithm for inserting $\phi$-functions}
-\end{algorithm}
 
 
 Once \phiops\ have been inserted using this algorithm, the program may
@@ -320,7 +314,7 @@ still contain several definitions per variable, however now there is a
 single definition statement 
 in the CFG that reaches each use. 
 It is conventional to treat the each variable use in a \phiop\
-as if it actually occurs at the end of the
+as if it actually occurs on the corresponding incoming edge or at the end of the
 corresponding predecessor node.
 If we follow this convention,  
 % Moreover, with the following semantics for \phiops\ where its
@@ -338,8 +332,12 @@ it is straightforward to rename variables
 using a depth-first traversal of the dominance tree.
 During the traversal, for each variable $v$, it is necessary to
 remember its closest dominating definition.
-This gives the following pseudo-code for the variable renaming algorithm:
+This gives the following pseudo-code for the variable renaming algorithm which translates our running example into the SSA form of Figure~\ref{fig:classical_construction_algorithm:examplecfg}:
 
+\begin{figure}
+\includegraphics[width=0.5\textwidth]{renaming.jpg}
+\caption{\label{fig:classical_construction_algorithm:renaming} SSA form of the example of Figure~\ref{fig:classical_construction_algorithm:examplecfg}}
+\end{figure}
 \emph{FIXME - the actual `classical' algorithm presented by
 Cytron et al uses a stack of SSA names for each original variable.
 Why are we not following this algorithm? Is our algorithm equivalent?
@@ -372,7 +370,7 @@ proc renaming:
 
 \begin{verbatim}
 proc v.update_reachingDef(o):
-// simply go up along the reachingDef chain until dominance is fulfilled 
+// simply go up along the reachingDef chain until dominance is fulfilled   
   let rd:=v.reachingDef
   while not (rd==undef || def(rd) dominates o)
     rd:=rd.reachingDef
@@ -401,12 +399,12 @@ The transformation that renames all $\phi$-related variables into a
 unique representative name, and then removes all \phiops\ is a correct SSA-destruction algorithm.
 \item Finally, it has the \textit{dominance} property, see Section
 \ref{sec-prop-dominance}.
-Each variable use is dominated by its unique definition. This is due to the use during the $\phi$-placement phase of iterated dominance frontier instead of join set. Whenever the iterated dominance frontier of the set of definition points of a variable differs from the join set, then at least one program point can be reached both by $r$ (the entry of the CFG) and one of the definition points. In other words, as in the double diamond figure (to be inserted), a use of an inserted \phiop\ does not have any actual reaching definition that dominates it. This corresponds to the undef value used to initialize reachingDef in the renaming phase pseudo code. Actual implementation can use NULL value, create a fake undefined variable at the entry of the CFG, or create on the fly undef pseudo operations just before the concerned used. We choose to use in this book the undef value, represented with the $\undef$ sign.
+Each variable use is dominated by its unique definition. This is due to the use during the $\phi$-placement phase of iterated dominance frontier instead of join set. Whenever the iterated dominance frontier of the set of definition points of a variable differs from the join set, then at least one program point can be reached both by $r$ (the entry of the CFG) and one of the definition points. In other words, as in Figure~\ref{fig:classical_construction_algorithm:examplecfg}, one of the uses of the \phiop\ inserted in block $A$ for $x$ does not have any actual reaching definition that dominates it. This corresponds to the undef value used to initialize reachingDef in the renaming phase pseudo code. Actual implementation can use NULL value, create a fake undefined variable at the entry of the CFG, or create on the fly undef pseudo operations just before the concerned used. We choose to use in this book the undef value, represented with the $\undef$ sign.
 \end{itemize}
 
 
 \section{Destruction}
-\label{sec:classical_destruction}
+\label{sec:classical_construction_algorithm:destruction}
 
 SSA form is a 
 sparse representation of program information,
@@ -417,22 +415,22 @@ it is necessary to eliminate \phiops\ since these
 are not executable machine instructions.
 This elimination phase is known as \textit{SSA destruction}. 
 
-The destruction of freshly constructed SSA code is straightforward.
-\emph{Khedker calls this CSSA for canonical SSA - from earlier ref?}
+As a freshly constructed SSA code is conventional, its destruction is straightforward.
+%\emph{Khedker calls this CSSA for canonical SSA - from earlier ref?}
+%FAB: never heard about this and google does not help. C-SSA is for conventional SSA according to Sreedhar. Khedker refers to the paper of Sreedhar for SSA destruction. So I guess he made a mistake.
 One simply has to rename all 
 $\phi$-related variables (source and destination operands of
 a single \phiop\ are related)
 into a unique representative variable.
-We refer to a set of $\phi$-related variables as
-an \textit{SSA-web}.
 Then each \phiop\ should have identical names for all its operands,
 and thus can be removed to coalesce the related live-ranges.
 
-The discovery of SSA-webs can be performed efficiently 
+We refer to a set of $\phi$-related variables as
+an \textit{SSA-web}. Conventional SSA is defined as a flavor under which each SSA-web is interference free. The discovery of SSA-webs can be performed efficiently 
 using the classical \textit{union-find} algorithm 
 with a disjoint-set data structure,
 which keeps track of a set of elements
-partitioned into a number of disjoint (nonoverlapping) subsets.
+partitioned into a number of disjoint (non-overlapping) subsets.
 The SSA-webs discovery algorithm is presented in 
 Algorithm \ref{alg:ssadestruction:find-webs}.
 
@@ -452,16 +450,15 @@ Algorithm \ref{alg:ssadestruction:find-webs}.
 \caption{\label{alg:ssadestruction:find-webs}The SSA-webs discovery algorithm, based on the union-find pattern}
 \end{algorithm}
 
-A program expressed in SSA form is said to be 
-\textit{conventional} (equivalently, \textit{canonical})
-if for each SSA-web, all the related variables can be safely renamed into a unique representative variable.
-In other words, each SSA-web should be interference free. 
+
 While freshly constructed SSA code is conventional, 
 this may not be the case after optimizations 
 such as copy propagation have been performed.
+Going back to conventional SSA form implies the insertion of copies.
+{\emph FIXME: we need to talk about parallel copies at some points. You mention in the vanilla chapter the fact that phi are to be executed in parallel. An option is to explain the parallel semantics in the vanilla chapter using parallel copies on incoming edges. Up to you.}
 
-\emph{FIXME - where do we define what a critical edge is?}
-The simplest (although not the most efficient) way to destroy non-conventional SSA form is to split all \textit{critical} edges, and then replace \phiops\ by parallel copies at the end of predecessor basic blocks.
+The simplest (although not the most efficient) way to destroy non-conventional SSA form is to split all \textit{critical edges}, and then replace \phiops\ by parallel copies at the end of predecessor basic blocks.
+A critical edge is an edge from a node with several successors to a node with several predecessors.
 The process of splitting an edge, say $(b_1,b_2)$,
 involves replacing edge $(b_1, b_2)$ by (i) an
 edge from $b_1$ to a freshly created basic block 
@@ -472,11 +469,11 @@ the corresponding pseudo-code.
 \begin{algorithm}
 \Begin{
  \ForEach{$B$: basic block of the CFG}{
-   \Let{$\mathrm{PC}_0$ be $\{\} \leftarrow \{\}$, an empty parallel copy instruction}\;
+   \Let{$\mathrm{PC}_0$ be $() \leftarrow ()$, an empty parallel copy instruction}\;
    insert $\mathrm{PC}_0$ immediately  after the \phiops\ at the beginning of $B$\;
    \Let{$(B_1,\ldots,B_n)$ be the list of predecessor blocks of $B$}\;
    \ForEach{$B_i$}{
-     \Let{$\mathrm{PC}_i$ be $\{\} \leftarrow \{\}$, an empty parallel copy instruction}\;
+     \Let{$\mathrm{PC}_i$ be $() \leftarrow ()$, an empty parallel copy instruction}\;
      \If{$B_i$ has several successors}{
        create fresh empty basic block $B'_i$;
        replace edge $B_i \rightarrow B$ by edges $B_i \rightarrow B'_i$ and $B'_i \rightarrow B$;
@@ -486,15 +483,15 @@ the corresponding pseudo-code.
        append $PC_i$ at the end of $B_i$;
      }
    }
-   \ForEach{\phiop\ at the entry of $B$ of the for $a_0=\phi(B_1:a_1,\ldots,B_n:a_n)$}{
+   \ForEach{\phiop\ at the entry of $B$ of the form $a_0=\phi(B_1:a_1,\ldots,B_n:a_n)$}{
      \Let{$a'$ be a freshly created variable}\;
-     add copy $a_0 \leftarrow a$ to $\mathrm{PC}_0$\;
+     add copy $a_0 \leftarrow a'$ to $\mathrm{PC}_0$\;
      replace $a_0$ by $a'$ in the \phiop\;
      \ForEach{$a_i$ (argument of the \phiop\ corresponding to $B_i$)}{
        add copy $a' \leftarrow a_i$ to $\mathrm{PC}_i$;
        replace $a_i$ by $a'$ in the \phiop;
      }
-     remove \phiop \tcc[r]{otherwise get conventional SSA}
+     remove \phiop \tcc{otherwise get conventional SSA}
   }
 }
 }
@@ -517,11 +514,11 @@ This can occur after CFG structural optimizations like
 dead code elimination or empty block elimination.
 In such case, the edges should be considered as critical and then split.
 
-We stress that the above destruction technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not permit the splitting of a given edge; second, the resulting code contains many temporary-to-temporary copy operations. In theory, reducing the frequency of these copies is the role of the coalescer during the register allocation phase. But only decoupled register allocators (such as the one detailed in Chapter~\ref{chap:register-allocation}) with memory and time-consuming coalescing heuristics can handle the removal of these copies effectively. Coalescing can also, with less effort, be performed prior to the register allocation phase. As opposed to a (so-called conservative) coalescer during register allocation, this \emph{aggressive} coalescing would not cope with the interference graph colorability. Further, the process of copy insertion itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative-destruction} is to cope both with non-splittable edges and difficulties related with SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
+We stress that the above destruction technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not permit the splitting of a given edge; second, the resulting code contains many temporary-to-temporary copy operations. In theory, reducing the frequency of these copies is the role of the coalescer during the register allocation phase. A few memory and time-consuming existing coalescing heuristics mentioned in Chapter~\ref{chap:register-allocation} can handle the removal of these copies effectively. Coalescing can also, with less effort, be performed prior to the register allocation phase. As opposed to a (so-called conservative) coalescer during register allocation, this \emph{aggressive} coalescing would not cope with the interference graph colorability. Further, the process of copy insertion itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative-destruction} is to cope both with non-splittable edges and difficulties related with SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
 
 Once \phiops\ have been replaced by parallel copies, we need to sequentialize the parallel copies, i.e.\ replace them by a sequence of simple copies. This phase can be performed immediately after SSA destruction or later on, perhaps even after register allocation (see Chapter~\ref{chap:register_allocation}). It might be useful to postpone the copy sequentialization since it introduces arbitrary interference between variables. As an example, $(a_1,b_1)\gets (a_2,b_2)$ can be sequentialized into $a_1\gets a_2;\ b_1\gets b_2$ which would make $b_2$ interfere with $a_1$ while the other way round $b_1\gets b_2;\ a_1\gets a_2$ would make $a_2$ interfere with $b_1$ instead.
 
-If we still decide to replace parallel copies into a sequence of simple copies immediately after SSA destruction (with no copy propagation / coalescing in between), this is straightforward: as no variable appears as both a source and a destination (either all the sources or all the destinations are freshly created variables), any order is correct. Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} will provide the pseudo-code that is required after coalescing have been performed and Chapter~\ref{chapter:register_allocation} will deal with the case involving register-allocated code..
+If we still decide to replace parallel copies into a sequence of simple copies immediately after SSA destruction described in this chapter (with no copy propagation / coalescing in between), this is straightforward: as no variable appears as both a source and a destination (either all the sources or all the destinations are freshly created variables), any order is correct. Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} will provide the pseudo-code that is required after coalescing have been performed and Chapter~\ref{chapter:register_allocation} will deal with the case involving register-allocated code.
 
 \section{Turning general SSA into minimal/conventional/pruned/dominance property}
 
@@ -550,6 +547,7 @@ build pruned SSA form. It can easily be modified to
 build \textit{semi-pruned SSA} form by simply filtering out the local variables, i.e.\ variables which have definitions that dominate their uses and appear only in the same basic block. Then, if liveness information is available prior to the construction, it can be used to filter out the insertion of \phiops\ wherever the variable is not live.
 If the original liveness information is not available, pruning SSA form is equivalent to a dead-code elimination pass. As use-def chains are explicitly provided by SSA form, it simply relies on marking actual uses (non-\phiops\ ones) as useful and propagating backward through \phiops\ usefulness. This leads to the following pseudo-code:
 
+\begin{algorithm}
 \begin{verbatim}
 stack = ()
 foreach I: instruction of the CFG in dominance order
@@ -567,7 +565,8 @@ while a := stack.pop
 foreach I: phi instruction of the form a=phi(...)
   if a marked as useless then delete I  
 \end{verbatim}
-
+\label{alg:classical_construction_algorithm:pruning}
+\end{algorithm}
 Construction of Minimal SSA comes with the price of a sophisticated algorithm involving iterated dominance frontier. 
 Still, \phiops\ placement could be done pessimistically, as described further, on each CFG nodes along the live-ranges of the variables (or at every basic-block if we are extremely lazy or simply do not want SSA to be pruned). 
 Also, code transformations such as code motion, CFG modifications, can make a minimal SSA non minimal.
@@ -609,7 +608,7 @@ while worklist is non empty
 \section{Additional reading}
 
 The early literature on SSA form
-\cite{cytron89efficiently,cytron91efficiently}
+\cite{cytron89efficient,cytron91efficiently}
 introduces both phases of the construction algorithm
 we have outlined in this chapter,
 and discusses algorithmic complexity on common and worst-case inputs.
@@ -619,14 +618,8 @@ early work on data flow representations by Shapiro and Saint
 
 There are numerous published descriptions of alternative algorithms
 for SSA construction, in particular for the \phiop\ insertion phase.
-One of the most unconventional, which is striking for its elegant simplicity,
-is presented by Aycock
+The pessimistic approach that first inserts \phiops\ at all control flow merge points and then remove unnecessary ones using simple rewrite rules was proposed by Aycock
 and Horspool \cite{aycock00simple}. 
-This is a pessimistic SSA construction technique,
-in that it initially assumes $\phi$-functions are required
-for all variables at all control flow merge points. 
-It proceeds to remove unnecessary $\phi$-functions 
-using simple rewrite rules.
 
 Sreedhar and Gao \cite{sreedhar95linear} pioneered
 linear-time complexity construction algorithms based on DJ-graphs.
@@ -644,15 +637,9 @@ Chapter \ref{chap:alternative_ssa_destruction_algorithm} presents
 more details on alternative approaches to SSA destruction.
 
 %%% FAB: we should probably move the technical discussions to this part?
-%%% At least, put all the external references here (eg Cytron, etc.)
-%%% TODO: write this section
-Should cite (at least):
+Still missing:
 \begin{itemize}
-\item Cytron for original construction and Aycock for minimality/simple construction and also reference to Semantic chapter (for minimality they have a similar copy-prop algo in the context of functional programming; for construction and dominance notion they have a nice equivalence with functional programming again) 
+\item Semantic chapter (for minimality they have a similar copy-prop algo in the context of functional programming; for construction and dominance notion they have a nice equivalence with functional programming again) 
 \item Wolf (J+=J) for join set
-\item Sreedhar Gao (linear time algo) for properties on DJ-graphs, DF-graphs and dominance tree \& Ramalingam (loops, dom, dom-tree) for loop nesting forest dom-tree and DF \& reference to advanced SSA construction
-\item Sreedhar's paper \& Glessner for basic correct SSA destruction \& reference to advanced destruction chapter. Maybe a brief history with previous ``incorrect papers''.
-\item Sreedhar Lee Gao \& Ramalingam (incremental dom-tree) for the
-  maintain of the dom-tree (maybe should ask Sebastian to put it in
-  his chapter instead) - JS - leave until later chapter
+\item Maybe a brief history with previous ``incorrect papers''.
 \end{itemize}
