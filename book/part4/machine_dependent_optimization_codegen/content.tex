@@ -46,97 +46,14 @@ To our knowledge, there is no compilation textbook that is up to date with the
 art code generation techniques as implemented in modern production compilers.
 \medskip
 
-\section{Uses of the SSA form in code generation}
-
 This increasing sophistication of code generation techniques motivates the
 introduction of SSA-form analyses and optimizations in the code generator in
 order to simplify analyses and optimizations. However the applicability of the SSA
-form does not spawn the whole code generation process. The phases that are known
-to benefit from it appear early in the code generation process:
-\begin{itemize}
-
-\item Analyzes such as induction variable classification, bit-width analysis,
-variable interference, liveness sets, and liveness checking
-(Chapter~\ref{chap:liveness_analysis}).
-
-\item Instruction selection (Chapter~\ref{chapter:code_selection}). Unlike
-classic techniques that match one IR tree or one DAG at a time, using the SSA
-form as input extends the scope of pattern matching to more complex IR graphs,
-in particular those resulting from control-flow constructs.
-
-\item If-conversion or instruction predication
-(Chapter~\ref{chap:if_conversion}). A predicated instruction behavior includes a
-traditional data processing part such as arithmetic or memory access, and a
-predicate evaluation part often connected to a separate operand. When the
-predicate evaluates to false, the instruction has no architectural effects. The
-simplest form of predicated instruction is the conditional MOVE such as
-CMOV\emph{xx} on the x86. 
-
-\item Inner loop unrolling or unwinding (Chapter~\ref{chap19:loopTree}).
-
-\item Memory addressing and memory packing optimizations.
-
-\item Constant propagation, copy folding, and dead code elimination.
-
-\item Instruction re-selection.
-
-\end{itemize} \medskip
-
-Further down the code generator, the next major phase is pre-pass instruction
-scheduling. Innermost loops whose bodies are single basic block or super
-block are candidates for software pipelining techniques such as modulo
-scheduling. For innermost loops that are not software pipelined, and for other
-program regions, acyclic instruction scheduling techniques apply: basic block
-scheduling; super-block scheduling; hyper-block scheduling; tree block
-scheduling; or trace scheduling.
-
-By definition, pre-pass instruction scheduling operates before register
-allocation. On a classic code generator, instruction operands are mostly virtual
-registers, except for instructions with ISA or ABI constraints that binds them
-to specific architectural registers. Moreover, preparation to pre-pass
-instruction scheduling include virtual register renaming, also known as register
-web construction, in order to reduce the number of anti dependences and output
-dependences in the instruction scheduling problem. Other reasons why it seems
-there is little to gain to schedule instructions on a SSA form program
-representation include: \begin{itemize}
-
-\item Except in case of trace scheduling, the scheduling regions considered
-earlier are single-entry and do not have control-flow merge. So there are no
-$\phi$-functions in case of acyclic scheduling, and only $\phi$-functions in the
-loop header in case of software pipelining. Keeping those $\phi$-functions in
-the scheduling problem has no benefits and raises engineering issues, due to
-their parallel execution semantics and the constraint to keep them first in
-basic blocks.
-
-\item Instruction scheduling must account for all the instruction issue slots
-required to execute a code region. If the only ordering constraints between
-instructions, besides control dependences and memory dependences, are limited to
-true data dependences on operands, code motion will create interferences that
-must later be resolved by inserting COPY instruction in the scheduled code
-region. (Except for interferences created by the overlapping of live ranges
-that results from modulo scheduling, as these are resolved by modulo renaming.)
-So scheduling instructions with SSA variables as operands is not effective
-unless extra dependences are added to the scheduling problem to prevent such
-code motion. 
-
-\item Machine instructions may have side effects on stateful resources such as
-the processor condition codes. Representing them as SSA variables even though
-these resources are not operated like the processor architectural registers
-requires special casing. For instance 'sticky' flags definitions of the IEEE~754
-arithmetic imply a OR with the previous value. All such definitions can be
-reordered with regards to the next use and an instruction scheduler is expected
-to do so. However this type of flexibility is cumbersome to represent in the
-SSA form.
-
-\end{itemize} These issues need to be addressed before any pre-pass instruction
-scheduling on the SSA form demonstrates advantages over classic approaches.
-\medskip
-
-The last major phase of code generation where SSA form has demonstrated benefits
-is register allocation and its three sub-problems: variable spilling, variable
-coloring, and variable coalescing (Chapter~\ref{chap:register_allocation}). After
-the register allocation, program variables are mapped to architectural registers
-or memory locations, so the SSA form analyses and optimizations no longer apply.
+form does not span the whole code generation process. The phases that are known
+to benefit from it appear early in the code generation process: from instruction
+selection, down to register allocation. After register allocation, program
+variables are mapped to architectural registers or memory locations, so the SSA
+form analyses and optimizations no longer apply.
 
 \section{Issues of the SSA form on machine instructions}
 
@@ -144,8 +61,8 @@ Applying the SSA form to a program representation at the level of machine
 instructions raises a number issues that must be correctly addressed:
 \begin{itemize}
 
-\item In compiler code generator, the sequential layout of basic blocks is a key
-component of the program representation, is the target of specific
+\item In compiler code generator, the sequential layout of basic blocks is a
+structural component of the program representation, is the target of specific
 optimizations, and is constrained by several factors, including exception
 handling ranges in compilers such as the Open64. A number of embedded processor
 architectures such as the Tensilica Xtensa provide hardware loops, where an
@@ -216,11 +133,116 @@ relax this order.
 
 \section{Engineering a SSA form code generator}
 
-Machine description system
+\begin{itemize}
 
-Choices of phi function semantics
+\item Machine description system
 
-Register allocate under SSA or not
+\item Choices of phi function semantics
+
+\item Register allocate under SSA or not
+
+\item Keep conventional SSA everywhere
+
+\item SSA on stack slots for register allocation
+
+\end{itemize}
+
+\begin{itemize}
+
+\item Analyses such as induction variable classification, bit-width analysis,
+variable interference, liveness sets, and liveness checking
+(Chapter~\ref{chap:liveness_analysis}).
+
+\item Instruction selection (Chapter~\ref{chapter:code_selection}). Unlike
+classic techniques that match one IR tree or one DAG at a time, using the SSA
+form as input extends the scope of pattern matching to more complex IR graphs,
+in particular those resulting from control-flow constructs.
+
+\item If-conversion or instruction predication
+(Chapter~\ref{chap:if_conversion}). A predicated instruction behavior includes a
+traditional data processing part such as arithmetic or memory access, and a
+predicate evaluation part often connected to a separate operand. When the
+predicate evaluates to false, the instruction has no architectural effects. The
+simplest form of predicated instruction is the conditional MOVE such as
+CMOV\emph{xx} instructions on the x86. 
+
+\item Inner loop unrolling or unwinding. Non-inner loop transformations, such as
+unroll-and-jam, are usually left to the IR loop optimizer. Loop unrolling
+replicates the loop body and removes all but one of the replicated loop exit
+branches. Loop unwinding replicates the loop body while keeping the loop exit
+branches. This style of loop unrolling necessarily applies to counted loops, and
+requires that pre-conditioning or post-conditioning code be inserted
+\cite{Lownet:1992:JS}. Inner loop unrolling or unwinding is facilitated by using
+the loop-closed SSA form (Chapter~\ref{chap19:loopTree}), the SSA version of the
+self assignment technique also pioneered by the Multiflow Trace Scheduling
+compiler \cite{Lownet:1992:JS}.
+
+\item Memory addressing and memory packing optimizations. Memory addressing
+optimizations include selection of auto-modified addressing modes. Memory
+packing optimizations select wider memory access instructions whenever the
+effective addresses are provably adjacent, and no side effects such as
+possible address misalignment traps are introduced.
+
+\item Constant propagation, copy folding, and dead code elimination.
+
+\item Instruction re-selection.
+
+\end{itemize} \medskip
+
+Further down the code generator, the next major phase is pre-pass instruction
+scheduling. Innermost loops with a single basic block or super block body are
+candidates for software pipelining techniques such as modulo scheduling. For
+innermost loops that are not software pipelined, and for other program regions,
+acyclic instruction scheduling techniques apply: basic block scheduling;
+super-block scheduling; hyper-block scheduling; tree block scheduling; or trace
+scheduling.
+
+By definition, pre-pass instruction scheduling operates before register
+allocation. On a classic code generator, instruction operands are mostly virtual
+registers, except for instructions with ISA or ABI constraints that binds them
+to specific architectural registers. Moreover, preparation to pre-pass
+instruction scheduling include virtual register renaming, also known as register
+web construction, in order to reduce the number of anti dependences and output
+dependences in the instruction scheduling problem. Other reasons why it seems
+there is little to gain to schedule instructions on a SSA form program
+representation include: \begin{itemize}
+
+\item Except in case of trace scheduling, the scheduling regions considered
+earlier are single-entry and do not have control-flow merge. So there are no
+$\phi$-functions in case of acyclic scheduling, and only $\phi$-functions in the
+loop header in case of software pipelining. Keeping those $\phi$-functions in
+the scheduling problem has no benefits and raises engineering issues, due to
+their parallel execution semantics and the constraint to keep them first in
+basic blocks.
+
+\item Instruction scheduling must account for all the instruction issue slots
+required to execute a code region. If the only ordering constraints between
+instructions, besides control dependences and memory dependences, are limited to
+true data dependences on operands, code motion will create interferences that
+must later be resolved by inserting COPY instruction in the scheduled code
+region. (Except for interferences created by the overlapping of live ranges
+that results from modulo scheduling, as these are resolved by modulo renaming.)
+So scheduling instructions with SSA variables as operands is not effective
+unless extra dependences are added to the scheduling problem to prevent such
+code motion. 
+
+\item Machine instructions may have side effects on stateful resources such as
+the processor condition codes. Representing them as SSA variables even though
+these resources are not operated like the processor architectural registers
+requires special casing. For instance 'sticky' flags definitions of the IEEE~754
+arithmetic imply a OR with the previous value. All such definitions can be
+reordered with regards to the next use and an instruction scheduler is expected
+to do so. However this type of flexibility is cumbersome to represent in the
+SSA form.
+
+\end{itemize} These issues need to be addressed before any pre-pass instruction
+scheduling on the SSA form demonstrates advantages over classic approaches.
+\medskip
+
+The last major phase of code generation where SSA form has demonstrated benefits
+is register allocation and its three sub-problems: variable spilling, variable
+coloring, and variable coalescing (Chapter~\ref{chap:register_allocation}).
+
 
 %\section{Interference graphs on the SSA form}
 
