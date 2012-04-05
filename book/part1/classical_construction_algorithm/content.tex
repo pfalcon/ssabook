@@ -575,19 +575,38 @@ SSA comes in different flavors.
 % not contain any dead \phiop); it 
 % may or may not be minimal (there 
 % is no ``identity'' \phiops).
-This section describes  algorithms that transform SSA
-code
+This section describes algorithms that transform
+arbitrary SSA code
 into the desired flavor.
 
-Making SSA \textit{conventional} corresponds exactly to the first phase of SSA destruction (described in Section~\ref{sec:classical_destruction}) that splits critical edges and introduces parallel copies (sequentialized later on or on the fly) around \phiops. As already discussed, this straightforward algorithm has several drawbacks addressed in Chapter~\ref{chapter:chapter:alternative_ssa_destruction_algorithm}.
+Making SSA \textit{conventional} corresponds exactly to the first phase of SSA destruction (described in Section~\ref{sec:classical_destruction}) that splits critical edges and introduces parallel copies (sequentialized later in bulk or on-demand) around \phiops. As already discussed, this straightforward algorithm has several drawbacks addressed in Chapter~\ref{chapter:chapter:alternative_ssa_destruction_algorithm}.
 
-Making SSA strict, i.e.\ fulfill the dominance property, is as `hard' as constructing SSA. Of course, a pre-pass can detect the variables that have definitions that do not dominate their uses. Then there are several possible single-variable \phiops\ insertion algorithms (see Chapter~\ref{chapter:alternative_ssa_construction_algorithms}) that can be used to patch up the SSA, by restricting attention to the set of non-conforming variables. The renaming phase can also be used with the same filtering process. As the number of variables to repair might be a small proportion of all variables, a costly traversal of the whole program can be avoided by building the def-use chains (the non dominating ones) during the detection phase. Renaming can then be done on a per-variable basis or better (if pruned SSA is preferred) the reconstruction algorithm presented in Chapter~\ref{chapter:repair_maintain_ssa_after_optimization} can be used both for \phiops\ placement and renaming.
+Making SSA strict, i.e.\ fulfill the dominance property, is as `hard' as constructing SSA. Of course, a pre-pass through the graph can detect the offending variables that have definitions that do not dominate their uses. Then there are several possible single-variable \phiop\ insertion algorithms (see Chapter~\ref{chapter:alternative_ssa_construction_algorithms}) that can be used to patch up the SSA, by restricting attention to the set of non-conforming variables. The renaming phase can also be applied with the same filtering process. As the number of variables requiring repair might be a small proportion of all variables, a costly traversal of the whole program can be avoided by building the def-use chains (for non-conforming variables) during the detection pre-pass. Renaming can then be done on a per-variable basis or better (if pruned SSA is preferred) the reconstruction algorithm presented in Chapter~\ref{chapter:repair_maintain_ssa_after_optimization} can be used for both \phiops\ placement and renaming.
 
 The construction algorithm described above in
 Section \ref{sec:classical_construction} does not
 build pruned SSA form. It can easily be modified to 
-build \textit{semi-pruned SSA} form by simply filtering out the local variables, i.e.\ variables which have definitions that dominate their uses and appear only in the same basic block. Then, if liveness information is available prior to the construction, it can be used to filter out the insertion of \phiops\ wherever the variable is not live.
-If the original liveness information is not available, pruning SSA form is equivalent to a dead-code elimination pass. As use-def chains are explicitly provided by SSA form, it simply relies on marking actual uses (non-\phiops\ ones) as useful and propagating backward through \phiops\ usefulness. This leads to the following pseudo-code:
+build \textit{semi-pruned SSA} form by simply filtering out the \emph{local} variables.
+A local variable has a definition that dominates all its uses, and a 
+live range that is entirely enclosed in a single basic block, i.e.\ the variable is not live across a basic block boundary.
+% which have definitions that dominate 
+% their uses and appear only in the 
+% same basic block. 
+
+If variable liveness information is available prior
+to SSA construction, it can be used to filter out the 
+insertion of \phiops\ wherever the variable is not live.
+The resulting SSA form is pruned.
+On the other hand
+if the original liveness information is not available, 
+pruning SSA form is equivalent to a dead-code elimination pass
+after SSA construction.
+As use-def chains are implicitly provided by SSA form, 
+dead-\phiop\ elimination simply relies on marking actual uses 
+(non-\phiop\ ones) as \emph{useful} and propagating 
+\emph{usefulness} backward through \phiops.
+Algorithm \ref{alg:classical_construction_algorithm:pruning} 
+presents the relevant pseudo-code for this operation.
 
 \begin{algorithm}
 \begin{verbatim}
@@ -609,6 +628,9 @@ foreach I: phi instruction of the form a=phi(...)
 \end{verbatim}
 \label{alg:classical_construction_algorithm:pruning}
 \end{algorithm}
+
+\subsubsection*{Pessimistic \phiop Insertion}
+
 Construction of Minimal SSA comes with the price of a sophisticated algorithm involving iterated dominance frontier. 
 Still, \phiops\ placement could be done pessimistically, as described further, on each CFG nodes along the live-ranges of the variables (or at every basic-block if we are extremely lazy or simply do not want SSA to be pruned). 
 Also, code transformations such as code motion, CFG modifications, can make a minimal SSA non minimal.
