@@ -609,27 +609,49 @@ Algorithm \ref{alg:classical_construction_algorithm:pruning}
 presents the relevant pseudo-code for this operation.
 
 \begin{algorithm}
-\begin{verbatim}
-stack = ()
-foreach I: instruction of the CFG in dominance order
-  if I of the form "a=phi(...)"
-    mark a has useless
-  else I of the form "...=f(a1,...,an)"
-    foreach ai defined by a phi function
-      mark ai as useful
-      stack.push(ai)
-while a := stack.pop
-  let I: "a=phi(a1,...,an)" be the phi-function that defines a
-  foreach ai marked as useless
-    mark ai as useful
-    stack.push(ai)
-foreach I: phi instruction of the form a=phi(...)
-  if a marked as useless then delete I  
-\end{verbatim}
-\label{alg:classical_construction_algorithm:pruning}
+\Begin{
+\tcc{stack for variables defined by $\phi$-functions\\
+     invariant: variable on stack is useful}
+$\mathit{stack} \leftarrow ()$\;
+\tcc{--- initial marking phase ---}
+\ForEach{I : instruction of the CFG in dominance order}{
+  \If{I is \phiop\ defining variable $a$}{
+    mark $a$ as useless\;
+  }
+  \Else{ \tcc{I is not \phiop}
+    \ForEach{x : source operand of I}{
+      \If{x is defined by \phiop}{
+        mark $x$ as useful\;
+        $\mathit{stack}.\mathrm{push}(x)$\;
+      }
+    }
+  }
+}
+\tcc{--- usefulness propagation phase ---}
+\While{$\mathit{stack}$ not empty}{
+  $a \leftarrow \mathit{stack}.\mathrm{pop}()$\;
+  \Let{I be the \phiop\ that defines $a$}\;
+  \ForEach{$x$ : source operand of I}{
+    \If{$x$ is marked as useless}{
+      \tcc{$x$ marked as useless implies $x$ defined by \phiop}
+      mark $x$ as useful\;
+      $\mathit{stack}.\mathrm{push}(x)$\;
+    }
+  }
+}
+\tcc{--- final pruning phase ---}
+\ForEach{I: \phiop}{
+  \If{destination operand of $I$ marked as useless}{
+    delete I\;
+  }
+}
+}
+\caption{\label{alg:classical_construction_algorithm:pruning}
+\phiop\ pruning algorithm
+}
 \end{algorithm}
 
-\subsubsection*{Pessimistic \phiop Insertion}
+\subsubsection*{Pessimistic \phiop\ Insertion}
 
 Construction of Minimal SSA comes with the price of a sophisticated algorithm involving iterated dominance frontier. 
 Still, \phiops\ placement could be done pessimistically, as described further, on each CFG nodes along the live-ranges of the variables (or at every basic-block if we are extremely lazy or simply do not want SSA to be pruned). 
