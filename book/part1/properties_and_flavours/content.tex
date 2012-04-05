@@ -75,80 +75,54 @@ Actually it turns out that $\J(S\cup\J(S))=\J(S)$ so the join set of the set of 
 We are not aware of any optimizations that require a strict enforcement of minimality property.
 However, placing $\phi$-functions only at the join sets can be done easily using a simple topological traversal of the CFG as described in Section~\ref{section:alternative_ssa_construction_algorithms:loop}. Classical techniques place $\phi$-functions of a variable $v$ at $\J(D_v,r)$, with $r$ the entry node of the CFG. There are good reasons for that as we will explain further. Finally, as explained in Section~\ref{section:classical_construction_algorithm:turning} for reducible flow graphs, some copy-propagation engine can easily turn a non-minimal SSA code into a minimal one.
 
-\section{SSA Form with the Dominance Property}
+\section{Strict SSA Form. Dominance Property}
 \label{sec-prop-dominance}
-%% ; we assume that the CFG entry node includes a 
-%% pseudo-definition of every variable in the procedure. Some languages
-%% permit the pseudo-definition of a $v$ reaches a use $U$ of $v$; if this
-%% path is taken through the CFG, then $v$ will be used without ever
-%% being assigned a value. Although this may be permissible in
-%% some cases, it is usually indicative of a programmer error or
-%% poor software design. 
+A procedure is defined to be \emph{strict} if every variable
+is defined before it is used along every path from the entry
+to exit point; otherwise, it is \emph{non-strict}. 
+Some languages, such as Java, impose strictness as part of the language
+definition; others, such as C/C++, impose no such restrictions. 
+The code in Figure~\ref{fig:properties_and_flavors:dom_property}(a) is non-strict as there exists a path from the entry to the use of $a$ that does not go through the definition. 
+If this path is taken through the CFG during the execution, then $a$ will be used without ever
+being assigned a value. Although this may be permissible in
+some cases, it is usually indicative of a programmer error or poor software design. 
 
+Under SSA, because there is only a single
+(static) definition per variable, strictness is equivalent to the
+\emph{dominance property}: each use of a variable is dominated by
+its definition.
 In a CFG, basic block $n_{1}$ \emph{dominates} basic block $n_{2}$
 if every path in the CFG from the entry point to $n_{2}$ includes
 $n_{1}$. By convention, every basic block in a CFG dominates itself. Basic 
 block $n_{1}$ \emph{strictly dominates} $n_{2}$ if $n_{1}$ dominates
-$n_{2}$ and $n_{1} \neq n_{2}$. We use the symbols $n_{1} dom n_{2}$
-and $n_{1} sdom n_{2}$ to denote dominance and strict dominance 
+$n_{2}$ and $n_{1} \neq n_{2}$. We use the symbols $n_{1} dom\, n_{2}$
+and $n_{1} sdom\, n_{2}$ to denote dominance and strict dominance 
 respectively.
 
-The minimality property discussed previously mandates that each
+
+Adding a (undefined) pseudo-definition of each variable to the procedure's entry
+point ensures strictness. 
+The single reaching-definition property discussed previously mandates that each
 program point be reachable by exactly one definition (or pseudo-definition)
 of each variable. If a program point $U$ is a use of variable $v$, then the
-reaching definition $D$ of $v$ will dominate $U$; otherwise, there is a path
-from the CFG entry node to $U$ that does not include $D$, which contradicts
-the Minimality Property. If such a  path existed, then the program would not
-be in SSA Form, and a $\phi$-function would need to be inserted somewhere
-in $DF^{+}(D)$.  
-
-A procedure is defined to be \emph{strict} if every variable
-is defined before it is used along every path from the entry
-to exit point~\cite{BudimlicJun02}; otherwise, it is \emph{non-strict}. 
-Some languages, such as Java, impose strictness as part of the language
-definition; others, such as C/C++, impose no such restrictions. 
- 
-Adding a pseudo-definition of each variable to the procedure's entry
-point ensures strictness. After $\phi$-functions have been placed
-for each variable in the program, the presence of the pseudo-definition
-as a parameter of a $\phi$-function indicates a potential problem with
-an uninitialized variable, as illustrated by the following example:
-
-(Fabrice: Please insert a print-quality version of the figure
-"dom\_property.jpeg" which is a scan of a handwritten note. The
-content of the figure is correct in its current form. I do not feel
-comfortable creating this figure myself, as I cannot ensure that
-it will be synergistic with the style of the other figures in the book).  
- 
-Under the Dominance Property, each use of each variable is dominated
-by exactly one definition. As shown in the preceding figure, a strict
-program converted to SSA Form satisfies the dominance property;
-however, it is also possible to construct a non-strict version of SSA
-Form that does not satisfy the Dominance Property.  
-
-\section{Minimal SSA Form}
-\label{sec:properties_and_flavors:minimalSSA}
-
-Minimal SSA Form is a variant of SSA Form that satisfies both the 
-Minimality and Dominance Properties ~\cite{CytronOct91}. Chapter
-\label{chap:classical_construction} describes an algorithm to
-construct Minimal SSA. The construction of Minimal SSA Form
-requires two steps: instantiation of $\phi$-functions, which
-satisfies the Minimality Property, and a renaming of variables
-to satisfy the Dominance Property. 
-
-If the original procedure is non-strict, conversion to Minimal SSA
+reaching definition $D$ of $v$ will dominate $U$; otherwise, there would be a path
+from the CFG entry node to $U$ that does not include $D$. If such a  path existed, then the program would not be in SSA Form, and a $\phi$-function would need to be inserted somewhere
+in $\J(r,D)$ as in our example of Figure~\ref{fig:properties_and_flavors:dom_property}(b) where $\bot$ represents the undefined pseudo-definition. The so called \emph{minimal SSA form} is a variant of SSA form that satisfies both the minimality and dominance properties.
+If the original procedure is non-strict, conversion to minimal SSA
 will create a strict SSA-based representation. Here, strictness refers
 solely to the SSA representation; if the input program is non-strict,
-conversion to and from Minimal SSA Form cannot address errors due
-to uninitialized variables. Minimal SSA Form maintains the strictness
-property due to the pseudo-definition of each variable that exists
+conversion to and from strict SSA form cannot address errors due
+to uninitialized variables. Strictness property is obtained due to the pseudo-definition of each variable that exists
 implicitly in the CFG entry node; as the pseudo-definition does not
 assign a value, Minimal SSA achieves the property of strictness, but
-without changing the semantics of the program. Another issue is
-that program optimizations, such as copy propagation through
-$\phi$-functions, can cause a Minimal SSA Form program to
-become non-strict, and therefore violate the dominance property.
+without changing the semantics of the program.
+
+
+\begin{figure}
+\includegraphics[width=0.5\textwidth]{dom_property.jpeg}
+\caption{\label{fig:properties_and_flavors:dom_property}A non-strict code and its corresponding strict SSA form. The presence of $\bot$ indicates a use of an undefined value.}
+\end{figure}
+
 
 Minimal SSA is useful for many reasons. Most importantly, the liveness
 and interference properties of variables under Minimal SSA have favorable
