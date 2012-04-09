@@ -2,32 +2,39 @@
 \inputprogress
 \label{chap:if_conv}
 \graphicspath{{img/}{if_conversion/img/}{part4/if_conversion/img/}}
-	
+
 \newcommand\cond{~?~}
+\newcommand{\annotation}[1]{%
+  \marginpar{\small\itshape\color{red}#1}}
 
 %\setcounter{tocdepth}{3} 
 %\tableofcontents
 
 \section{Overview/Motivations}
 
-If-conversion is the process by which all or parts of the CFG are transformed into an equivalent region where branches have been removed, merging the multiple flow of control into a straight line of code. 
+If-conversion is the process by which all or parts of the CFG are transformed into an equivalent region where branches have been removed, merging multiple flow of control into a straight line of code. 
 We start with a description of a full SSA model, taking as input a region in SSA form producing a if-converted SSA representation using control speculation techniques. We then describe how this framework is extended to use predicated execution, producing the $\psi$-SSA form presented in chapter~\ref{chap:psi_ssa}. This if-converted, or predicated representation can then exploited by VLIW or hyperblocks scheduling frameworks.
 
 \subsection{Introduction}
 
-A way to increase the instruction throughput is to increase the IPC (number of instructions per cycle), either by increasing the pipeline depth, or by increasing the number of instructions that are executed simultaneously, using multiple issue processors. This can be achieved by either out-of-order superscalar execution, using dynamic scheduling models and expensive hardware complexity. An alternative is to use in-order execution model, popular in embedded processors requiring lower hardware complexity and usage costs. 
+A way to increase the instruction throughput is to increase the IPC (number of instructions per cycle), either by increasing the pipeline depth, or by increasing the number of instructions that are executed simultaneously. Such as with out-of-order superscalar execution, using dynamic scheduling models and expensive hardware complexity, or with use in-order execution model, popular in embedded processors requiring lower hardware complexity and usage costs. 
 
-Instruction Level Parallelism (ILP) was demonstrated to be very effective on embedded processors, for example in the mathematical for evaluation of polynomial expressions \cite{Jeannerod:2010:TTI:1837210.1837212}, or to sustain performance in loop intensive computation required for multimedia applications \cite{FisherFaraboshiYoung}.
+\annotation{Rework. Is it needed ? Paragraph does not seem clear}
+Instruction Level Parallelism (ILP) was demonstrated to be very effective on embedded processors.
 
-In order to exploit this ILP, The parallelisation of the execution flow \cite{Rau:2003:IP:1074100.1074489} can be left to the compiler. For this purpose, VLIW (Very Large Instruction World) or EPIC (Explicitly Parallel Architectures) make the parallelism visible into the ISA representation, relaying on the static scheduler to organize the compiler output so that multiple instructions can be issued for each cycle. 
+For example in the mathematical for evaluation of polynomial expressions \cite{Jeannerod:2010:TTI:1837210.1837212}, or to sustain performance in loop intensive computation required for multimedia applications \cite{FisherFaraboshiYoung}.
 
-Unfortunately, programs contain sequences of instructions that cannot be parallelized, because of control or data dependencies. In order to remove those dependencies, ILP techniques can be implemented in the hardware, such as dynamic scheduling, branch prediction, or in the compiler, such as software pipeline, vectorization or loop optimizations. But still, despite those efforts, the execution flow is still disrupted by conditional branches, and many ALU cycles are wasted. 
+\annotation{Suppose a pre requesite. Reduce this paragraph}
+In order to exploit this ILP, The parallelisation of the execution flow \cite{Rau:2003:IP:1074100.1074489} can be left to the compiler.
+For this purpose, VLIW (Very Large Instruction World) or EPIC (Explicitly Parallel Architectures) make the parallelism visible into the ISA representation, relaying on the static scheduler to organize the compiler output so that multiple instructions can be issued for each cycle. 
+
+Unfortunately, programs contain sequences of instructions that cannot be parallelized, because of control or data dependencies. In order to remove those dependencies \annotation{Without hardware support, such as dynamic scheduling or branch prediction}. The compiler implements ILP techniques such as software pipeline, vectorization or loop optimizations. But still, despite those efforts, the execution flow is still disrupted by conditional branches, and many ALU cycles are wasted. 
 
 Conditional branches introduce control dependencies between instructions. An instruction is control dependent on a preceding instruction if the first one determines the execution of the second one \cite{Kennedy:2001:OCM:502981}. They limit the scope of ILP optimizations, because they reduce the number of instructions that are not data dependent and thus can be executed in parallel. By reducing the average size of a basic block, they act as a bottleneck for exposing parallelism.
 
 If-conversion is the process of transforming a control flow region containing several basic blocks into a single basic block of conditional instructions. Thus removing control branches from this region \cite{Schlansker97achievinghigh}.
 
-Removing branches improves performance in several ways: by removing the mis-prediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows earlier execution of long latency operations and merge of multiple control paths into a single flow of execution. Many compiler optimizations are impacted by branches. Software Pipelining for example, cannot efficiently schedule loops with conditional branches \cite{Warter:1992:EMS:144953.145796}.
+Removing branches improves performance in several ways: by removing the mis-prediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows earlier execution of long latency operations and merge of multiple control paths into a single flow of execution for use by scheduling frameworks. Many other compiler optimizations are impacted by branches. Software Pipelining for example, cannot efficiently schedule loops with conditional branches \cite{Warter:1992:EMS:144953.145796}.
 
 Consider the simple example \ref{fig:example1}, that represents the execution of an if-then-else statement on a 4-issue processor. Branches are highly biased (a branch is highly biased when it is known to be frequently taken or not), so the basic blocks can be reordered to favor the critical path. Even with this optimistic case, the schedule height is still 6 cycles (assuming that all instructions have a one cycle latency), with a maximal schedule height of 7 instructions. 
 
@@ -82,13 +89,16 @@ From this introductory example, we can observe that the transformation implies:
 \item The production of new data dependencies. If-conversion transforms control dependencies into data dependencies \cite{Allen:1983:CCD:567067.567085}. 
 \end{itemize}
 
+\annotation{Reference join sets; phi-congrurence already here?}
 Thanks to SSA, the merging point is already materialized into the original control flow by the $\phi$ pseudo operation qnd register renaming is a basic property of SSA. Given those similarities between SSA and the if-conversion requirements, the transformation if-converted code seems natural. We describe here the framework to use those properties to more complex regions.
 
 \subsection{Architectural requirements}
-The example illustrates also that the \textit{merge} pseudo operations needs to be mapped to a conditional form of execution on the target's architecture. Depending on the available support, the algorithm must be able to match the ISA, to provide support for conditional execution of instructions, or to conditionally commit the result of an instruction.
-Basically, several kinds of support for predication can (co-)exist: predicated execution  or speculative execution by mean of conditional moves. A partial predication model is used to predicate only the subset of the ISA that are not easily speculable, usually memory operations.
+Note that the \textit{merge} pseudo operations needs to be mapped to a conditional form of execution on the target's architecture. Depending on the available support, the algorithm must be able to match the ISA, to provide support for conditional execution of instructions, or to conditionally commit the result of an instruction. \ref{fig:pred} shows a conditional execution using the different models.
 
-Predication is an architectural feature that allows an instruction to be executed conditionally by means of a predicate.
+\begin{itemize}
+\item Speculative execution by mean of conditional moves. A partial predication model is used to predicate only the subset of the ISA that are not easily speculable, usually memory operations.
+\item Predicated execution by mean of is an architectural feature that allows an instruction to be executed conditionally by means of a predicate field in the instruction encoding.
+\end{itemize}
 
 \begin{figure}
 \footnotesize
@@ -106,15 +116,13 @@ $x= p \cond t : 0 $ \\
 \mbox{cmov} \\
 $t = a + b $ \\
 $x = 0 $ \\
-$x = cmoveq$ $t$ \\
+$x = cmov p,t$ \\
 \end{minipage}
 \caption{Conditional execution using different models}
 \label{fig:pred}
 \end{figure}
 
-Speculation is a compiler technique that allows instructions that are control dependent to be executed unconditionally. The result can be committed only when the condition is known to be true. Examples of conditional moves are the $cmov$ (Pentium Pro) or the $select$ (Multiflow, ST231 VLIW) instructions.
-
-Example \ref{fig:pred} shows a conditional execution using the different modes.
+Using speculative execution, if-conversion enables allows dependent instructions to be executed unconditionally, using a temporary register, committed only when the condition is known to be true. Examples of conditional moves are the $cmov$ (Pentium Pro) or the $select$ (Multiflow, ST231 VLIW) instructions.
 
 To be speculated, an instruction should not potentially create any other side effects, or hazards. For instance a memory load should not trap (cache misses can also be considered for performance). This of course prevents unconditional execution by means of speculation of memory access for which the address is valid only on the selected path. Because of those reasons memory operations are a major impediment to ILP. 
 
@@ -152,10 +160,12 @@ Stores can be performed by speculating the address value, and forcing it to be a
 
 \section{Classical If-Conversion process}
 
-There are 2 approaches to perform if-conversion in SSA form. \cite{Stoutchinin_Gao_2004} applies a classical \cite{Fang:1996:CAI:645674.663446} If-conversion algorithm on conventional SSA representation. The diffculty of predicating $\phi$ operations, control flow join point, is solved by using $\psi$ operations, merging different values their $\psi-congruence$ class. \cite{odes_bruel, ijes_bruel} designs a native SSA framework, more precise than classical non-SSA, alleviating the conventional SSA (chapter~\ref{sec-prop-conventional}) restriction.
+2 approaches are considered to perform if-conversion in SSA form. \cite{Stoutchinin_Gao_2004} applies a classical if-conversion algorithm \cite{Fang:1996:CAI:645674.663446} on a conventional SSA representation. The diffculty of predicating $\phi$ operations, control flow join point, is solved by using $\psi$ operations, merging different values their $\psi-congruence$ class, but still based upon traditional framework. Another appoach is to incrementally build-up the if-converted region during the SSA traversal using a native SSA framework \cite{odes_bruel, ijes_bruel}, only using the properties exposted by SSA (e.g no need a def-use chain to link instructions with their predicates definition).
+
+To illustrate the differences between a traditional framework and the SSA framework support of if-conversion, we first start to describe a well known RK algorithm proposed by Park and Schlansker \cite{Schlansker-predicated} on the nested tests from figure In \ref{fig:nested1}. We will then describe in detail the SSA based apprach.
 
 Standard if-conversion techniques addresses the problem in the following order: First allocates boolean variables to the basic blocks, on an identified sub-region, then perform predicate initialization placement and then restructure the CFG sub-region into the final if-converted region. 
-As an starting example we describe briefly the RK algorithm proposed by Park and Schlansker \cite{Schlansker-predicated} on the nested tests from figure In \ref{fig:nested1}. 
+
 The RK algorithm starts to compute the Control Dependence Graph \cite{Ferrante:1987:PDG:24039.24041}. It is necessary to map the basic blocks to guard conditions, and the guards and the set of basic blocks that need to set them. The algorithm creates a new guard, eventually initialized to false, for each condition. \ref{fig:nested2} shows the sub-region with new conditions initialized, and \ref{fig:RK} the RK mappings.
 
 \begin{figure}
@@ -198,7 +208,10 @@ The RK algorithm starts to compute the Control Dependence Graph \cite{Ferrante:1
 The process finishes by emitting the conditioned instructions, and removes the branches. \ref{fig:nested}. 
 
 There are drawbacks with this approach. First, it assumes that all instructions can be predicated, in particular predicate setting operations (test) need to be conditioned. Without predicated support for comparison instruction, a merge must be done between the condition setting. For instance in the given example the initialization sequence $p_1 ? p_3=test$ needs to be rewritten as $t=test; p_1=p_3 \& t$. Speculative based approach, necessary to handle efficiently partially predicated architectures are then penalized by this approach, since a rewritten pass is needed to convert a conditional instruction into a temporary register and a conditional move.
-Another pitfall, the algorithm works a a pre-selected control flow subregion. One of the challenge of all if-conversion frameworks is to be able to predict that the conversion will be beneficial before effectively doing it. If the number of computed guards exceed the number of predicate registers, then a new region has to be re-considered and the process restarted. Even with full predication support, speculative execution can be beneficial. Traditional algorithm tend to predicate all the instructions defined by a basic block, without considering their use. For instance in $BB2$ the instruction $l=x$ doesn't have any use other than the done defined by its predicate. Finally, those framework required intensive computing resources to compute the Control Dependence Graph, Register Renaming, a Def-Use chains or post-phase Predicate Reduction processing, whereas in SSA all those steps are naturally exposed.
+Another pitfall, this approach works on a pre-selected control flow subregion. One of the challenge of all if-conversion frameworks is to be able to predict that the conversion will be beneficial before effectively doing it. If the number of computed guards exceed the number of predicate registers, then a new region has to be re-considered and the process restarted. Even with full predication support, speculative execution can be beneficial. Traditional algorithm tend to predicate all the instructions defined by a basic block, without considering their use. For instance in $BB2$ the instruction $l=x$ doesn't have any use other than the done defined by its predicate.
+
+\annotation{Hummm}
+Finally, those framework required intensive computing resources to compute the Control Dependence Graph, Register Renaming, a Def-Use chains or post-phase Predicate Reduction processing, whereas in SSA all those steps are naturally exposed.
 
 \section{SSA If-Conversion}
 
@@ -217,7 +230,8 @@ Note that basically, since a $\phi$ expresses the merging point of $n$ definitio
 
 A very big difference in nature is in the way the merging of conditional is realized using data dependencies instead of predicate selection. In SSA the condition merge assignment is not realized thru merging of predicates, but using two successive conditional moves operations.
 
-This algorithm takes as input a structured region in pure SSA form and produces a pure SSA using conditional move instructions to realize join points. One benefit of this approach is that all SSA properties are maintained, and scalar optimizations, such as constant propagation, can be executed without predicate awareness. Without SSA speculative if-conversion, implementation of a predicated intermediate representation is very complex, because optimization and def-use chains must deal with partial definitions.
+\annotation{Works also in non-conventional SSA. Give example of non-conventional SSA ?}
+This algorithm takes as input a structured region in SSA form and produces a valid SSA using conditional move instructions to realize join points. One benefit of this approach is that all SSA properties are maintained, and scalar optimizations, such as constant propagation, can be executed without predicate awareness. Without SSA speculative if-conversion, implementation of a predicated intermediate representation is very complex, because optimization and def-use chains must deal with partial definitions.
 
 \subsection{SSA operations on basic blocks}
 
