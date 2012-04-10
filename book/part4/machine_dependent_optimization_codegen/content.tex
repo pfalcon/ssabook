@@ -44,22 +44,17 @@ data.
 scheduling.
 \end{itemize}
 
-This increasing sophistication of compiler code generation techniques motivates
-the introduction of the SSA-form in order to simplify analyses and
-optimizations. However, using the SSA form on machine instructions raises issues,
-a number of wich we list in Section~\ref{sec:ssa-codegen-issues} issues.
-Moreover, the applicability of the SSA form only spans the phases that appear
-early in the code generation process: from instruction selection, down to
-register allocation. After register allocation, program variables are mapped to
-architectural registers or to memory locations, so the SSA form analyses and
-optimizations no longer apply. The suitability of the SSA form for several code
-generation phases is discussed in
-Section~\ref{sec:ssa-codegen-suitability}. Finally, engineering a code generator
-with the SSA form as a first class representation presents several options
-presented in Section~\ref{sec:ssa-codegen-engineering}.
+This increasing sophistication of compiler code generation motivates the
+introduction of the SSA-form in order to simplify analyses and optimizations.
+However, using the SSA form on machine instructions raises issues, a number of
+wich we list in Section~\ref{sec:ssa-codegen-issues}.  Some options for
+engineering a code generator with the SSA form as a first class representation
+are presented in Section~\ref{sec:ssa-codegen-engineering}.  The suitability of
+the SSA form for main code generation phases is discussed in
+Section~\ref{sec:ssa-codegen-suitability}.
 
 \section{Issues of the SSA form on machine instructions}
-\label{sec:ssa-codegen-issues}.
+\label{sec:ssa-codegen-issues}
 
 \subsection{Un-splittable critical edges}
 
@@ -143,21 +138,79 @@ transformations, as opposed to $\psi$-SSA where predicate analysis may enable to
 relax this order.
 
 
-\section{Suitability of the SSA to code generation phases}
-\label{sec:ssa-codegen-suitability}
+\section{Engineering a SSA form code generator}
+\label{sec:ssa-codegen-engineering}
 
 \begin{itemize}
 
-\item Analyses such as induction variable classification, bit-width analysis,
-variable interference, liveness sets, and liveness checking
+\item Machine description system
+
+\item Choices of phi function semantics
+
+\item Region-based or not
+
+\item Register allocate under SSA or not
+
+\item Keep conventional SSA everywhere
+
+\item SSA on stack slots for register allocation
+
+\item Control tree and memory dependencies and user hints
+
+\item Control structures Bourdoncle Havlak.
+
+\item Choice to keep conventional or not.
+
+\item Choice to use multiplex or not
+
+\item Choice to use DJ graph or not
+
+\item Reassociation under SSA
+
+\item Hardware loop pseudo instructions
+
+\item Maximum coalescing before instruction scheduling (dedicated etc.)
+
+\item SSA operation parameters versus instruction operands: implicit operands.
+
+\item Loop nesting forest for abstract interpretation (under SSA)
+
+\end{itemize}
+
+
+\section{Suitability of the SSA to code generation phases}
+\label{sec:ssa-codegen-suitability}
+
+The applicability of the SSA form only spans the phases that appear
+early in the code generation process: from instruction selection, down to
+register allocation. After register allocation, program variables are mapped to
+architectural registers or to memory locations, so the SSA form analyses and
+optimizations no longer apply.
+
+\subsection{Classic Analyses}
+
+\begin{itemize}
+
+\item Induction variable classification,
+
+\item bit-width analysis,
+
+\item liveness sets, liveness checking
 (Chapter~\ref{chap:liveness_analysis}).
 
-\item Instruction selection (Chapter~\ref{chapter:code_selection}). Unlike
+\item variable interference,
+
+\end{itemize}
+
+\subsection{Instruction selection}
+
+Instruction selection (Chapter~\ref{chapter:code_selection}). Unlike
 classic techniques that match one IR tree or one DAG at a time, using the SSA
 form as input extends the scope of pattern matching to more complex IR graphs,
 in particular those resulting from control-flow constructs.
 
-\item If-conversion or instruction predication
+\subsection{If-conversion or instruction predication}
+
 (Chapter~\ref{chap:if_conversion}). A predicated instruction behavior includes a
 traditional data processing part such as arithmetic or memory access, and a
 predicate evaluation part often connected to a separate operand. When the
@@ -165,7 +218,9 @@ predicate evaluates to false, the instruction has no architectural effects. The
 simplest form of predicated instruction is the conditional MOVE such as
 CMOV\emph{xx} instructions on the x86. 
 
-\item Inner loop unrolling or unwinding. Non-inner loop transformations, such as
+\subsection{Inner loop optimizations}
+
+Non-inner loop transformations, such as
 unroll-and-jam, are usually left to the IR loop optimizer. Loop unrolling
 replicates the loop body and removes all but one of the replicated loop exit
 branches. Loop unwinding replicates the loop body while keeping the loop exit
@@ -176,17 +231,24 @@ the loop-closed SSA form (Chapter~\ref{chap19:loopTree}), the SSA version of the
 self assignment technique also pioneered by the Multiflow Trace Scheduling
 compiler \cite{Lownet:1992:JS}.
 
-\item Memory addressing and memory packing optimizations. Memory addressing
-optimizations include selection of auto-modified addressing modes. Memory
-packing optimizations select wider memory access instructions whenever the
-effective addresses are provably adjacent, and no side effects such as
-possible address misalignment traps are introduced.
+Hardware loop mapping.
 
-\item Constant propagation, copy folding, and dead code elimination.
+\subsection{Memory addressing and memory packing}.
 
-\item Instruction re-selection. Uses bit width analysis.
+Memory addressing optimizations include selection of auto-modified addressing
+modes. Memory packing optimizations select wider memory access instructions
+whenever the effective addresses are provably adjacent, and no side effects such
+as possible address misalignment traps are introduced.
 
-\end{itemize} \medskip
+\subsection{Code cleanups}
+
+Constant propagation, copy folding, and dead code elimination.
+
+\subsection{Instruction re-selection}
+
+Instruction re-selection. Uses bit width analysis. SIMD idioms.
+
+\subsection{Pre-pass instruction scheduling}
 
 Further down the code generator, the next major phase is pre-pass instruction
 scheduling. Innermost loops with a single basic block or super block body are
@@ -238,61 +300,10 @@ do not expose this flexibility.
 
 \end{itemize} These issues need to be addressed before any pre-pass instruction
 scheduling on the SSA form demonstrates advantages over classic approaches.
-\medskip
+
+\subsection{Register allocation}
 
 The last major phase of code generation where SSA form has demonstrated benefits
 is register allocation and its three sub-problems: variable spilling, variable
 coloring, and variable coalescing (Chapter~\ref{chap:register_allocation}).
-
-\section{Engineering a SSA form code generator}
-\label{sec:ssa-codegen-engineering}
-
-\begin{itemize}
-
-\item Machine description system
-
-\item Choices of phi function semantics
-
-\item Register allocate under SSA or not
-
-\item Keep conventional SSA everywhere
-
-\item SSA on stack slots for register allocation
-
-\end{itemize}
-
-% Control structures Bourdoncle Havlak.
-
-% Choice to keep conventional or not.
-
-% Choice to use multiplex or not
-
-% Choice to use DJ graph or not
-
-% Reassociation under SSA
-
-% Hardware loop pseudo instructions
-
-% Maximum coalescing before instruction scheduling (dedicated etc.)
-
-% SSA operation parameters versus instruction operands: implicit operands.
-
-% Loop nesting forest for abstract interpretation (under SSA)
-
-
-%\section{Interference graphs on the SSA form}
-
-%that enabling information such as pointer aliasing and memory dependence be
-%available. The main stand-alone SSA-based analyses useful in a code generator
-%are induction variable classification, and liveness analysis. Other
-
-%Code generation techniques have significantly evolved in the past decades, as
-%they are mainly responsible for exploiting increasingly sophisticated processor
-%architectures and micro-architectures. Features to be addressed
-%by the code generator include: selection of SIMD instructions; selection of
-%conditional moves or predicated instructions; exploitation of hardware looping
-%or branch prediction hints; exploitation of DSP-like addressing modes
-%such as auto-modified; explicit memory hierarchy control, including pre-fetching
-%of pre-loading data; exploitation of wide instruction issuing and instruction pipelining
-%through instruction scheduling and
 
