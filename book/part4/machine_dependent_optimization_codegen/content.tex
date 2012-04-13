@@ -40,7 +40,7 @@ hints.
 \item Matching fixed-point arithmetic and SIMD idioms by special instructions.
 \item Memory hierarchy optimizations, including pre-fetching and pre-loading
 data.
-\item Bundling of VLIW instructions, that may interact with instruction
+\item VLIW instruction bundling, that may interfere with instruction
 scheduling.
 \end{itemize}
 
@@ -124,9 +124,9 @@ going out of SSA.
 \subsection{Predicated instructions}
 
 Predicated instructions present another aspect of definitions that do not
-kill the target register. Extensions such as $\psi$-SSA
+kill the target register. Extensions of the SSA form such as the $\psi$-SSA
 (Chapter~\ref{chap:psi_ssa}) specifically address the issues of handling
-predicated instructions in the SSA form. A simpler solution is as follows: for
+fully predicated instructions. A simpler solution is as follows: for
 each target operand of the predicated instruction, add a corresponding source
 operand in the instruction signature; then add an operand renaming constraint
 between the target operands and the corresponding source operands. This simple
@@ -137,43 +137,108 @@ given variable (before SSA renaming) remain in dominance order across
 transformations, as opposed to $\psi$-SSA where predicate analysis may enable to
 relax this order.
 
+\subsection{Instruction semantics}
+
+Unlike IR operators, there is no straightforward mapping between machine
+instruction and their operational semantics. For instance, a substract
+instruction with operands $(a,b,c)$ may either compute $c \leftarrow a-b$ or $c
+\leftarrow b-a$ or any such expression with permuted operands. Yet basic SSA
+form code cleanups such as constant propagation and sign extension removal need
+to know what is actually computed by machine instructions. There are at least
+two ways to address this issue. One is to add properties to the instruction
+operation and to its operands, a technique used by the Open64 compiler. Typical
+operation properties include 'isAdd', 'isLoad', etc. Typical operand properties
+include 'isLeft', 'isRigh', 'isBase', 'isOffset', etc. A more ambitious
+alternative implemented in the SML/NJ \cite{Leung:1999:PLDI} compiler and the
+LAO compiler \cite{Dinechin:2000:CASES} is to associate a tree of IR-like
+operators to each target operand of a machine instruction.
+
+%Static vs run-time properties, speculability
+
+% reassociation, induction variables
 
 \section{Engineering a SSA form code generator}
 \label{sec:ssa-codegen-engineering}
 
+\subsection{Machine description system}
+
 \begin{itemize}
 
-\item Machine description system
+\item Operand constraints
 
-\item Choices of phi function semantics
+\item Expose implicit operands
 
-\item Region-based or not
+\item Instruction semantics, also include speculability
 
-\item Register allocate under SSA or not
+\item Hardware loop pseudo instructions
 
-\item Keep conventional SSA everywhere
+\end{itemize}
 
-\item SSA on stack slots for register allocation
+\subsection{Control tree flavor}
+
+\begin{itemize}
 
 \item Control tree and memory dependencies and user hints
 
 \item Control structures Bourdoncle Havlak.
 
-\item Choice to keep conventional or not.
+\item Choice to use DJ graph or not
+
+\item Loop nesting forest for abstract interpretation (under SSA)
+
+\item Mismatch with the IR control tree
+
+\end{itemize}
+
+\subsection{SSA form variant}
+
+\begin{itemize}
+
+\item Mixes with non-SSA form or not
 
 \item Choice to use multiplex or not
 
-\item Choice to use DJ graph or not
+\item Choices of phi function semantics
+
+\item Choice to keep conventional or not.
+
+\item SSI flavor or not
+
+\item SSA on stack slots for register allocation
+
+\end{itemize}
+
+\subsection{SSA form construction}
+
+\begin{itemize}
+
+\item When is SSA form constructed
+
+\item Copy folding or not
+
+\end{itemize}
+
+\subsection{SSA form destruction}
+
+\begin{itemize}
+
+\item Before, during, after register allocation
+
+\item Sreedhar, Boissinot
+
+\item Parallel copy sequentialization
+
+\end{itemize}
+
+\begin{itemize}
+
+\item Region-based or not
+
+\item Register allocate under SSA or not
 
 \item Reassociation under SSA
 
-\item Hardware loop pseudo instructions
-
-\item Maximum coalescing before instruction scheduling (dedicated etc.)
-
-\item SSA operation parameters versus instruction operands: implicit operands.
-
-\item Loop nesting forest for abstract interpretation (under SSA)
+\item Coalescing aggressiveness before instruction scheduling (dedicated etc.)
 
 \end{itemize}
 
@@ -187,18 +252,20 @@ register allocation. After register allocation, program variables are mapped to
 architectural registers or to memory locations, so the SSA form analyses and
 optimizations no longer apply.
 
-\subsection{Classic Analyses}
+\subsection{Classic analyses and optimizations}
 
 \begin{itemize}
 
-\item Induction variable classification,
+\item Induction variable classification (Chapter~\ref{chap:}),
 
-\item bit-width analysis,
+\item Bit-width analysis,
 
 \item liveness sets, liveness checking
 (Chapter~\ref{chap:liveness_analysis}).
 
-\item variable interference,
+\item Variable interference,
+
+\item GVN or LICM of PRE
 
 \end{itemize}
 
@@ -218,6 +285,12 @@ predicate evaluates to false, the instruction has no architectural effects. The
 simplest form of predicated instruction is the conditional MOVE such as
 CMOV\emph{xx} instructions on the x86. 
 
+% Weak control regions, strong control regions
+
+% Full predication support, partial predication support
+
+% If-conversion includes predication and speculation
+
 \subsection{Inner loop optimizations}
 
 Non-inner loop transformations, such as
@@ -233,7 +306,7 @@ compiler \cite{Lownet:1992:JS}.
 
 Hardware loop mapping.
 
-\subsection{Memory addressing and memory packing}.
+\subsection{Memory addressing and memory packing}
 
 Memory addressing optimizations include selection of auto-modified addressing
 modes. Memory packing optimizations select wider memory access instructions
@@ -247,6 +320,7 @@ Constant propagation, copy folding, and dead code elimination.
 \subsection{Instruction re-selection}
 
 Instruction re-selection. Uses bit width analysis. SIMD idioms.
+Required because analyses and code specialization
 
 \subsection{Pre-pass instruction scheduling}
 
