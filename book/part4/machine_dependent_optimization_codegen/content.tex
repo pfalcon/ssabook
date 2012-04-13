@@ -79,65 +79,80 @@ instructions that extracts the individual components of the register tuple. So
 there is no longer a one-to-one mapping between variable definitions and
 instructions for the SSA form on machine instructions.
 
-\subsection{Special processor registers}
+\subsection{Non-kill target operands}
 
-The SSA form analyses and optimizations assumes that variable definitions
-are kills. As discussed earlier, this is not the case for condition registers
-with sticky bit semantics. Besides sticky bits, any containment or overlap
-between bit-fields abstracted as SSA variables, such as the condition codes of
-the processor status register, implies aliasing between these variables that
-must be worked around so their definition can be processed as kills.
+The SSA form assumes that variable definitions are kills. This is not the case
+for target operands such as a processor status register that contains several
+independent bit-fields. Moreover, some instruction effects on bit-field may be
+'sticky', that is, with an implied OR with the previous value. When mapping a
+processor status register to a SSA variable, any instruction that partially
+reads or modifies the register bit-fields should appear as reading and writing
+the corresponding variable.
 
-\subsection{Stack pointer register}
+Predicated instructions present another aspect of definitions that do not kill
+the target register. Extensions of the SSA form such as the $\psi$-SSA
+(Chapter~\ref{chap:psi_ssa}) specifically address the issues of handling fully
+predicated instructions. A simpler solution is as follows: for each target
+operand of the predicated instruction, add a corresponding source operand in
+the instruction signature; then add an operand renaming constraint between the
+target operands and the corresponding source operands. This simple
+transformation enables SSA form analyses and optimizations to remain oblivious
+to predicated instructions; for instance, a conditional move appears as a
+SELECT instruction \cite{Mahlke:1995:ISCA}. The drawback of this solution is
+that predicated definitions of a given variable (before SSA renaming) remain in
+dominance order across transformations, as opposed to $\psi$-SSA where
+predicate analysis may enable to relax this order.
 
-Some variables, such as the stack pointer, must be bound to a specific
-register at all points in the program, for instance if interrupt handlers reuse
-the program run-time stack. One possibility for such case is to inhibit the
-promotion of the stack pointer variable to a SSA variable. As a result, all
-instructions that use the stack pointer must be specialized with respect to
-their semantics as far as the SSA form optimizations are concerned.
+\subsection{Stack pointer and non-SSA operands}
 
-\subsection{ISA and ABI operand constraints}
+Some variables must be bound to a specific register at all points in the
+program. In particular this is the case of the stack pointer if interrupt
+handlers reuse the program run-time stack. One possibility is to inhibit the
+promotion of the stack pointer variable to a SSA variable. Stack pointer
+definitions including memory allocations through \verb|alloca()|, activation
+frame creation/destruction, are then encapsulated in a specific
+pseudo-instruction. Instructions that use the stack pointer must be treated as
+special cases as far as the SSA form analyses and optimizations are concerned.
 
-Machine instruction operands may be constrained to specific architectural
-registers, either by the instruction set architecture (ISA constraints), or by
-the run-time software conventions such as the application binary interface (ABI
-constraints). One way to deal with this problem is by inserting parallel COPY
-instruction that write to the constrained source operands or read from the constrained
-target operands of the instructions. The new SSA variables thus created are pre-colored
-with the required architectural register. The parallel COPY instructions are
-coalesced away or sequentialized when going out of SSA.
+More generally, the code generator intermediate representation should allow
+that machine instruction operands mix SSA variables, ordinary compiler
+temporaries, and possibly architectural registers.
 
-\subsection{Must be same / different operand constraints}
+\subsection{Operand naming constraints}
 
-Machine instruction operands may be constrained to use the same
+Explicit instruction operands are those associated with a non-opcode bit-field
+in the instruction encoding. These operands correspond to architectural
+registers or to immediate values. Implicit operands do not have encoding bits,
+but their access is apparent in the instruction semantics. These operands
+correspond to architectural resources with a single instance, such as a
+hardware loop counter, a procedure link register, or a processor status
+register. Indirect operands are not apparent in the instruction semantics, but
+need to appear as instruction operands in order to connect the flow of values.
+Such operands correspond to registers masks in instructions such PUSH/POP on
+the ARM, and to the list of registers used for passing arguments are returning
+results at function boundaries.
+
+Implicit operands and indirect operands are constrained to specific
+architectural registers either by the instruction set architecture (ISA
+constraints), or by application binary interface (ABI constraints). One way to
+deal with these constraints in the SSA form is by inserting parallel COPY
+instruction that write to the constrained source operands or read from the
+constrained target operands of the instructions. The new SSA variables thus
+created are pre-colored with the required architectural register. The parallel
+COPY instructions are coalesced away or sequentialized when going out of SSA.
+
+Explicit instruction operands may also be constrained to use the same
 architectural register between a source and a target operand, or even to use
-different architectural registers between two source operands (MUL
-instructions on the ARM). Operand constraints between one source and the
-target operand are the general case on popular instruction set architectures such as
-x68 and the ARM~Thumb. These constraints are represented by inserting a COPY
-between the constrained source operand and a new variable, then using this new
-variable as the constrained source operand. The COPY is a parallel copy in case of
-multiple constrained source operands. Again, the COPY instructions are processed when
+different architectural registers between two source operands (MUL instructions
+on the ARM). Operand constraints between one source and the target operand are
+the general case on popular instruction set architectures such as x68 and the
+ARM~Thumb. These constraints are represented by inserting a COPY between the
+constrained source operand and a new variable, then using this new variable as
+the constrained source operand. The COPY is a parallel copy in case of multiple
+constrained source operands. Again, the COPY instructions are processed when
 going out of SSA.
 
-\subsection{Predicated instructions}
-
-Predicated instructions present another aspect of definitions that do not
-kill the target register. Extensions of the SSA form such as the $\psi$-SSA
-(Chapter~\ref{chap:psi_ssa}) specifically address the issues of handling
-fully predicated instructions. A simpler solution is as follows: for
-each target operand of the predicated instruction, add a corresponding source
-operand in the instruction signature; then add an operand renaming constraint
-between the target operands and the corresponding source operands. This simple
-transformation enables SSA form analyses and optimizations to remain oblivious
-to predicated instructions; for instance, a conditional MOVE appears as a SELECT
-instruction. The drawback of this solution is that predicated definitions of a
-given variable (before SSA renaming) remain in dominance order across
-transformations, as opposed to $\psi$-SSA where predicate analysis may enable to
-relax this order.
-
-\subsection{Instruction semantics}
+\subsection{Instruction semantics representation}
 
 Unlike IR operators, there is no straightforward mapping between machine
 instruction and their operational semantics. For instance, a substract
@@ -291,6 +306,75 @@ CMOV\emph{xx} instructions on the x86.
 
 % If-conversion includes predication and speculation
 
+% Park \& Schlansker RK algorithm:
+% - Minimal in predicates and predicate defines
+% - Compute control dependences
+% - assign predicate to each unique value
+% - insert predicate defines
+% - remove control-flow
+
+% Open64
+%   Algorithm description:
+% 
+%   The if-conversion algorithm that we will use will essentially be the
+%   same as that used by Mahlke, et. al. in the IMPACT compiler.  This is
+%   a variant of the RK algorithm from Park and Schlansker.  The algorithm
+%   groups blocks into equivalence classes based on control dependence.
+%   The blocks that are placed in the same equivalence class will be
+%   controlled by the same predicate.  The predicates are set in those
+%   predecessor blocks that are the source of the control dependences.
+%   The algorithm, then, is roughly as follows:
+%   
+%       Foreach block in the region being if-converted
+%          Determine predicate assignment for the block
+%          Insert predicate calculations for the block
+%   
+%   Each of these actions will be described below.
+%   
+%   
+%   Predicate Assignment
+%   --------------------
+%   
+%   As was mentioned above, predicates are assigned to blocks based on
+%   control dependence equivalence classes.  That is, any two blocks that
+%   share precisely the same control dependences (same blocks, same edges)
+%   can share the same predicate register.  The IMPACT compiler ignores
+%   edges that exit the hyperblock when calculating control dependence
+%   (this is the primary variation from Park and Schlansker).  Beyond
+%   compile time, the benefits of this are unclear to me.  For the moment,
+%   we will include the exiting arcs.  The algorithm for predicate assignment
+%   for block X would be as follows:
+%   
+%       Calculate control dependences for X
+%       If this set of control dependences has been seen before then
+%         assign the associated predicate to X
+%       else
+%         get next predicate and associate it with X's control dependence set
+%       endif
+%       change ops in X to predicated form
+%       remove branch if not an exit
+%   
+%   
+%   Insert Predicate Calculations
+%   -----------------------------
+%   
+%   Predicate calculations will have to be placed in each of the blocks that 
+%   is a source of a control dependence in the equivalence class to which the
+%   predicate is assigned.
+% 
+% 
+%   Externally Visible routines:
+% 
+%       void HB_If_Convert(HB* hb, list<HB_CAND_TREE*>& candidate_regions)
+%         Removes non-exit branches and predicates the instructions in
+%         the blocks selected for the hyperblock. <candidate_regions> is
+%         passed to incorporate any dynamic updates to original CFG.
+% 
+%       BOOL HB_Safe_For_If_Conversion(HB *hb)
+%         Return TRUE if the hyperblock contains no side entrances. This
+%         is used to screen out hyperblock candidates during the simple if-conversion
+%         phase of the hyperblock formation.
+
 \subsection{Inner loop optimizations}
 
 Non-inner loop transformations, such as
@@ -364,7 +448,7 @@ code motion.
 \item Machine instructions may have side effects on stateful resources such as
 the processor condition codes. Representing them as SSA variables even though
 they are not operated like the processor architectural registers requires
-special casing. For instance, 'sticky' flags definitions of the IEEE~754
+special casing. For instance, 'sticky' exception flags of the IEEE~754
 arithmetic imply a OR with the previous value. All such definitions can be
 reordered with regards to the next use, and an instruction scheduler is expected
 to do so. The SSA form on machine instructions ordered by def-use on variables
