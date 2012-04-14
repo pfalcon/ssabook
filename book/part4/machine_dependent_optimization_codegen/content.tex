@@ -1,4 +1,4 @@
-\chapter{Introduction \Author{B. Dupont de Dinechin}}
+\chapter{SSA form and code generation \Author{B. Dupont de Dinechin}}
 \inputprogress
 \label{chap:ssa-codegen}
 
@@ -33,7 +33,7 @@ techniques have significantly evolved, as they are mainly responsible for
 exploiting the performance-oriented features of processor architectures and
 micro-architectures. Code generation techniques implement in these compilers
 include: \begin{itemize}
-\item If-conversion using conditional MOVE, SELECT, or predicated, instructions.
+\item If-conversion using conditional move, SELECT, or predicated, instructions.
 \item Use of specialized addressing modes such as auto-modified and modulo.
 \item Exploitation of hardware looping instruction or static branch prediction
 hints.
@@ -46,14 +46,14 @@ scheduling.
 
 This increasing sophistication of compiler code generation motivates the
 introduction of the SSA-form in order to simplify analyses and optimizations.
-However, using the SSA form on machine instructions raises issues, a number of
-wich we list in Section~\ref{sec:ssa-codegen-issues}.  Some options for
+However, using the SSA form on machine code raises issues, a number of
+which we list in Section~\ref{sec:ssa-codegen-issues}.  Some options for
 engineering a code generator with the SSA form as a first class representation
 are presented in Section~\ref{sec:ssa-codegen-engineering}.  The suitability of
 the SSA form for main code generation phases is discussed in
 Section~\ref{sec:ssa-codegen-suitability}.
 
-\section{Issues of the SSA form on machine instructions}
+\section{Issues of the SSA form on machine code}
 \label{sec:ssa-codegen-issues}
 
 \subsection{Un-splittable critical edges}
@@ -77,7 +77,7 @@ multiplies of the ARM imply multiple results as far as the SSA form is
 concerned, whether on the instruction itself, or on a pseudo-instruction
 instructions that extracts the individual components of the register tuple. So
 there is no longer a one-to-one mapping between variable definitions and
-instructions for the SSA form on machine instructions.
+instructions for the SSA form on machine code.
 
 \subsection{Non-kill target operands}
 
@@ -152,7 +152,7 @@ the constrained source operand. The COPY is a parallel copy in case of multiple
 constrained source operands. Again, the COPY instructions are processed when
 going out of SSA.
 
-\subsection{Instruction semantics representation}
+\subsection{Representation of instruction semantics}
 
 Unlike IR operators, there is no straightforward mapping between machine
 instruction and their operational semantics. For instance, a substract
@@ -160,17 +160,22 @@ instruction with operands $(a,b,c)$ may either compute $c \leftarrow a-b$ or $c
 \leftarrow b-a$ or any such expression with permuted operands. Yet basic SSA
 form code cleanups such as constant propagation and sign extension removal need
 to know what is actually computed by machine instructions. There are at least
-two ways to address this issue. One is to add properties to the instruction
-operation and to its operands, a technique used by the Open64 compiler. Typical
-operation properties include 'isAdd', 'isLoad', etc. Typical operand properties
-include 'isLeft', 'isRigh', 'isBase', 'isOffset', etc. A more ambitious
-alternative implemented in the SML/NJ \cite{Leung:1999:PLDI} compiler and the
-LAO compiler \cite{Dinechin:2000:CASES} is to associate a tree of IR-like
-operators to each target operand of a machine instruction.
+two ways to address this issue. \begin{itemize}
+\item Add properties to the instruction operation and to its operands, a
+technique used by the Open64 compiler. Typical operation properties include
+'isAdd', 'isLoad', etc. Typical operand properties include 'isLeft', 'isRigh',
+'isBase', 'isOffset', 'isPredicated', etc. Extended properties that involve the
+instruction operation and some of its operands include 'isAssociative',
+'isCommutative'
+\item Associate a tree of IR-like operators to each target operand of a machine
+instruction. This more ambitious alternative was implemented in the SML/NJ
+\cite{Leung:1999:PLDI} compiler and the LAO compiler \cite{Dinechin:2000:CASES}.
+\end{itemize}
+Whatever the representation of instruction semantics, another issue is how to
+factor it. Most information can be statically tabulated, yet properties such as
+safety for control speculation, or being equivalent to a COPY, depend on operand
+values.
 
-%Static vs run-time properties, speculability
-
-% reassociation, induction variables
 
 \section{Engineering a SSA form code generator}
 \label{sec:ssa-codegen-engineering}
@@ -297,8 +302,56 @@ in particular those resulting from control-flow constructs.
 traditional data processing part such as arithmetic or memory access, and a
 predicate evaluation part often connected to a separate operand. When the
 predicate evaluates to false, the instruction has no architectural effects. The
-simplest form of predicated instruction is the conditional MOVE such as
+simplest form of predicated instruction is the conditional move such as
 CMOV\emph{xx} instructions on the x86. 
+
+If-conversion outside the SSA Form:
+\begin{itemize}
+
+\item Park \& Schlansker ``On Predicated Execution'' [HPL-91-58 1991]
+\begin{itemize}
+\item 'R-K algorithm' generalizes the Cydrome if-conversion
+\item operates on the control dependence graph
+\end{itemize}
+
+\item Fang ``Compiler Algorithms on If-Conversion, Speculative Predicates
+Assignment and Predicated Code Optimizations'' [LCPC 1996]
+\begin{itemize}
+\item simple and effective if-conversion using (post) dominance
+\item operates on acyclic SEME code regions
+\end{itemize}
+
+\item Chuang et al. ``Phi-Predication for Light-Weight If-Conversion'' [CGO
+2003]
+\begin{itemize}
+\item generates SELECT operations (not SSA form if-conversion)
+\end{itemize}
+
+\end{itemize}
+
+If-conversion Under SSA Form:
+
+\begin{itemize}
+
+\item Stoutchinin \& Gao ``If-Conversion in SSA Form'' [Euro-Par 2004]
+\begin{itemize}
+\item prove it is correct to replace $\Phi$-functions by $\Psi$-functions
+in conventional SSA form
+\item apply to Fang [LCPC 1996] for if-conversion under SSA form
+\item implement in Open64 for IA64
+\end{itemize}
+
+\item Bruel ``If-Conversion SSA Framework for Partially Predicated VLIW
+Architectures'' [ODES-4 2006]
+\begin{itemize}
+\item rework Muliflow-like if-conversion algorithm for SSA form
+\item locally generate $\Psi$-functions for predicated LOAD \& STORE
+\item production use in ST200 compilers (ST220, ST231, ST240)
+\end{itemize}
+
+\item Ferriere ``Improvements to the Psi-SSA Representation" [SCOPES 2007]
+
+\end{itemize}
 
 % Weak control regions, strong control regions
 
@@ -451,10 +504,12 @@ they are not operated like the processor architectural registers requires
 special casing. For instance, 'sticky' exception flags of the IEEE~754
 arithmetic imply a OR with the previous value. All such definitions can be
 reordered with regards to the next use, and an instruction scheduler is expected
-to do so. The SSA form on machine instructions ordered by def-use on variables
+to do so. The SSA form on machine code ordered by def-use on variables
 do not expose this flexibility.
 
-\item Move effects around COPY(ies) 
+\item Move effects around COPY(ies) \cite{Young:1998:MICRO}
+
+\item Induction dependence relaxation.
 
 \end{itemize} These issues need to be addressed before any pre-pass instruction
 scheduling on the SSA form demonstrates advantages over classic approaches.
