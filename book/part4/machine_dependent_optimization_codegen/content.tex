@@ -68,30 +68,21 @@ program counter match some address. A number of SSA form optimizations require
 that critical edges be split, however this is not possible with hardware loop
 back edges.
 
-\subsection{Instructions with multiple target operands}
-
-Machine instructions may have multiple target operands, such as memory
-accesses with auto-modified addressing, or memory loads into register pairs.
-More generally, instructions with a register tuple target operand such as long
-multiplies of the ARM imply multiple results as far as the SSA form is
-concerned, whether on the instruction itself, or on a pseudo-instruction
-instructions that extracts the individual components of the register tuple. So
-there is no longer a one-to-one mapping between variable definitions and
-instructions for the SSA form on machine code.
-
-\subsection{Non-kill target operands}
+\subsection{Non-kill target operands} \label{sec:non-kill-target}
 
 The SSA form assumes that variable definitions are kills. This is not the case
 for target operands such as a processor status register that contains several
 independent bit-fields. Moreover, some instruction effects on bit-field may be
-'sticky', that is, with an implied OR with the previous value. When mapping a
-processor status register to a SSA variable, any instruction that partially
-reads or modifies the register bit-fields should appear as reading and writing
-the corresponding variable.
+'sticky', that is, with an implied OR with the previous value. Typical sticky
+bits include exception flags of the IEEE~754 arithmetic, of the integer overflow
+flag on DSPs with fixed-point arithmetic. When mapping a processor status
+register to a SSA variable, any instruction that partially reads or modifies the
+register bit-fields should appear as reading and writing the corresponding
+variable.
 
 Predicated instructions present another aspect of definitions that do not kill
 the target register. Extensions of the SSA form such as the $\psi$-SSA
-(Chapter~\ref{chap:psi_ssa}) specifically address the issues of handling fully
+(Chapter~\ref{chap:psi_ssa}) specifically address the issues of handling
 predicated instructions. A simpler solution is as follows: for each target
 operand of the predicated instruction, add a corresponding source operand in
 the instruction signature; then add an operand renaming constraint between the
@@ -103,56 +94,68 @@ that predicated definitions of a given variable (before SSA renaming) remain in
 dominance order across transformations, as opposed to $\psi$-SSA where
 predicate analysis may enable to relax this order.
 
-\subsection{Stack pointer and non-SSA operands}
-
-Some variables must be bound to a specific register at all points in the
-program. In particular this is the case of the stack pointer if interrupt
-handlers reuse the program run-time stack. One possibility is to inhibit the
-promotion of the stack pointer variable to a SSA variable. Stack pointer
-definitions including memory allocations through \verb|alloca()|, activation
-frame creation/destruction, are then encapsulated in a specific
-pseudo-instruction. Instructions that use the stack pointer must be treated as
-special cases as far as the SSA form analyses and optimizations are concerned.
-
-More generally, the code generator intermediate representation should allow
-that machine instruction operands mix SSA variables, ordinary compiler
-temporaries, and possibly architectural registers.
+%\subsection{Stack pointer and non-SSA operands}
+%
+%Some variables must be bound to a specific register at all points in the
+%program. In particular this is the case of the stack pointer if interrupt
+%handlers reuse the program run-time stack. One possibility is to inhibit the
+%promotion of the stack pointer variable to a SSA variable. Stack pointer
+%definitions including memory allocations through \verb|alloca()|, activation
+%frame creation/destruction, are then encapsulated in a specific
+%pseudo-instruction. Instructions that use the stack pointer must be treated as
+%special cases as far as the SSA form analyses and optimizations are concerned.
+%
+%More generally, the code generator intermediate representation should allow
+%that machine instruction operands mix SSA variables, ordinary compiler
+%temporaries, and possibly architectural registers.
 
 \subsection{Operand naming constraints}
 
 Explicit instruction operands are those associated with a non-opcode bit-field
-in the instruction encoding. These operands correspond to architectural
-registers or to immediate values. Implicit operands do not have encoding bits,
-but their access is apparent in the instruction semantics. These operands
-correspond to architectural resources with a single instance, such as a
+in the instruction encoding. These operands correspond to allocatable
+architectural registers or to immediate values. Implicit operands do not have
+encoding bits, but their access is apparent in the instruction semantics. These
+operands correspond to single instance architectural resources, such as a
 hardware loop counter, a procedure link register, or a processor status
 register. Indirect operands are not apparent in the instruction semantics, but
 need to appear as instruction operands in order to connect the flow of values.
-Such operands correspond to registers masks in instructions such PUSH/POP on
-the ARM, and to the list of registers used for passing arguments are returning
+Such operands correspond to registers masks in instructions such PUSH/POP on the
+ARM, and to the list of registers used for passing arguments are returning
 results at function boundaries.
 
 Implicit operands and indirect operands are constrained to specific
 architectural registers either by the instruction set architecture (ISA
-constraints), or by application binary interface (ABI constraints). One way to
-deal with these constraints in the SSA form is by inserting parallel COPY
+constraints), or by application binary interface (ABI constraints). An effective
+way to deal with these constraints in the SSA form is by inserting parallel COPY
 instruction that write to the constrained source operands or read from the
 constrained target operands of the instructions. The new SSA variables thus
 created are pre-colored with the required architectural register. The parallel
-COPY instructions are coalesced away or sequentialized when going out of SSA.
+COPY instructions are coalesced away or sequentialized when going out of SSA
+\cite{Boissinot:2009:CGO}.
 
-Explicit instruction operands may also be constrained to use the same
-architectural register between a source and a target operand, or even to use
-different architectural registers between two source operands (MUL instructions
-on the ARM). Operand constraints between one source and the target operand are
-the general case on popular instruction set architectures such as x68 and the
-ARM~Thumb. These constraints are represented by inserting a COPY between the
-constrained source operand and a new variable, then using this new variable as
-the constrained source operand. The COPY is a parallel copy in case of multiple
-constrained source operands. Again, the COPY instructions are processed when
-going out of SSA.
+Explicit instruction operands may also be constrained to use the same register
+between a source and a target operand, or even to use different registers
+between two source operands (MUL instructions on the ARM). Operand constraints
+between one source and the target operand are the general case on popular
+instruction set architectures such as x68 and the ARM~Thumb. In the setting of
+\cite{Boissinot:2009:CGO}, these constraints are represented by inserting a COPY
+between the constrained source operand and a new variable, then using this new
+variable as the constrained source operand. The COPY is a parallel copy in case
+of multiple constrained source operands. Again, the COPY instructions are
+processed when going out of SSA.
+
+
 
 \subsection{Representation of instruction semantics}
+
+Machine instructions may have multiple target operands, such as memory
+accesses with auto-modified addressing, or memory loads into register pairs.
+More generally, instructions with a register tuple target operand such as long
+multiplies of the ARM imply multiple results as far as the SSA form is
+concerned, whether on the instruction itself, or on a pseudo-instruction
+instructions that extracts the individual components of the register tuple. So
+there is no longer a one-to-one mapping between variable definitions and
+instructions for the SSA form on machine code.
 
 Unlike IR operators, there is no straightforward mapping between machine
 instruction and their operational semantics. For instance, a substract
@@ -167,14 +170,17 @@ technique used by the Open64 compiler. Typical operation properties include
 'isBase', 'isOffset', 'isPredicated', etc. Extended properties that involve the
 instruction operation and some of its operands include 'isAssociative',
 'isCommutative'
-\item Associate a tree of IR-like operators to each target operand of a machine
-instruction. This more ambitious alternative was implemented in the SML/NJ
-\cite{Leung:1999:PLDI} compiler and the LAO compiler \cite{Dinechin:2000:CASES}.
-\end{itemize}
-Whatever the representation of instruction semantics, another issue is how to
-factor it. Most information can be statically tabulated, yet properties such as
-safety for control speculation, or being equivalent to a COPY, depend on operand
-values.
+\item Associate a 'semantic combinator' \cite{Leung:1999:PLDI}, that is, a tree
+of IR-like operators, to each target operand of a machine instruction. This more
+ambitious alternative was implemented in the SML/NJ \cite{Leung:1999:PLDI}
+compiler and the LAO compiler \cite{Dinechin:2000:CASES}.  \end{itemize}
+
+An issue related to the representation of instruction semantics is how to factor
+it. Most information can be statically tabulated by instruction opcode, yet
+properties such as safety for control speculation, or being equivalent to a
+simple IR instruction, can be refined by the execution context: inclusion in
+some control region; properties of operand values determined by dataflow
+analysis.
 
 
 \section{Engineering a SSA form code generator}
@@ -296,7 +302,25 @@ classic techniques that match one IR tree or one DAG at a time, using the SSA
 form as input extends the scope of pattern matching to more complex IR graphs,
 in particular those resulting from control-flow constructs.
 
-\subsection{If-conversion or instruction predication}
+\subsection{If-conversion}
+
+If-conversion removes conditional branches. Uses a mix of predication and
+control speculation. Purpose is to collaborate with the pre-pass instruction
+scheduler. The inner loop optimizations and instruction reselection come in
+between. Three classes of predicated execution support in ISA.
+\cite{Mahlke:1995:ISCA} \cite{Chuang:2003:CGO}
+
+% Mainly for use by instruction scheduling:
+% - remove branch penalty
+% - lower use of the branch unit
+% - increase the size of scheduling regions
+% Fully resolved predicates, partially resolved predicates
+
+Steps of if-conversion: select region; code hoisting; assign predicates to
+basic blocks; compute basic block predicates; predicate or speculate
+instructions;
+
+Approaches to if-conversion
 
 (Chapter~\ref{chap:if_conversion}). A predicated instruction behavior includes a
 traditional data processing part such as arithmetic or memory access, and a
@@ -330,7 +354,6 @@ Assignment and Predicated Code Optimizations'' [LCPC 1996]
 \end{itemize}
 
 If-conversion Under SSA Form:
-
 \begin{itemize}
 
 \item Stoutchinin \& Gao ``If-Conversion in SSA Form'' [Euro-Par 2004]
@@ -436,12 +459,15 @@ replicates the loop body and removes all but one of the replicated loop exit
 branches. Loop unwinding replicates the loop body while keeping the loop exit
 branches. This style of loop unrolling necessarily applies to counted loops, and
 requires that pre-conditioning or post-conditioning code be inserted
-\cite{Lownet:1992:JS}. Inner loop unrolling or unwinding is facilitated by using
+\cite{Lowney:1992:JS}. Inner loop unrolling or unwinding is facilitated by using
 the loop-closed SSA form (Chapter~\ref{chap19:loopTree}), the SSA version of the
 self assignment technique also pioneered by the Multiflow Trace Scheduling
-compiler \cite{Lownet:1992:JS}.
+compiler \cite{Lowney:1992:JS}. A main motivation for inner loop unrolling is to
+unlock modulo scheduling benefits \cite{Lavery:1995:MICRO}.
 
-Hardware loop mapping.
+%SIMD instruction reselection.
+
+%Hardware loop mapping.
 
 \subsection{Memory addressing and memory packing}
 
@@ -462,12 +488,13 @@ Required because analyses and code specialization
 \subsection{Pre-pass instruction scheduling}
 
 Further down the code generator, the next major phase is pre-pass instruction
-scheduling. Innermost loops with a single basic block or super block body are
-candidates for software pipelining techniques such as modulo scheduling. For
-innermost loops that are not software pipelined, and for other program regions,
-acyclic instruction scheduling techniques apply: basic block scheduling;
-super-block scheduling; hyper-block scheduling; tree block scheduling; or trace
-scheduling.
+scheduling. Innermost loops with a single basic block, super-block or
+hyper-block body are candidates for software pipelining techniques such as
+modulo scheduling. For innermost loops that are not software pipelined, and for
+other program regions, acyclic instruction scheduling techniques apply: basic
+block scheduling \cite{Goodman:1988:ICS}; super-block scheduling
+\cite{Hwu:1993:JS}; hyper-block scheduling \cite{Mahlke:1992:MICRO}; tree region
+scheduling \cite{Havanki:1998:HPCA}; or trace scheduling \cite{Lowney:1992:JS}.
 
 By definition, pre-pass instruction scheduling operates before register
 allocation. On a classic code generator, instruction operands are mostly virtual
@@ -479,13 +506,13 @@ dependences in the instruction scheduling problem. Other reasons why it seems
 there is little to gain to schedule instructions on a SSA form program
 representation include: \begin{itemize}
 
-\item Except in case of trace scheduling, the scheduling regions considered
-earlier are single-entry and do not have control-flow merge. So there are no
-$\phi$-functions in case of acyclic scheduling, and only $\phi$-functions in the
-loop header in case of software pipelining. Keeping those $\phi$-functions in
-the scheduling problem has no benefits and raises engineering issues, due to
-their parallel execution semantics and the constraint to keep them first in
-basic blocks.
+\item Except in case of trace scheduling which pre-dates the use of SSA form in
+production compilers, the classic scheduling regions are single-entry and do not
+have control-flow merge. So there are no $\phi$-functions in case of acyclic
+scheduling, and only $\phi$-functions in the loop header in case of software
+pipelining. Keeping those $\phi$-functions in the scheduling problem has no
+benefits and raises engineering issues, due to their parallel execution
+semantics and the constraint to keep them first in basic blocks.
 
 \item Instruction scheduling must account for all the instruction issue slots
 required to execute a code region. If the only ordering constraints between
@@ -498,21 +525,35 @@ So scheduling instructions with SSA variables as operands is not effective
 unless extra dependences are added to the scheduling problem to prevent such
 code motion. 
 
-\item Machine instructions may have side effects on stateful resources such as
-the processor condition codes. Representing them as SSA variables even though
-they are not operated like the processor architectural registers requires
-special casing. For instance, 'sticky' exception flags of the IEEE~754
-arithmetic imply a OR with the previous value. All such definitions can be
-reordered with regards to the next use, and an instruction scheduler is expected
-to do so. The SSA form on machine code ordered by def-use on variables
-do not expose this flexibility.
+\item Some machine instructions have side effects on special resources such as
+the processor status register. Representing these resources as SSA variables
+even though they are not operated like the processor architectural registers
+requires coarsening the instruction effects to the whole resource, as discussed
+in Section~\ref{sec:non-kill-target}. In turn this implies def-use variable
+ordering that prevents aggressive instruction scheduling. For instance, all
+'sticky' bit-field definitions can be reordered with regards to the next use,
+and an instruction scheduler is expected to do so. Scheduling OR-type predicate
+define instructions \cite{Schlansker_1999_PLDI} raises similar issues. An
+instruction scheduler is also expected to precisely track accesses to unrelated
+of partially overlapping bit-fields in a processor status register.
 
-\item Move effects around COPY(ies) \cite{Young:1998:MICRO}
+\item Aggressive instruction scheduling relaxes some flow data dependencies that
+are normally implied by SSA variable def-use ordering. A first example is 'move
+renaming' \cite{Young:1998:MICRO}, the dynamic switching of the definition of a
+source operand defined by a COPY instruction when the consumer indtructions ends
+up bering scheduled at the same cycle or earlier. Another example is 'inductive
+relaxation' \cite{Dinechin:1997:PaCT}, where the dependence between additive
+induction variables and their use as base in base+offset addressing modes is
+relaxed to the extent permitted by the induction step and the range of the
+offset. These techniques apply to acyclic scheduling and to modulo scheduling.
 
-\item Induction dependence relaxation.
+\end{itemize}
 
-\end{itemize} These issues need to be addressed before any pre-pass instruction
-scheduling on the SSA form demonstrates advantages over classic approaches.
+To summarize, trying to keep the SSA form inside the pre-pass instruction scheduling
+currently appears more complex than operating on the program representation with
+classic compiler temporary variables. This representation is obtained from the
+SSA form after aggressive coalescing and SSA destruction. If required by the
+register allocation, the SSA form should be re-constructed.
 
 \subsection{Register allocation}
 
