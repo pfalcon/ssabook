@@ -56,58 +56,51 @@ Section~\ref{sec:ssa-codegen-suitability}.
 \section{Issues of the SSA form on machine code}
 \label{sec:ssa-codegen-issues}
 
-\subsection{Un-splittable critical edges}
+\subsection{Representation of instruction semantics}
 
-In compiler code generator, the sequential layout of basic blocks is a
-structural component of the program representation, is the target of specific
-optimizations, and is constrained by several factors, including exception
-handling ranges in compilers such as the Open64. A number of embedded processor
-architectures such as the Tensilica Xtensa provide hardware loops, where an
-implicit conditional branch back to the loop header is taken whenever the
-program counter match some address. A number of SSA form optimizations require
-that critical edges be split, however this is not possible with hardware loop
-back edges.
+Unlike IR operators, there is no straightforward mapping between machine
+instruction and their operational semantics. For instance, a substract
+instruction with operands $(a,b,c)$ may either compute $c \leftarrow a-b$ or $c
+\leftarrow b-a$ or any such expression with permuted operands. Yet basic SSA
+form code cleanups such as constant propagation and sign extension removal need
+to know what is actually computed by machine instructions.  Machine instructions
+may also have multiple target operands, such as memory accesses with
+auto-modified addressing, or combined division/modulus instructions.
+There are at least two ways to address this issue. \begin{itemize}
+\item Add properties to the instruction operation and to its operands, a
+technique used by the Open64 compiler. Typical operation properties include
+'isAdd', 'isLoad', etc. Typical operand properties include 'isLeft', 'isRigh',
+'isBase', 'isOffset', 'isPredicated', etc. Extended properties that involve the
+instruction operation and some of its operands include 'isAssociative',
+'isCommutative'
+\item Associate a 'semantic combinator' \cite{Leung:1999:PLDI}, that is, a tree
+of IR-like operators, to each target operand of a machine instruction. This more
+ambitious alternative was implemented in the SML/NJ \cite{Leung:1999:PLDI}
+compiler and the LAO compiler \cite{Dinechin:2000:CASES}.  \end{itemize}
 
-\subsection{Non-kill target operands} \label{sec:non-kill-target}
+An issue related to the representation of instruction semantics is how to factor
+it. Most information can be statically tabulated by instruction opcode, yet
+properties such as safety for control speculation, or being equivalent to a
+simple IR instruction, can be refined by the context where the instruction
+appears. For instance, range propagation may ensure that an addition cannot
+overflow, that a division by zero is impossible, or that a memory access is safe.
+Alternate semantic combinators, or modifiers of the instruction opcode semantic
+combinator, need to be associated with each machine instruction of the code
+generator internal representation.
 
-The SSA form assumes that variable definitions are kills. This is not the case
-for target operands such as a processor status register that contains several
-independent bit-fields. Moreover, some instruction effects on bit-field may be
-'sticky', that is, with an implied OR with the previous value. Typical sticky
-bits include exception flags of the IEEE~754 arithmetic, of the integer overflow
-flag on DSPs with fixed-point arithmetic. When mapping a processor status
-register to a SSA variable, any instruction that partially reads or modifies the
-register bit-fields should appear as reading and writing the corresponding
-variable.
-
-Predicated instructions present another aspect of definitions that do not kill
-the target register. Extensions of the SSA form such as the $\psi$-SSA
-(Chapter~\ref{chap:psi_ssa}) specifically address the issues of handling
-predicated instructions. A simpler solution is as follows: for each target
-operand of the predicated instruction, add a corresponding source operand in
-the instruction signature; then add an operand renaming constraint between the
-target operands and the corresponding source operands. This simple
-transformation enables SSA form analyses and optimizations to remain oblivious
-to predicated instructions; for instance, a conditional move appears as a
-SELECT instruction \cite{Mahlke:1995:ISCA}. The drawback of this solution is
-that predicated definitions of a given variable (before SSA renaming) remain in
-dominance order across transformations, as opposed to $\psi$-SSA where
-predicate analysis may enable to relax this order.
-
-%\subsection{Stack pointer and non-SSA operands}
-%
-%Some variables must be bound to a specific register at all points in the
-%program. In particular this is the case of the stack pointer if interrupt
-%handlers reuse the program run-time stack. One possibility is to inhibit the
-%promotion of the stack pointer variable to a SSA variable. Stack pointer
-%definitions including memory allocations through \verb|alloca()|, activation
-%frame creation/destruction, are then encapsulated in a specific
-%pseudo-instruction. Instructions that use the stack pointer must be treated as
-%special cases as far as the SSA form analyses and optimizations are concerned.
-%
-%More generally, the code generator intermediate representation should allow
-%that machine instruction operands mix SSA variables, ordinary compiler
-%temporaries, and possibly architectural registers.
+Finally, code generation for some instruction set architectures require that
+pseudo-instructions with known semantics be available, besides variants of
+$\phi$-functions and parallel COPY instructions. \begin{itemize}
+\item Machine instructions that
+operate on register pairs, such as the long multiplies on the ARM, or more
+generally on register tuples, are common. In such cases there is a need for
+pseudo-instructions to compose wide operands in register tuples, and to extract
+independently register allocatable operands from wide operands.
+\item A number of embedded processor architectures such as the Tensilica Xtensa
+provide hardware loops, where an implicit conditional branch back to the loop
+header is taken whenever the program counter match some address. The implied
+loop-back branch is also conveniently materialized by a pseudo-instruction.
+\end{itemize}
 
 \subsection{Operand naming constraints}
 
@@ -144,61 +137,75 @@ variable as the constrained source operand. The COPY is a parallel copy in case
 of multiple constrained source operands. Again, the COPY instructions are
 processed when going out of SSA.
 
+A difficult case of ISA or ABI operand constraint is when a variable must be
+bound to a specific register at all points in the program. This is the case of
+the stack pointer, as interrupt handling may reuse the program run-time stack.
+One possibility is to inhibit the promotion of the stack pointer to a SSA
+variable. Stack pointer definitions including memory allocations through
+\verb|alloca()|, activation frame creation/destruction, are then encapsulated in
+a specific pseudo-instruction. Instructions that use the stack pointer must be
+treated as special cases as far as the SSA form analyses and optimizations are
+concerned.
 
+\subsection{Non-kill target operands} \label{sec:non-kill-target}
 
-\subsection{Representation of instruction semantics}
+The SSA form assumes that variable definitions are kills. This is not the case
+for target operands such as a processor status register that contains several
+independent bit-fields. Moreover, some instruction effects on bit-field may be
+'sticky', that is, with an implied OR with the previous value. Typical sticky
+bits include exception flags of the IEEE~754 arithmetic, or the integer overflow
+flag on DSPs with fixed-point arithmetic. When mapping a processor status
+register to a SSA variable, any instruction that partially reads or modifies the
+register bit-fields should appear as reading and writing the corresponding
+variable.
 
-Machine instructions may have multiple target operands, such as memory
-accesses with auto-modified addressing, or memory loads into register pairs.
-More generally, instructions with a register tuple target operand such as long
-multiplies of the ARM imply multiple results as far as the SSA form is
-concerned, whether on the instruction itself, or on a pseudo-instruction
-instructions that extracts the individual components of the register tuple. So
-there is no longer a one-to-one mapping between variable definitions and
-instructions for the SSA form on machine code.
+Predicated instructions present another aspect of definitions that do not kill
+the target register. Extensions of the SSA form such as the $\psi$-SSA
+(Chapter~\ref{chap:psi_ssa}) specifically address the issues of handling
+predicated instructions. Basic architectural support for if-conversion is
+provided by conditional move of SELECT instructions \cite{Mahlke:1995:ISCA}.
+The former are predicated, while the latter always write to their destination
+register. Observe that under the SSA form, a conditional move instruction is
+equivalent to a SELECT instruction with a 'must be same register' naming constraint
+between one source and the target operand. Generalizing this observation
+provides a simple way to handle predicated instructions: \begin{itemize}
+\item For each target operand of the predicated instruction, add a corresponding
+source operand in the instruction signature.
+\item For each added source operand, add a 'must be same same register' renaming
+constraint with the corresponding target operand.
+\end{itemize}
+This simple transformation enables SSA form analyses and optimizations to remain
+oblivious to predicated instructions. The drawback of this solution is that
+predicated definitions of a given variable (before SSA renaming) remain in
+dominance order across transformations, as opposed to $\psi$-SSA where predicate
+value analysis may enable to relax this order.
 
-Unlike IR operators, there is no straightforward mapping between machine
-instruction and their operational semantics. For instance, a substract
-instruction with operands $(a,b,c)$ may either compute $c \leftarrow a-b$ or $c
-\leftarrow b-a$ or any such expression with permuted operands. Yet basic SSA
-form code cleanups such as constant propagation and sign extension removal need
-to know what is actually computed by machine instructions. There are at least
-two ways to address this issue. \begin{itemize}
-\item Add properties to the instruction operation and to its operands, a
-technique used by the Open64 compiler. Typical operation properties include
-'isAdd', 'isLoad', etc. Typical operand properties include 'isLeft', 'isRigh',
-'isBase', 'isOffset', 'isPredicated', etc. Extended properties that involve the
-instruction operation and some of its operands include 'isAssociative',
-'isCommutative'
-\item Associate a 'semantic combinator' \cite{Leung:1999:PLDI}, that is, a tree
-of IR-like operators, to each target operand of a machine instruction. This more
-ambitious alternative was implemented in the SML/NJ \cite{Leung:1999:PLDI}
-compiler and the LAO compiler \cite{Dinechin:2000:CASES}.  \end{itemize}
-
-An issue related to the representation of instruction semantics is how to factor
-it. Most information can be statically tabulated by instruction opcode, yet
-properties such as safety for control speculation, or being equivalent to a
-simple IR instruction, can be refined by the execution context: inclusion in
-some control region; properties of operand values determined by dataflow
-analysis.
+%\subsection{Un-splittable critical edges}
+%
+%In a compiler code generator, the sequential layout of basic blocks is a
+%structural component of the program representation, is the target of specific
+%optimizations, and may constrained by several factors, including exception
+%handling ranges in compilers such as the Open64.  A number of SSA form
+%optimizations require that critical edges be split, however this is not possible
+%with hardware loop back edges.
 
 
 \section{Engineering a SSA form code generator}
 \label{sec:ssa-codegen-engineering}
 
-\subsection{Machine description system}
-
-\begin{itemize}
-
-\item Operand constraints
-
-\item Expose implicit operands
-
-\item Instruction semantics, also include speculability
-
-\item Hardware loop pseudo instructions
-
-\end{itemize}
+%\subsection{Machine description system}
+%
+%\begin{itemize}
+%
+%\item Operand constraints
+%
+%\item Expose implicit operands
+%
+%\item Instruction semantics, also include speculability
+%
+%\item Hardware loop pseudo instructions
+%
+%\end{itemize}
 
 \subsection{Control tree flavor}
 
@@ -233,6 +240,10 @@ analysis.
 \item SSA on stack slots for register allocation
 
 \end{itemize}
+
+%More generally, the code generator intermediate representation should allow
+%that machine instruction operands mix SSA variables, ordinary compiler
+%temporaries, and possibly architectural registers.
 
 \subsection{SSA form construction}
 
