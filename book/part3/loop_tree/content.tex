@@ -14,9 +14,7 @@ extraction of the reducible loop tree can be done only on the \SSA{}
 graph itself.  This extension of the \SSA{} representation captures
 more than the scalar computations: the phi nodes and the scalar
 assignments encode the strongly connected components of the CFG that
-are the reducible loops.  This chapter will present two analysis
-algorithms: the extraction of the reducible loop tree and the analysis
-of induction variables based on the \SSA{} representation.
+are the reducible loops.  This chapter will first illustrate this property and will show its usefulness through the problem of induction variable recognition.
 
 \section{Part of the \CFG{} and Loop Tree can be exposed from the \SSA{}}
 
@@ -25,7 +23,7 @@ representation, a large part of the \CFG{} information is translated
 into the \SSA{} representation.  As the construction of the \SSA{} has
 precise rules to place the phi nodes in special points of the \CFG{}
 (i.e., at the merge of control-flow branches), by identifying patterns
-of uses and definitions, it is possible to expose the \CFG{} structure
+of uses and definitions, it is possible to expose a part of the \CFG{} structure
 from the \SSA{} representation.
 
 Furthermore, it is possible to identify higher level constructs
@@ -40,8 +38,8 @@ This first section shows that the classical \SSA{} representation is
 not enough to represent the semantics of the original program.  We
 will see the minimal amount of information that has to be added to the
 classical \SSA{} representation in order to represent the loop
-information in an elegant way: similar to the eta function used in the
-Gated \SSA{}, the loop closed \SSA{} form adds an extra variable at
+information in an elegant way: similar to the $\eta$-function used in the
+Gated \SSA{} presented in Chapter~\ref{chapter:vsdg}, the loop closed \SSA{} form adds an extra variable at
 the end of a loop for each variable defined in a loop and used after
 the loop.
 
@@ -50,18 +48,14 @@ the loop.
 In the classic definition of the \SSA{}, the \CFG{} provides the
 skeleton of the program: basic blocks contain assignment statements
 defining \SSA{} variable names, and the basic blocks with multiple
-predecessors contain phi nodes.  Let's look at what happens when,
+predecessors contain $\phi$-nodes.  Let's look at what happens when,
 starting from a classic \SSA{} representation, we remove the \CFG{}.
 
-In order to remove the \CFG{}, a pretty printer function writes the
-content of basic blocks by traversing the \CFG{} structure (the \CFG{}
-traversal could be performed in any order: random order, depth-first
-order, dominator order, etc.).  Does the representation, obtained from
-this pretty printer, contain enough information to enable us to
-compute the same thing as the original program?
+In order to remove the \CFG{}, imagine a pretty printer function that dumps only the arithmetic instructions of each basic-blocks and skips the control instructions of an imperative program by traversing the \CFG{} structure in any order.  Does the representation, obtained from
+this pretty printer, contains enough information to enable us to
+compute the same thing as the original program~\footnote{to simplify the discussion, we consider the original program to be free of side effect instructions}?
 
-Let's see what happens with an example: supposing that the original
-program looks like this (in its \CFG{} based \SSA{} representation):
+Let's see what happens with an example in its \CFG{} based \SSA{} representation:
 \begin{verbatim}
 bb_1 (preds = {bb_0}, succs = {bb_2})
 {
@@ -101,7 +95,7 @@ statements would produce the same result:
 
 \subsection{Natural loop structures on the \SSA{}}
 We will now see how to represent the natural loops in the \SSA{} form
-by systematically adding extra phi nodes at the end of loops, together
+by systematically adding extra $\phi$-nodes at the end of loops, together
 with extra information about the loop exit predicate.
 
 Supposing that the original program contains a loop:
@@ -138,11 +132,10 @@ Pretty printing, with a random order traversal, we could obtain this
   j = i + 1;
 \end{verbatim}
 We can remark that some information is lost in this pretty printing:
-the exit condition of the loop disappeared: we will have to record
-this information in the extension of the \SSA{} representation.  The
-information about the loop is still available under the form
-of a cyclic definition: by simple substitutions, we can rewrite this
-\SSA{} code to expose the self reference to ``i'', as:
+the exit condition of the loop have been lost. We will have to record
+this information in the extension of the \SSA{} representation. However, the
+loop structure still appears through the cyclic definition of the induction variable $i$. To expose it, we can rewrite this
+\SSA{} code using simple substitutions, as:
 \begin{verbatim}
   i = phi (3, i + 1)
   k = phi (i)
@@ -150,18 +143,14 @@ of a cyclic definition: by simple substitutions, we can rewrite this
 \end{verbatim}
 Thus, we have the definition of the \SSA{} name ``i'' defined in
 function of itself.  This pattern is characteristic of the existence
-of a loop.  We can remark that there are two kinds of phi
-nodes used in this example:
+of a loop.  We can remark that there are two kinds of $\phi$-nodes used in this example:
 \begin{itemize}
-\item \loopphi{} nodes ``i = phi (x, j)'' have an invariant argument
-  ``x'' (i.e., the definition does not depend on the values that the
-  phi node takes) and an argument that contains a self reference ``j''
-  (i.e., the defining expression ``j = i + 1'' contains a reference to
-  the same \loopphi{} definition ``i'').  It is possible to define a
+\item {\bf \loopphi{} nodes}  ``$i = \phi (x, j)$'' have an argument that contains a self reference $j$ and an invariant argument
+  $x$: here the defining expression ``$j = i + 1$'' contains a reference to
+  the same \loopphi{} definition $i$, while $x$ (here $3$) is not part of the circuit of dependencies that involves $i$ and $j$. Note that it is possible to define a
   canonical \SSA{} form by limiting the number of arguments of
   \loopphi{} nodes to two.
-\item \closephi{} nodes ``k = phi (i)'' merge the values in the end of
-  a loop.  They are used to capture the last value of a name defined
+\item {\bf \closephi{} nodes} ``$k = \phi (i)$''  capture the last value of a name defined
   in a loop.  Names defined in a loop can only be used within that
   loop or in the arguments of a \closephi{} node (that is ``closing''
   the set of uses of the names defined in that loop).  In a canonical
@@ -172,12 +161,11 @@ nodes used in this example:
 \subsection{Improving the \SSA{} pretty printer for loops}
 
 As we have seen in the above example, the exit condition of the loop
-disappears during the basic pretty printing of the \SSA{}.  To capture
+disappeared during the basic pretty printing of the \SSA{}.  To capture
 the semantics of the computation of the loop, we have to specify in
-the \closephi{} node, which value will be available in the end of the
-loop.  And thus we have to slightly modify the syntax of the
-\closephi{} nodes to also contain the loop exit condition.  With this
-extension, the \SSA{} pretty printing of the above example would be:
+the \closephi{} node, when we exit the loop so as to be able to derive which value will be available in the end of the
+loop. With our
+extension that adds the loop exit condition to the syntax of the \closephi{}, the \SSA{} pretty printing of the above example would be:
 \begin{verbatim}
   x = 3;
   i = loop-phi (x, j)
@@ -185,11 +173,8 @@ extension, the \SSA{} pretty printing of the above example would be:
   k = close-phi (i >= N, i)
   return k;
 \end{verbatim}
-So ``k'' is defined as the first value of ``i'' satisfying the loop
-exit condition, ``i $>=$ N''.  This is a well defined value (in the
-case of finite loops), as the sequence of values that ``i'' takes, is
-defined by the \loopphi{} node and taking the first element of that
-sequence satisfying the loop exit condition.
+So $k$ is defined as the ``first value'' of $i$ satisfying the loop
+exit condition, ``$i \geq N$''.  In the case of finite loops, this is well defined as being the first element satisfying the loop exit condition of the sequence defined by the corresponding \loopphi{} node.
 
 In the next section, we will look at an algorithm that translates the
 \SSA{} representation into a representation of polynomial functions,
@@ -201,35 +186,29 @@ execution of a loop.
 The purpose of the induction variables analysis is to provide a
 characterization of the sequences of values taken by a variable during
 the execution of a loop.  This characterization can be an exact
-function of the iteration counter of the loop (i.e., the canonical
-induction variable of a loop starts at zero with a step of one for
+function of the canonical induction variable of the loop (i.e., a loop counter that starts at zero with a step of one for
 each iteration of the loop) or an approximation of the values taken
 during the execution of the loop represented by values in an abstract
 domain.  In this section, we will see a possible characterization of
 induction variables in terms of sequences.  The domain of sequences
-will be represented by the chains of recurrences: as an example, a
-cannonical induction variable with an initial value $0$ and a stride
+will be represented by {\em chains of recurrences}: as an example, a
+canonical induction variable with an initial value $0$ and a stride
 $1$ that would occur in loop $x$, will be syntactically represented by
-the chain of recurrence $\CHREC{0, +, 1}_x$ the initial value of the
-canonical induction variable is $0$, the stride is $1$.
+the chain of recurrence $\CHREC{0, +, 1}_x$.
 
 \subsection{Stride detection}
 
-The first step of the induction variables analysis is the detection of
+The first phase of the induction variables analysis is the detection of
 the strongly connected components of the \SSA{}.  This can be
-performed by traversing the \SSA{} chains (from a use to its unique
-definition) and detecting that some definitions are visited twice.
-From a self referring use-def chain, it is possible to compute the
-overall effect of one iteration of the loop on the cyclic definition:
-this is the step of the induction variable.  When the step of an
+performed by traversing the use-def \SSA{} chains and detecting that some definitions are visited twice.
+For a self referring use-def chain, it is possible to derive the step of the corresponding induction variable as the  
+overall effect of one iteration of the loop on the value of the \loopphi{} node.  When the step of an
 induction variable depends on another cyclic definition, one has to
 further analyze the inner cycle.  The analysis of the induction
 variable ends when all the inner cyclic definitions used for the
-computation of the step are analyzed.  Note that it is possible to
+computation of the step are analyzed. Note that it is possible to
 construct \SSA{} graphs with strongly connected components that are
-impossible to characterize with the chains of recurrences.  For
-example, in the following example, ``a'' does not follow a linear
-progression:
+impossible to characterize with the chains of recurrences. This is precisely the case of the following example that shows two inter-dependent circuits, the first that involves $a$ and $b$ with step $c+2$, and the second that involves $c$ and $d$ with step $a+2$. The inerrant recursive behavior of the resolution process would loop here.
 \begin{verbatim}
   a = loop-phi (0, b)
   c = loop-phi (1, d)
@@ -247,11 +226,11 @@ progression:
   \label{spop:fig:ivstep}
 \end{figure}
 
-Let's look at an example, presented in Figure~\ref{spop:fig:ivstep},
-to see how this algorithm works.  The arguments of a phi node are
+Let's now look at an example, presented in Figure~\ref{spop:fig:ivstep},
+to see how the stride detection works.  The arguments of a $\phi$-node are
 analyzed to determine whether they contain self references or if they
 are pointing towards the initial value of the induction variable.  In
-this example, (1) represents the edge that points towards the
+this example, (1) represents the use-def edge that points towards the
 invariant definition.  When the argument to be analyzed points towards
 a longer use-def chain, the full chain is traversed, as shown in (2),
 until a phi node is reached.  In this example, the phi node that is
@@ -267,26 +246,26 @@ induction variable.
 
 \subsection{Translation to chains of recurrences}
 
-Once the cyclic def-use chain has been outlined and the overall loop
-update expression has been identified, it is possible to translate the
+Once the def-use circuit  and its corresponding overall loop
+update expression have been identified, it is possible to translate the
 sequence of values of the induction variable to a chain of recurrence.
 The syntax of a polynomial chain of recurrence is: $\CHREC{base, +,
-  step}_x$, where ``base'' and ``step'' may be arbitrary expressions
-or constants, and ``x'' is the loop in which the sequence is
-generated.  As a chain of recurrence represents the sequence of values
-taken by a variable during the execution of a loop, the semantics of a
+  step}_x$, where $base$ and $step$ may be arbitrary expressions
+or constants, and $x$ is the loop to which the sequence is
+associated.  As a chain of recurrence represents the sequence of values
+taken by a variable during the execution of a loop, the associated expression of a
 chain of recurrence is given by $\CHREC{base, +, step}_x (\ell_x) =
-base + step * \ell_x$, that is a function of $\ell_x$ that represents
-the number of times the body of loop number $x$ has been executed.
+base + step * \ell_x$, that is a function of $\ell_x$,
+the number of times the body of loop $x$ has been executed.
 
-When ``base'' or ``step'' translates to sequences variating in outer
+When $base$ or $step$ translates to sequences varying in outer
 loops, the resulting sequence is represented by a multivariate chain
 of recurrences.  For example $\CHREC{\CHREC{0, +, 1}_x, +, 2}_y$
 defines a multivariate chain of recurrence with a step of $1$ in loop
 $x$ and a step of $2$ in loop $y$, where loop $y$ is enclosed in loop
 $x$.
 
-When ``step'' translates into a sequence variating in the same loop,
+When $step$ translates into a sequence varying in the same loop,
 the chain of recurrence represents a polynomial of a higher degree.
 For example, $\CHREC{3, +, \CHREC{8, +, 5}_x}_x$ represents a
 polynomial evolution of degree $2$ in loop $x$.  In this case,
@@ -300,47 +279,41 @@ equation:
 \end{equation*}
 with $\vec{\ell}$ the iteration domain vector (the iteration loop
 counters for all the loops in which the chain of recurrence variates),
-and $\ell_x$ the iteration counter for loop $x$.  This semantics allows
-the rewriting rule:
-\begin{equation*}
-  \CHREC{c_0, +, \CHREC{c_1, +, c_2}_x}_x = \CHREC{c_0, +, c_1, +, c_2}_x
-\end{equation*}
-that is very useful in the analysis of induction variables, as it
+and $\ell_x$ the iteration counter for loop $x$.  This semantics is very useful in the analysis of induction variables, as it
 makes it possible to split the analysis into two phases, with a
 symbolic representation as a partial intermediate result:
-\begin{itemize}
+\begin{enumerate}
 \item first, the analysis leads to a symbolic form, where the step
   part ``s'' is left in a symbolic form, i.e., $\CHREC{c_0, +, s}_x$;
 \item then, by instantiating the step, i.e., $s = \CHREC{c_1, +,
   c_2}_x$, the chain of recurrence is that of a higher degree
   polynomial, i.e., $\CHREC{c_0, +, \CHREC{c_1, +, c_2}_x}_x =
   \CHREC{c_0, +, c_1, +, c_2}_x$.
-\end{itemize}
+\end{enumerate}
 
 \subsection{Instantiation of symbols and region parameters}
 
-The last step of the induction variable analysis consists in the
+The last phase of the induction variable analysis consists in the
 instantiation (or further analysis) of symbolic expressions left from
-the first step.  This includes the analysis of induction variables in
+the previous phase.  This includes the analysis of induction variables in
 outer loops, the analysis of the end value of a loop preceding the
-analyzed loop, and the replacement of any definitions occurring in
-sequence before the loop with their defined expression.  In some
+analyzed loop, and the replacement of other definitions occurring before the loop with their corresponding defined expression.  In some
 cases, it becomes necessary to leave in a symbolic form every
 definition outside a given region, and these symbols are then called
 parameters of the region.
 
 Let's look again at the example of Figure~\ref{spop:fig:ivstep} to see
-how the sequence of values of the induction variable ``c'' is
+how the sequence of values of the induction variable $c$ is
 characterized with the chains of recurrences notation.  The first
 step, after the cyclic definition is detected, is the translation of
 this information into a chain of recurrence: in this example, the
-initial value (or base of the induction variable) is ``a'' and the
-step is ``e'', and so ``c'' is represented by a chain of recurrence
-$\CHREC{a, +, e}_1$ that is variating in loop number $1$.  The symbols
-are then instantiated: ``a'' is trivially replaced by its definition
-leading to $\CHREC{3, +, e}_1$.  The analysis of ``e'' leads to this
+initial value (or base of the induction variable) is $a$ and the
+step is $e$, and so $c$ is represented by a chain of recurrence
+$\CHREC{a, +, e}_1$ that is varying in loop number $1$.  The symbols
+are then instantiated: $a$ is trivially replaced by its definition
+leading to $\CHREC{3, +, e}_1$.  The analysis of $e$ leads to this
 chain of recurrence: $\CHREC{8, +, 5}_1$ that is then used in the
-chain of recurrence of ``c'', $\CHREC{3, +, \CHREC{8, +, 5}_1}_1$ and
+chain of recurrence of $c$, $\CHREC{3, +, \CHREC{8, +, 5}_1}_1$ and
 that is equivalent to $\CHREC{3, +, 8, +, 5}_1$, a polynomial of
 degree two:
 \begin{eqnarray*}
@@ -356,19 +329,15 @@ the number of times the loop body is executed before the exit
 condition becomes true).  In simple loops, the exit condition of the
 loop is a comparison of an induction variable against some constant,
 parameter, or another induction variable.  The number of iterations is
-then computed as the solution of an equation with integer coefficients
-and integer solutions, also called a Diophantine equation.  When one
-or more coefficients of the Diophantine equation are parameters, the
+then computed as the (minimum) solution of an (in)equality with integer solutions, also called a Diophantine (in)equality.  When one
+or more coefficients of the Diophantine (in)equality are parameters, the
 solution is left under a parametric form.  The number of iterations
-can also be an expression variating in an outer loop, in which case,
+can also be an expression varying in an outer loop, in which case,
 it can be characterized using a chain of recurrence expression.
 
-With an expression representing the number of iterations in a loop, it
-becomes possible to express the evolution functions of scalar
-variables variating in outer loops with strides dependent on the value
-computed in an inner loop: the overall effect of a loop on a scalar
-variable can be computed as an apply of the number of iterations on
-the evolution function (of the scalar variable) in the varying loop.
+Consider a scalar variable varying in an outer loop with strides dependent on the value computed in an inner loop. 
+The expression representing the number of iterations in the inner loop can then be used to express the evolution function of the scalar
+variable varying in the outer loop.
 
 For example, the following code
 \begin{verbatim}
@@ -378,50 +347,67 @@ for (i = 0; i < N; i++)   // loop_1
     x = x + 1;
 \end{verbatim}
 would be written in loop closed \SSA{} form as:
-\begin{verbatim}
-  a = 0
-  b = loop_1_phi (a, c)
-  c = close_2_phi (j < M, d)
-  d = loop_2_phi (b, d + 1)
-  e = close_1_phi (i < N, b)
-  i = loop_1_phi (0, i + 1)
-  j = loop_2_phi (0, j + 1)
-\end{verbatim}
-``e'' represents the value of variable ``x'' at the end of the
+
+\[
+\begin{array}{lcl}
+  x_0 &=& 0\\
+  i &=& \textrm{\loopphi}_1 (0, i + 1)\\
+  x_1 &=& \textrm{\loopphi}_1 (x_0, x_2)\\
+  x_4 &=& \textrm{\closephi}_1 (i < N, x_1)\\
+  j &=& \textrm{\loopphi}_2 (0, j + 1)\\
+  x_3 &=& \textrm{\loopphi}_2 (x_1, x_3 + 1)\\
+  x_2 &=& \textrm{\closephi}_2 (j < M, x_3)\\
+\end{array}
+\]
+$x_3$ represents the value of variable $x$ at the end of the
 original imperative program.  The analysis of scalar evolutions for
-variable ``e'' would trigger the analysis of scalar evolutions for all
+variable $x_4$ would trigger the analysis of scalar evolutions for all
 the other variables defined in the loop closed \SSA{} form as follows:
 \begin{itemize}
-\item first, the analysis of variable ``e'' would trigger the analysis
-  of ``i'', ``N'' and ``b''
+\item first, the analysis of variable $x_4$ would trigger the analysis
+  of $i$, $N$ and $x_1$
   \begin{itemize}
-  \item the analysis of ``i'' leads to $i = \CHREC{0, +, 1}_1$
-  \item ``N'' is a parameter and is left under its symbolic form
-  \item the analysis of ``b'' triggers the analysis of ``a'' and ``c''
+  \item the analysis of $i$ leads to $i = \CHREC{0, +, 1}_1$ i.e. the canonical loop counter $l_1$ of $loop_1$.
+  \item $N$ is a parameter and is left under its symbolic form
+  \item the analysis of $x_1$ triggers the analysis of $x_0$ and $x_2$
     \begin{itemize}
-    \item the analysis of ``a'' leads to $a = 0$
-    \item analyzing ``c'' triggers the analysis of ``j'', ``M'', and ``d''
+    \item the analysis of $x_0$ leads to $x_0 = 0$
+    \item analyzing $x_2$ triggers the analysis of $j$, $M$, and $x_3$
       \begin{itemize}
-      \item $j = \CHREC{0, +, 1}_2$
-      \item ``M'' is a parameter
-      \item $d = loop\_2\_phi (b, d + 1) = \CHREC{b, +, 1}_2$
+      \item $j = \CHREC{0, +, 1}_2$ i.e. the canonical loop counter $l_2$ of $loop_2$.
+      \item $M$ is a parameter
+      \item $x_3 = \textrm{\loopphi}_2 (x_1, x_3 + 1) = \CHREC{x_1, +, 1}_2$
       \end{itemize}
-    \item $c = close\_2\_phi (j < M, d)$ is then computed as the last value of ``d'' after
-      $loop_2$, i.e., it is the chain of recurrence of ``d'' applied
-      to the first iteration that does not satisfy $j < M$ and
-      because ``j'' counts the number of times the body of $loop_2$
-      has run, that is the number of iterations of $loop_2$, i.e.,
-      $M$.  So, to finish the computation of the scalar evolution of
-      ``c'' we apply ``M'' to the scalar evolution of ``d'', leading
-      to $c = \CHREC{b, +, 1}_2 (M) = b + M$;
+    \item $x_2 = \textrm{\closephi}_2 (j < M, x_3)$ is then computed as the last value of $x_3$ after
+      $loop_2$, i.e., it is the chain of recurrence of $x_3$ applied
+      to the first iteration of $loop_2$ that does not satisfy $j < M$ or equivalently $l_2<M$. The corresponding Diophantine inequality $l_2\geq M$  have minimum solution $l_2=M$. So, to finish the computation of the scalar evolution of
+      $x_2$ we apply $M$ to the scalar evolution of $x_3$, leading
+      to $x_2 = \CHREC{x_1, +, 1}_2 (M) = x_1 + M$;
     \end{itemize}
-  \item the scalar evolution analysis of ``b'' then leads to $b =
-    loop\_1\_phi (a, c) = loop\_1\_phi (a, b + M) = \CHREC{a, +, M}_1 =
+  \item the scalar evolution analysis of $x_1$ then leads to $x_1 =
+    \textrm{\loopphi}_1 (x_0, x_2) = \textrm{\loopphi}_1 (x_0, x_1 + M) = \CHREC{x_0, +, M}_1 =
     \CHREC{0, +, M}_1$
   \end{itemize}
-\item and finally the analysis of ``e'' ends with $e = close\_1\_phi (i
-  < N, b) = \CHREC{0, +, M}_1 (N) = M * N$.
+\item and finally the analysis of $x_4$ ends with $x_4 = \textrm{\closephi}_1 (i
+  < N, x_1) = \CHREC{0, +, M}_1 (N) = M * N$.
 \end{itemize}
+
+
+\section{Further reading}
+FAB: des copier-coller pour remplir cette partie:\\
+
+As we have seen in this chapter, the \CFG{} representation is embedded
+in the \SSA{} structure, and properties of the \CFG{} like the
+execution order and the natural loops can be detected by only looking
+at the \SSA{} definitions and uses.  The detection of natural loops is
+the first step in the analysis of induction variables: after the
+detection of self referent definitions, it is practical to use the
+chains of recurrences \cite{BWZ94,KMZ98,Zim01} to characterize the
+sequence of values taken by a variable during the execution of a loop.
+The number of iterations of loops can be computed based on the
+characterization of induction variables.  This paves the way to
+advanced loop optimizations that need both the number of iterations
+and induction variable characterizations.
 
 The computation of the end of loop value can also be used for scalar
 optimization purposes, for example in the case of the constant
@@ -429,23 +415,20 @@ propagation or the value range propagation after loops.  It enables
 more scalar transformations when the induction variable is used after
 its defining loop.  Loop transformations also benefit from the
 replacement of the end of loop value as this removes scalar
-dependences between consecutive loops.  Another interesting use of the
+dependencies between consecutive loops.  Another interesting use of the
 end of loop value is the estimation of the worst case execution time
 (WCET) where one tries to obtain an upper bound approximation of the
 time necessary for a program to terminate.
 
-\section{Further reading}
-
-% As we have seen in this chapter, the \CFG{} representation is embedded
-% in the \SSA{} structure, and properties of the \CFG{} like the
-% execution order and the natural loops can be detected by only looking
-% at the \SSA{} definitions and uses.  The detection of natural loops is
-% the first step in the analysis of induction variables: after the
-% detection of self referent definitions, it is practical to use the
-% chains of recurrences \cite{BWZ94,KMZ98,Zim01} to characterize the
-% sequence of values taken by a variable during the execution of a loop.
-% The number of iterations of loops can be computed based on the
-% characterization of induction variables.  This paves the way to
-% advanced loop optimizations that need both the number of iterations
-% and induction variable characterizations.
-
+Dans le désordre je pense aux choses suivantes pour mettre dans cette partie:
+\begin{itemize}
+\item référence concernant la théorie sur les chaines de récurrence
+\item référence sur la résolution d'inegalités diophantines. Eventuellement donner des références d'outils.
+\item donner des références pour le calcul du nombre de points dans un polyhèdre.
+\item référence au papier et/ou la thèse qui contient les pseudo-codes 
+\item parler de SCEV qu'il y a dans LLVM (connais pas dixit Albert) et aussi de la technique initiale de Wolf.
+\item parler des "extentions" de ce type de technique qui permet entre autre de détecter les réductions (j'ai un papier là dessus je crois mais pas sur. Ca existe clairement dans le monde single assignment à la Feautrier (par Paul lui même je crois). C'est trivial dans le cas scalaire faudrait trouver une référence je pense.
+\item je pense que l'on peut parler de toutes les applications liées au calcul de IV. Entre autre la transformation de boucle (whatever le monde polyhedrique) qui nécessite si la variable d'induction est live-out de la boucle de savoir calculer sa valeur de sortie.
+\item parler du gated SSA (décrit dans le chapitre vsdg) qui pour pouvoir faire du demand driven implémente aussi une loop-close form.
+\item de manière plus générale, la technique de loop-closed form qui encapsule une boucle, permet d'isoler l'effet des transformations effectuées au sein de la boucle. C'est une technique classique utilisée pour simplifier la mise à jour de SSA pour par exemple du loop unrolling ou je crois (à vérifier dans le chapitre associé) de if-conversion.
+\end{itemize}
