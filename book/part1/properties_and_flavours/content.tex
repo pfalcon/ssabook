@@ -179,77 +179,60 @@ The corresponding pruned SSA form would remove the dead $\phi$-function that def
 \section{Conventional and Transformed SSA Form}
 \label{sec-prop-conventional}
 
-The conversion to minimal SSA form replaces each variable $v$ in the pre-SSA
-program with a set of variables $v_{1}, v_{2}, \ldots, v_{k}$. In Pruned
-SSA, these variables partition $v$: at every point in the procedure where $v$ is
+In many non-SSA and graph coloring based register allocation schemes, register assignment is done at the granularity of webs. In this context, a web is the maximum unions of def-use chains that have either a use or a def in common. As an example, the code of Figure~\ref{fig:properties_and_flavors:conventional}(a) leads to two separate webs for variable $a$.
+The conversion to minimal SSA form replaces each web of a variable $v$ in the pre-SSA
+program with some variables version $v_i$. In pruned
+SSA, these variables version partition the live-range of the web: at every point in the procedure where the web is
 live, \emph{exactly} one variable $v_{i}$ is also live; and none of
-the $v_{i}$ are live at any point where $v$ is not. Under minimal SSA, 
-one of the $v_{i}$ (including, possibly, a pseudo-definition) is live
-at every point in the procedure, not just at points where the original
-pre-SSA variable $v$ was live. 
+the $v_{i}$ are live at any point where the web is not. 
+% FAB: This discussion is more related to minimal/pruned then conventional/transformed form 
+%% When the original pre-SSA form shows only one web for variable $v$, under minimal SSA,
+%% one of the $v_i$ (including, possibly, a pseudo-definition) is live at every point in the
+%% procedure, not just at points where the original pre-SSA variable $v$ was live.
+
 
 Based on this observation, we can partition the variables in a 
-program that has been converted to SSA Form into congruence classes. 
+program that has been converted to SSA form into $\phi$-equivalence classes that we will refer as $\phi$-webs. 
 We say that $x$ and $y$ are \emph{$\phi$-related} to one another
 if they are referenced by the same $\phi$-function, i.e., 
-either both $x$ and $y$ are parameters of the $\phi$-function, or,
-without loss of generality, $x$ is a parameter, and $y$ is defined by
-the $\phi$-function. 
+if $x$ and $y$ are either parameters or defined by the $\phi$-function. The transitive closure of this relation defines an equivalence relation that 
+partitions the variables defined locally in the procedure into equivalence classes, the $\phi$-webs.
+Intuitively, the $\phi$-equivalence class of a resource represents a set of resources ``connected'' via $\phi$-functions.
+For any freshly constructed SSA code, the $\phi$-webs exactly correspond to the register web of the original non-SSA code.
 
-Given a resource x let phiConnectedResource(x) = {y | x and y are referenced (i.e.
-used or defined) in the same phi instruction, or there exists a resource z such that y
-and z are referenced in the same phi instruction and x and z are referenced in the same
-phi instruction}. We define phi congruence class as phiCongruenceClass[x] to be the
-reflexive and transitive closure of phiConnectedResource(x). Intuitively, the phi
-congruence class of a resource represents a set of resources “connected” via phi
-instructions.
+Conventional SSA form (C-SSA) is defined as SSA form for which each $\phi$-web
+is interference-free. Many program optimizations such as copy-propagation may transform a procedure from conventional
+to a non-conventional (T-SSA for Transformed-SSA) form, in which some variables belonging to
+the same $\phi$-web interfere with one another. Figure~\ref{fig:properties_and_flavors:conventional}(c)
+shows the corresponding transformed SSA form of our previous example: here variable $a_1$ interfere with variables $a_2$, $a_3$, and $a_4$.
 
-
-We say that $x$ and $y$ are \emph{$\phi$-related} to one another
-if they are referenced by the same $\phi$-function, i.e., 
-either both $x$ and $y$ are parameters of the $\phi$-function, or,
-without loss of generality, $x$ is a parameter, and $y$ is defined by
-the $\phi$-function. This relation is
-\begin{enumerate}
-\item \emph{reflexive}: $x$ is $\phi$-related to $x$;
-\item \emph{symmetric}: $x$ is $\phi$-related to $y$ if and only if
-$y$ is $\phi$-related to $x$; and
-\item \emph{transitive}: if $x$ is $\phi$-related to $y$ and 
-$y$ is $\phi$-related to $z$, then $x$ is $\phi$-related to $z$.
-\end{enumerate}
-Therefore, this notion of $\phi$-relationship is itself an equivalence
-relation, meaning that the transitive closure of the relation partitions
-the variables defined locally in the procedure into equivalence classes. 
-By the reflexive property, each variable that is not involved in a 
-$\phi$-function belongs to a singleton class. 
-We refer to an equivalence class as an SSA-web. 
-Let $\web{x}$ denote the SSA-web containing variable $x$. 
-
-Under conventional SSA Form, each SSA-web
-is interference-free. The translation out of conventional SSA Form
-is straightforward: each congruence class can be replaced with a single
+Bringing back the conventional property of a T-SSA code is as difficult as destructing SSA (see Chapter~\ref{chapter:classical_construction_algorithm}). 
+The translation out of conventional SSA form
+is straightforward: each $\phi$-web can be replaced with a single
 variable; all definitions and uses are renamed to use the new variable,
-and all $\phi$-functions involving this congruence class are removed. 
-
-
+and all $\phi$-functions involving this equivalence class are removed. 
 SSA destruction
-starting from non-conventional SSA Form requires a conversion to 
-Conventional SSA Form as an intermediate step. This conversion is
-achieved by inserting copy operations that partition $\phi$-congruence
-classes. If $v_{i}$ and $v_{j}$ are interfering variables in a $\phi$-congruence
-class, then $v_{i}$ and $v_{j}$ must be assigned to different partitions. 
-This process repeats until none of the partitions, which are themselves
-$\phi$-congruence classes, contain and more interfering variables
-~\cite{SreedharSep99, BoissinotApr09}. Chapter 
-\label{chap:alternative_ssa_destruction_algorithm}
-describes SSA elimination algorithms in greater detail.
+starting from non-conventional SSA form can be performed through a conversion to 
+conventional SSA form as an intermediate step. This conversion is
+achieved by inserting copy operations that dissociate interfering variables from the connecting $\phi$-functions. 
+As those copy instructions will have to be inserted at some points to get rid of \phiops, for machine level transformations such as register allocation or scheduling, T-SSA provides an inaccurate view of the resource usage. Another motivation for sticking on C-SSA is that the names used in the original program might help capturing some properties otherwise difficult to discover. Lexical partial redundancy elimination (PRE) as described in Chapter~\ref{chapter:pre_not_helped} illustrates this point.
 
-Many program optimizations may transform a procedure from Conventional
-to a non-conventional SSA Form, in which some variables belonging to
-the same congruence class interfere with one another. Figure XYZ
-shows an example of conventional and non-conventional SSA Form. 
+Apart from those specific examples most current compilers choose not to maintain the conventional property.
+Still, we should outline that, as later described in Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}, checking if a given $\phi$-web is (and if necessary turning it back to) interference-free can be done in linear time (instead of the naive quadratic time algorithm) in the size of the $\phi$-web.
 
-(Fabrice: Please insert a figure here to illustrate the difference.) 
+\begin{figure}
+\begin{tabular}{p{0.33\textwidth}p{0.33\textwidth}p{0.33\textwidth}}
+\includegraphics[width=0.3\textwidth]{conventional-a.pdf} &
+\includegraphics[width=0.3\textwidth]{conventional-b.pdf} &
+\includegraphics[width=0.3\textwidth]{conventional-c.pdf} \\
+(a) the two webs of variable $a$ & 
+(b) the two corresponding $\phi$-webs $\{a_1\}$ and $\{a_2,a_3,a_4\}$ &
+(c) after propagating $a_1$, SSA form is not conventional anymore
+\end{tabular}
+\caption{\label{fig:properties_and_flavors:conventional}Non-SSA register webs and corresponding SSA $\phi$-webs; conventional and corresponding transformed SSA form}
+\end{figure}
+
+
 
 \section{A Stronger Definition of Interference}
 
