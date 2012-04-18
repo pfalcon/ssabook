@@ -1,0 +1,54 @@
+Introduction
+============
+I think the fact that you cope with register promotion in this chapter should be more explicit in the title/intro of the chapter. 
+
+Lexical SSA PRE section
+=======================
+Many SSA guys associate redundant expressions with identical value numbers. So saying that a1+b1 is redundant with a2+b1 is confusing (we think that a1 must have the same value than a2 with is not required). 
+So you need to outline that the _lexical_ method needs C-SSA form, that the reasoning should be made on the corresponding non-SSA code (we do the reasoning on what Sreedhar calls phi-congruence-classes and what we refer to in this book as phi-webs), that versions are useful to detect expression alterations.
+See in particular Fig 1 of the review.
+
+Several redundancy elimination approaches do not identify the safe region using existing computation of the expression but use other considerations (such as restrict to some instructions) + usually restrict to the regions dominated by the operands. 
+So you should illustrate at some point that this is not what you are doing and that your mechanism of renaming along with the use of bot for any undefined or altered expression will do the job.
+See in particular Fig 2 of the review.
+This point comes onto the table again when Speculative PRE is discussed as you revisit the safety criterion.
+
+Some notations were not introduced and made the reading very difficult. You need to illustrate what means "used expression". 
+You need to say at some points that your FRG reflects what would look like the code if you define some temporaries to hold the value of any evaluated expression and replace (partial and full) redundancies by uses of those temporaries. T
+hen your figures should follow this logic and represent (as in the original paper) those temporaries under square brackets at the right place (right if a use, left if a def).
+See in particular Fig 2 of the review, but also Fig 1.4 or Fig 3.
+The notation "has_real_use" for a PHI operand is really confusing because this is the PHI that "has a real use" not the operand. It would be better to rename it into something such as use_is_real. This is even more confusing that the definition of "has_real_use" is not sound.
+
+You make the subttle distinction between placement and insertion. Please insist.
+
+You should outline the "Correctness" criteria. Indeed, code motion does not necessarily impose this constraint. Suppose you have x=a+b inside a loop and a unique use of x after the loop, then you could decide to move the computation of x after the loop, breaking your correctness property. I stress this point because at some points of the reading I did not understood some choices because I forgot this constraint. In particular it is important to notice that the lifetime optimality is also subject to the correctness criteria. 
+
+When you define your 4 criteria, you need to precise what you mean by a path. Actually a path should:
+ - be acyclic
+ - not contain any alteration point
+ - maximal without those conditions
+So it should either start at the entry or at a definition point of an operand, and end at the exit or at the definition of an operand and do not contain any other point that (re)-define an operand. You can then define the Safety and the Optimality criteria for any such maximal path.
+
+We had long discussions concerning the safety criterion / downsafe flag. I propose the following changes to fix/clarify it:
+- "The safety criterion implies that we can only insert at PHI's where X is downsafe (fully anticipated)" => You first explain what safety means (see the discussion above) and precise that for you safety = fully anticipated OR fully available); then you can prefixe your sentence by "If we exclude the already fully available program points were it is uncessary to insert any computation, the safety criterion implies..."
+- "We define a PHI can_be_avail if and only if inserting there will not violate computational optimality". This definition is not sound and extremely confusing while the next sentence is correct "PHI is not can_be_avail if and only if inserting there violates computational optimality". I also suggest you give the "definition" of Lemma 5 of the toplas paper.
+
+Concerning the Later flag, Lemma 6 of the Toplas paper provides a good intuition of the purpose of later (in addition to your sentence "A PHI is marked later if it is not necessary to insert there because a later insertion is possible").
+
+Register promotion section:
+===========================
+- You need to (through a few sentences only) give the definition of tau value and tauedge.
+
+- For register promotion, you differentiate direct load/store to indirect ones. For me the difficulty is not related to the fact that it is direct or indirect, but more generally to the fact that another access may alias or not. The current presentation does handle indirect memory access but not aliasing, as far as I understand. This point should be clarified.
+
+- It is not clear whether you consider the register promotion with aliasing to be an opened problem or if it just for the sake of simplicity that you did not cope with it in your chapter. This should be clarified.
+
+- For register promotion without aliasing I do not see why this would not be the job of the register allocation to handle the placement of loads and stores. This has to be discussed at some point.
+
+Value numbering section:
+========================
+- For value numbering you say "...by assigning a unique value number to each variable version". I guess you did not mean to write this. Please correct.
+
+- You cannot ignore Van Drunen work as it is purely SSA based PRE (so I expected this chapter to spend some substential time on it), and it is implemented in many compilers including gcc. You should at least summarize it and discuss in the further reading section. 
+
+- The section 1.6.2 is very frustrating because implementing VN-PRE does not seem to be so difficult and I do not buy the argument saying "this does not appear much in practice". Instead of using half a page to explain why VN-PRE is not good, could you give the intuitions on what have to be done to adapt lexical/storage PRE to semantic/value PRE? You already discribed well value numbering phase, then PHI insertion step, remains the filtering out of PHI where arguments are not available (can be done using a dom-tree traversal and a stack to store the dominating variable for each value number) + materialization of expressions (similar to availability). 
