@@ -34,25 +34,27 @@
 
 A central task of compilers is to \emph{optimize} a given input program such
 that the resulting code is more efficient in terms of execution time, code size,
-or some other metric of interest. However, in order to perform optimizations and
-program transformations typically some form of \emph{program analysis} is
-required to determine if a given transformation is applicable, to
-estimate its profitability, or guarantee correctness.
+or some other metric of interest. However, in order to perform these
+optimizations, typically some form of \emph{program analysis} is
+required to determine if a given program transformation is applicable, to
+estimate its profitability, or to guarantee its correctness.
 
 \emph{Data flow analysis}~\cite{novillo:bib:NNH99} is a simple, yet powerful,
 approach to program analysis that is utilized by many compiler frameworks and
 program analysis tools today. We will introduce the basic concepts of
-traditional data flow analysis in this chapter and show that \emph{static single
-assignment} form (SSA) facilitates the design and implementation of equivalent
-analyses, while leveraging properties of programs in SSA form allows us to
-reduce the compilation time and memory consumption.
+traditional data flow analysis in this chapter and will show how the \emph{static
+single assignment} form (SSA) facilitates the design and implementation of
+equivalent analyses.
+We will also show that how the SSA property allows us to reduce the compilation
+time and memory consumption of the data flow analyses that this program
+representation supports.
 
 Traditionally, data flow analysis is performed on a \emph{control flow graph}
 representation (CFG) of the input program. Nodes in the graph represent
 operations and edges the potential flow of program execution.
 Information on certain \emph{program properties} is propagated among
 the nodes along the control flow edges until the computed information
-stabilizes, i.e., no \emph{new} information can be devised from the program.
+stabilizes, i.e., no \emph{new} information can be inferred from the program.
 
 The \emph{propagation engine} presented in the following sections is an
 extension of the well known approach by Wegman and Zadeck for \emph{sparse
@@ -62,11 +64,11 @@ SSA-CCP). Instead of using the CFG they represent the input program as an
 nodes in this graph, however, the edges represent \emph{data dependencies}
 instead of control flow. This representation allows a selective propagation of
 program properties among data dependent graph nodes only. As before, the
-processing stops when the information at the graph nodes stabilizes. The basic
-algorithm is not limited to constant propagation and can also be applied to
-solve a large class of other data flow problems
+processing stops when the information associated with the graph nodes stabilizes.
+The basic algorithm is not limited to constant propagation and can also be
+applied to solve a large class of other data flow problems
 efficiently~\cite{novillo:bib:N05}. However, not all data flow
-analyses can be modeled, we will thus investigate the limitations
+analyses can be modeled. In this chapter we will also investigate the limitations
 of the SSA-based approach.
 
 The remainder of this chapter is organized as follows. First, the basic concepts
@@ -74,7 +76,7 @@ of (traditional) data flow analysis are presented in
 Section~\ref{novillo:sec:preliminaries}. This will provide the theoretical
 foundation and background for the discussion of the SSA-based propagation
 engine in Section~\ref{novillo:sec:prop-engine}. We then provide an example of a
-data flow analysis that can be realized efficiently by the aforementioned
+data flow analysis that can be performed efficiently by the aforementioned
 engine, namely copy propagation in Section~\ref{novillo:sec:example}. We
 conclude and provide links for further reading in
 Section~\ref{novillo:sec:further_reading}.
@@ -87,17 +89,16 @@ Data flow analysis is at the heart of many compiler transformations and
 optimizations, but also finds application in a broad spectrum of analysis and
 verification tasks in program analysis tools such as program checkers, profiling
 tools, and timing analysis tools. This section gives a brief introduction to the
-basics of data flow analysis, due to space considerations, we cannot cover this
+basics of data flow analysis. Due to space considerations, we cannot cover this
 topic in full depth.
 
-As noted before, data flow analysis allows to derive information of certain
+As noted before, data flow analysis derives information from certain
 interesting program properties that may help to optimize the program. Typical
 examples of interesting properties are: the set of \emph{live} variables at a
 given program point, the particular constant value a variable may take, or the
 set of program points that are reachable at run-time. Liveness information, for
 example, is critical during register allocation, while the two latter properties
-help in simplifying computations and avoiding useless calculations as well as
-dead code.
+help to simplify computations and to identify dead code.
 
 The analysis results are gathered from the input program by propagating
 information among its operations considering all potential execution paths. The
@@ -116,7 +117,7 @@ framework} that consists of:
 \textbf{Property Space:}
 A key concept for data flow analysis is the representation of the property space
 via \emph{partially ordered sets} $(L, \sqsubseteq)$, where $L$ represents some
-interesting program property and $\sqsubseteq$ a reflexive, transitive, and
+interesting program property and $\sqsubseteq$ represents a reflexive, transitive, and
 anti-symmetric relation. Using the $\sqsubseteq$ relation, \emph{upper} or
 \emph{lower bounds}, as well as \emph{least upper} and \emph{greatest lower
 bounds}, can be defined for subsets of $L$.
@@ -142,8 +143,9 @@ the nodes represent operations, or instructions, and edges denote the potential
 flow of execution at run-time.
 Data flow information is then propagated from one node to
 another adjacent node along the respective graph edge using \emph{in} and
-\emph{out} sets associated with every node. In the simplest case this requires
-a simple copy, but if a node has multiple incoming edges, the information from
+\emph{out} sets associated with every node. If there exists only one edge
+connecting two nodes, data can be simply copied from one set to the other.
+However, if a node has multiple incoming edges, the information from
 those edges has to be combined using the meet or join operator.
 
 Sometimes, it is helpful to reverse the flow graph to propagate information,
@@ -154,8 +156,9 @@ regular flow graph are \emph{forward analyses}.
 %///////////////////////////////////////////////////////////////////////////////
 \textbf{Transfer Functions:}
 Aside from the control flow, the operations of the program
-need to be accounted for during analysis, i.e., an abstract model of the
-operations' effects on the data flow information. Every operation is thus mapped
+need to be accounted for during analysis.
+Usually these operations change the way data is propagated from one control
+flow node to the other. Every operation is thus mapped
 to a \emph{transfer function}, which transforms the information available from
 the \emph{in} set of the operation's flow graph node and stores the result in
 the corresponding \emph{out} set.
@@ -164,10 +167,10 @@ the corresponding \emph{out} set.
 \subsection{Solving Data Flow Problems}
 
 Putting all those elements together, i.e., a complete lattice, a flow graph, and
-a set of transfer functions, yields an instance of a monotone framework. Which,
-in fact, describes a set of \emph{data flow equations} that need to be solved in
-order to retrieve the analysis result. A very popular and intuitive way of
-solving these equations is to compute the \emph{maximal (minimal) fixed point}
+a set of transfer functions, yields an instance of a monotone framework.
+This framework describes a set of \emph{data flow equations} whose solution will
+ultimately converge to the solution of the data flow analysis. A very popular and
+intuitive way to solve these equations is to compute the \emph{maximal (minimal) fixed point}
 (MFP) using
 an iterative work list algorithm. The work list contains edges of the flow graph
 that have to be revisited by first combining the information from the \emph{out}
@@ -181,14 +184,16 @@ It is obvious that a single flow edge can be appended several times to the
 work list in the course of the analysis. It may even happen that an infinite
 feedback loop prevents the algorithm from terminating. We are thus interested in
 bounding the number of times a flow edge is processed. Recalling the definition
-of chains from before, the \emph{height} of a
+of chains from before, % FERNANDO: could you cite the chapter?
+ the \emph{height} of a
 lattice is defined by the length of its longest chain. We can ensure termination
 for lattices fulfilling the \emph{ascending chain condition}, which ensures that
 the lattice has finite height. Given a lattice with finite height $h$ and a flow
 graph $G~=~(V,~E)$ it is easy to see that the MFP solution can be computed in
 $O(|E| \cdot h)$ time, where $|E|$ represents the number of edges. Since the
 number of edges is bounded by the number of graph nodes $|V|$,
-i.e., $|E| \leq |V|^2$, this gives $O(|V|^2 \cdot h)$. Note that the height of
+i.e., $|E| \leq |V|^2$, this gives an $O(|V|^2 \cdot h)$ general algorithm to
+solve data flow analyses. Note that the height of
 the lattice often depends on properties of the input program, which might
 ultimately yield bounds worse than cubic in the number of graph nodes. For
 instance, for copy propagation the lattice consists of the cross product of many
@@ -196,6 +201,10 @@ smaller lattices, each representing the potential values of a variable occurring
 in the program. The total height of the lattice thus directly depends on the
 number of variables in the program.
 
+% FERNANDO: this paragraph is a bit out of place here. If the reader stumbles
+% on it for the first time, it will not be able to understand why these sets
+% must be complete (and I think this is not a requirement, even in dense
+% analysis) even if unrelated to the node where they are stored.
 In terms of memory consumption, every node of the flow graph is associated with
 complete \emph{in} and \emph{out} sets, where the stored information is
 often unrelated to the particular graph node and only needed to propagate the
@@ -207,22 +216,28 @@ data flow information to all relevant program points.
 \label{sec:prop-engine}
 
 SSA form allows to solve a large class of data flow problems more efficiently
-than the standard fixed point solution presented previously. The basic idea is
-to directly propagate information computed at the unique definition of a
-variable to all its uses. Intermediate program points on regular control flow
-paths from the definition to those uses are skipped, reducing memory consumption
+than the standard fixed point solution presented previously.
+% FERNANDO: SSA-based algorithms also rely on the fix-point theory. I guess
+% what you guys want to say is: "than the previous approach to data flow
+% analyses."
+The basic idea is to directly propagate information computed at the unique
+definition of a variable to all its uses. In this way, intermediate program
+points that neither define nor use the variable of interest do not have to
+be taken into consideration; thus, reducing memory consumption
 and compilation time.
 
 %///////////////////////////////////////////////////////////////////////////////
 \subsection{Program Representation}
 
+% FENRANDO: This paragraph is unnecessary, and actually repetitive:
+% phi-functions have already been defined, and are discussed all over the book.
 Programs in SSA form exhibit, aside from the regular operations of the original
 program, special operations called $\phi$-operations, which are placed at join
 points of the original CFG. In the following, we assume that possibly many
 $\phi$-operations are associated with the corresponding CFG nodes at those
 join points.
 
-Data flow analysis under SSA form relies on a specialized program representation
+Data flow analyses under SSA form rely on a specialized program representation
 based on \emph{SSA graphs}, which resemble traditional \emph{def-use chains} and
 simplify the propagation of data flow information. The nodes of an SSA graph
 correspond to the operations of the program, including the program's
@@ -230,13 +245,13 @@ $\phi$-operations that are represented by dedicated nodes in the graph. The
 edges of the graph connect the unique definition of a variable with all its
 uses, i.e., edges represent true dependencies.
 
-An important property of SSA graphs is that they also capture, besides the data
+The SSA graph captures, besides the data
 dependencies, the \emph{relevant} join points of the program's CFG. A join point
 is relevant for the analysis, whenever the value of two or more definitions may
-reach a use by passing through that join. Due to the properties of SSA form, it
-is ensured that a $\phi$-operation is placed at the join point and that the use
-has been properly updated to refer to the variable defined by the respective
-$\phi$-operation.
+reach a use by passing through that join. The SSA form properties ensure that
+a $\phi$-operation is placed at the join point and that any use of the variable
+that the $\phi$-function defines has been properly updated to refer to the
+correct name.
 
 \begin{figure}[t]
   \includegraphics[trim=4.3mm 0 0 0]{ssa_graph}
@@ -244,15 +259,19 @@ $\phi$-operation.
   \label{novillo:fig:ssa_graph}
 \end{figure}
 
+% FERNANDO: I am not sure, but I think 'allow' with the meaning of permit, is
+% normally transitive, with two objects, e.g., the graph allows <the analysis>
+% <to do something>.
 Consider for example, the code excerpt shown in
 Figure~\ref{novillo:fig:ssa_graph}, along with the corresponding SSA graph and
 CFG. Assume we are interested in propagating information from the assignment of
 variable y$_1$, at the beginning of the code, down to its unique use at
 the end. The traditional CFG representation causes the propagation
-to pass though several intermediate program points. These program points are
+to pass through several intermediate program points. These program points are
 concerned with computations of the variables x$_1$, x$_2$, and x$_3$ only and
 are thus irrelevant for the computation. The SSA graph representation, on
-the other hand, allows to directly propagate the desired information, without
+the other hand, propagates the desired information directly from definition to
+use sites, without
 any intermediate steps. At the same time, we also find that the control flow
 join, following the \textbf{if}, is properly represented by the $\phi$-operation
 defining the variable x$_3$ in the SSA graph.
@@ -339,7 +358,10 @@ single source, it is sufficient to store the data flow information with the SSA
 graph
 node. The \emph{in} and \emph{out} sets used by the traditional approach -- see
 Section~\ref{novillo:sec:preliminaries} -- are obsolete, since
-$\phi$-operations already provide the required buffering. In addition, the
+$\phi$-operations already provide the required buffering.
+% FERNANDO: this is not clear to me: I think these sets are no longer necessary
+% because you can bind their info directly to the variables that they represent. % They would not be necessary even in a straight line program without phis.
+In addition, the
 control flow graph is used to track which operations are not reachable under any
 program execution and thus can be ignored safely during the computation of the
 fixed point solution.
@@ -349,9 +371,9 @@ of the control flow graph, and the \emph{SSAWorkList}, which consists of edges
 from the
 SSA graph. It proceeds by removing the top element of either of those lists and
 processing the respective edge as indicated by
-Algorithm~\ref{alg:constant_propagation_is_easier:propagation}. Throughout the algorithm operations of
+Algorithm~\ref{alg:constant_propagation_is_easier:propagation}. Throughout the algorithm, operations of
 the program are visited to update the work lists and propagate
-information as shown by Algorithm~\ref{novillo:alg:visit}. We will highlight
+information as shown in Algorithm~\ref{novillo:alg:visit}. We will highlight
 the most relevant steps of the algorithms in more detail in the following
 paragraphs.
 
@@ -382,10 +404,12 @@ paragraphs.
   \label{novillo:alg:visit}
 \end{algorithm}
 
+% FERNANDO: in my opinion the description of the algorithm is hard to follow.
+% I think the main difficulty steams from the size of the sentences. They are
+% very long, with many clauses on the same sentence.
 In step~\ref{novillo:alg:propagation:flowedge} of the main algorithm, control
-flow edges
-are processed that were encountered to be executable for the first time in the
-course of the analysis. Whenever such a control flow edge is processed, all
+flow edges set as executable for the first time are processed.
+Whenever such a control flow edge is processed, all
 $\phi$-operations of its target node need to be reevaluated due to the fact that
 Algorithm~\ref{novillo:alg:visit}a discarded the respective operands of the
 $\phi$-operations so far -- because the control flow edge was not yet marked
@@ -500,6 +524,9 @@ $\phi$-operations are placed at join points with respect to the \emph{forward}
 control flow and thus do not capture join points in the reversed control flow
 graph.
 SSA graphs are consequently not suited to model backward problems in general.
+There are, however, program representations akin to the SSA format that can
+handle backward analyses.
+Chapter~\ref{chap:ssi} gives an overview of such representations.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Example -- Copy Propagation}
@@ -509,14 +536,13 @@ Even though data flow analysis based on SSA graphs has its limitations, it is
 still a useful and effective solution for many interesting problems, as will be
 shown in the following example.
 Copy propagation under SSA form is, in principle, very simple.  Given the
-assignment $x = y$, all we need to do is traverse all the immediate
+assignment $x = y$, all we need to do is to traverse the immediate
 uses of $x$ and replace them with $y$, thereby effectively eliminating the
 original copy operation. However, such an approach will not be able to propagate
 copies past \linebreak $\phi$-operations, particularly those in loops. A more powerful
-approach is to split copy propagation into two phases. First, data flow analysis
-is performed in order to find copy-related variables throughout the program.
-Followed by a rewrite phase that eliminates spurious copies and renames
-variables.
+approach is to split copy propagation into two phases. Firstly, a data flow
+analysis is performed to find copy-related variables throughout the program.
+Secondly, a rewrite phase eliminates spurious copies and renames variables.
 
 \begin{figure}[t!]
   \begin{center}
@@ -546,7 +572,7 @@ problem with this representation is that there is no apparent link from z$_1$ to
 x$_1$.  In order to handle transitive copy relations, all transfer functions
 operate on copy-of values instead of the direct source of the copy.  If a
 variable is not found to be a copy of anything else, its copy-of value is the
-variable itself. For the example above, this yields that both, y$_1$ and z$_1$,
+variable itself. For the above example, this yields that both, y$_1$ and z$_1$,
 are copies of x$_1$, which in turn is a copy of itself. The lattice of this data
 flow problem is thus similar to the lattice used previously for constant
 propagation. The lattice elements correspond to variables of the
@@ -564,7 +590,8 @@ result that x$_3$ is a copy of~y$_1$.
 The following example shows a more complex situation where copy relations are
 obfuscated by loops -- see Figure~\ref{novillo:fig:copy_propagation_loop}.  Note
 that the actual visiting order depends on the shape of the CFG and immediate
-uses, the ordering used here is meant for illustration only. Processing starts
+uses. In other words, the ordering used here is meant for illustration only.
+Processing starts
 at the operation labeled $1$, with both work lists empty and the data flow
 information $\top$ associated with all variables:
 
@@ -613,6 +640,10 @@ the set of executable operations has been discovered.
 \section{Further Reading}
 \label{novillo:sec:further_reading}
 
+% FERNANDO: There is a lot of redundancy between this section and the
+% equivalent section in Chapter \ref{chap:ssi}. I guess some refactoring can
+% be used to make the final text less repetitive.
+
 Traditional data flow analysis is well established and well described in
 numerous papers. The book by Nielsen, Nielsen, and
 Hankin~\cite{novillo:bib:NNH99} gives an excellent introduction to the
@@ -634,7 +665,7 @@ be solved using a more powerful approach called the \emph{meet over all paths}
 (MOP) solution, which computes the \emph{in} data flow information for a basic
 block by examining \emph{all} possible paths from the start node of the control
 flow graph. Even though more powerful, computing the MOP solution is often
-harder to compute or even undecidable~\cite{novillo:bib:NNH99}. Consequently,
+harder or even undecidable~\cite{novillo:bib:NNH99}. Consequently,
 the MFP solution is preferred in practice.
 
 The sparse propagation engine, as presented in the chapter, is based on the
@@ -652,7 +683,7 @@ transformations and simplifications.
 
 The \emph{sparse evaluation graph} by Choi~et.al~\cite{novillo:bib:CCF91} is
 based on the same basic idea as the approach presented in this chapter,
-intermediate steps are eliminating by by-passing irrelevant CFG nodes and
+intermediate steps are eliminated by by-passing irrelevant CFG nodes and
 merging the data flow information only when necessary. Their approach is closely
 related to the placement of $\phi$-operations and similarly relies on the
 dominance frontier during construction. A similar approach, presented by Johnson
