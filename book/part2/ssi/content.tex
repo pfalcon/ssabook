@@ -7,14 +7,14 @@
 \section{Introduction}
 \label{sec:ssi:pereira:intro}
 
-The objective of a dataflow analysis is to discover facts that are true about a
+The objective of a data-flow analysis is to discover facts that are true about a
 program.
 We call such facts {\em information}.
 Using the notation introduced in Section~\ref{novillo:sec:prop-engine}, an
-information is a element in the dataflow lattice.
+information is a element in the data-flow lattice.
 For example, the information that concerns liveness analysis is the set of
 variables alive at a certain program point.
-Similarly to liveness analysis, many other classic dataflow approaches bind
+Similarly to liveness analysis, many other classic data-flow approaches bind
 information to pairs formed by a variable and a program point.
 However, if an invariant occurs for a variable $v$ at any program point where
 $v$ is alive, then we can associate this invariant directly to $v$.
@@ -22,34 +22,46 @@ If a program's intermediate representation guarantees this correspondence betwee
 information and variable for every variable, then we say that the program
 representation provides the {\em Single Static Information} (SSI) property.
 
-Different dataflow analysis might extract information from different program
+In Chapter~\ref{chapter:constant_propagation_is_easier} we have shown how SSA form allows us to solve sparse forward data-flow problems such as constant propagation.
+In the particular case of constant propagation, the SSA format let us assign to each variable the invariant -- or information -- of being constant or not.
+The SSA intermediate representation gives us this invariant because it splits the live ranges of variables, in such a way that each variable name is defined only once.
+Now we will show that live range splitting can also provide the SSI property not only to forward, but also to backward data-flow analyses.
+
+Different data-flow analysis might extract information from different program
 facts.
-Therefore, a program representation may afford the SSI property to some dataflow
+Therefore, a program representation may afford the SSI property to some data-flow
 analysis, but not to all of them.
 For instance, the SSA form naturally provides the SSI property to the reaching
 definition analysis.
-The SSA form provides the static single information property to any
-dataflow analysis that obtains information at the definition sites of
+Indeed, the SSA form provides the static single information property to any
+data-flow analysis that obtains information at the definition sites of
 variables.
-These analyses and transformations include copy and constant propagation as illustrated in Chapter~\ref{XXX:chap:constant_propagation_is_easier}.
-However, for a dataflow analysis that derives information from the use sites of variables, such as the class inference analysis described in Section~\ref{sub:ssi:examples}, the information associated with $v$ might not be unique along its entire live-range: in that case the SSA form does not provide the SSI property.
+These analyses and transformations include copy and constant propagation as illustrated in Chapter~\ref{chapter:constant_propagation_is_easier}.
+However, for a data-flow analysis that derives information from the use sites of variables, such as the class inference analysis described in Section~\ref{sub:ssi:examples}, the information associated with $v$ might not be unique along its entire live-range: in that case the SSA form does not provide the SSI property.
 
 There exists extensions of the SSA form that provide the SSI property to more
-dataflow analyses than the original SSA does.
+data-flow analyses than the original SSA does.
 Two classic examples, that we will detail further, are the {\em Extended-SSA} (e-SSA) form, and the {\em Static Single Information} (SSI) form.
 The e-SSA form provides the SSI property to analyses that take information from
 the definition site of variables, and also from conditional tests where these
 variables are used.
-The SSI form provides the static single information property to dataflow
-analyses that extract information from the definition sites of variables, and from last use sites (as defined further).
+The SSI form provides the static single information property to data-flow
+analyses that extract information from the definition sites of variables, and from last use sites (which we define later).
 These different intermediate representations rely on a common strategy to achieve the SSI property: {\em live range splitting}.
 In this chapter we show how to use live range splitting to build program
 representations that provide the static single information property to different
-types of dataflow analysis.
+types of data-flow analysis.
 
 \section{Static Single Information}
 \label{sec:ssi:pereira:single}
 
+The goal of this section is to define the notion of Static Single Information, and to explain how it supports the sparse data-flow analyses discussed in Chapter~\ref{chapter:constant_propagation_is_easier}.
+With this purpose, we revisit the concept of sparse analysis in Section~\ref{sec:ssi:pereira:sparse}.
+There exists a special class of data-flow problems, which we call {\em Partitioned Variable Lattice} (PVL), that fits in this chapter's sparse data-flow framework very well.
+We will look more carefully into these problems in Section~\ref{sec:ssi:pereira:pvpPvl}.
+The intermediate program representations that we discuss in this chapter lets us provide the Static Single Information property -- formalized in Section~\ref{sec:ssi:pereira:singProp} -- to any PVL problem.
+And the algorithms that we give in Section~\ref{sec:ssi:pereira:engine} lets us solve sparsely any data-flow problem that contains the SSI property.
+This sparse framework is very broad: many well-known data-flow problems are partitioned lattice, as we will see in the examples from Section~\ref{sub:ssi:examples}.
 
 
 \subsection{Sparse Analysis}
@@ -84,6 +96,7 @@ The transfer function that updates the abstract state of $i$ at program point $p
 Because the instruction immediately before $p_2$ does not add any new information to the abstract state of $i$, $[i]^2$ is updated with the information that flows directly from the predecessor point $p_1$.
 
 The goal of sparse data-flow analysis is to shortcut the identity transfer functions, a task that we accomplish by grouping contiguous program points bound to identities into larger regions.
+Solving a data-flow analysis sparsely has many advantages over doing it densely: because we do not need to keep bitvectors associated with each program point, the sparse solution tends to be more economical in terms of space and time.
 Going back to our example, a given variable $v$ may be mapped to the same interval along many consecutive program points.
 Furthermore, if the information associated with a variable is invariant along its
 entire live range, then we can bind this information to the variable itself.
@@ -182,9 +195,9 @@ We accomplish this last task by inserting into the program pseudo-uses and pseud
 \subsection{Special instructions used to split live ranges}
 \label{sub:split}
 
-The aim of this section is to introduce the $\sigma$ and parallel copies that we use, together with $\phi$-functions, to implement live-range splitting in our intermediate representation.
+We perform live range splitting via special instructions: the $\sigma$ and parallel copies that, together with $\phi$-functions, create new definitions of variables.
 These notations are important elements of the propagation engine described in the section that follows.
-In short, a $sigma$-function (for a branch point) is the dual of a \phiop (for a join point), and a parallel copy is a copy that \emph{must} be done in parallel with another instruction.
+In short, a $\sigma$-function (for a branch point) is the dual of a \phiop (for a join point), and a parallel copy is a copy that \emph{must} be done in parallel with another instruction.
 Each of these special instructions, \phiop's, $sigma$'s and parallel copies split live ranges at different kinds of program points: interior nodes, branches and joins.
 
 {\em Interior nodes} are program points that have a unique predecessor and a unique successor.
@@ -215,6 +228,7 @@ different names by the $\sigma$-function that ends that basic block.
 %TODO FAB: add reference to gated SSA, loop closed form etc.
 
 \subsection{Propagating Information Forwardly and Backwardly}
+\label{sec:ssi:pereira:engine}
 
 Let us consider a unidirectional forward (resp. backward) PVL problem $E^{ssi}_{\mathit{dense}}$ stated as a set of equations $[v]^i \sqsubseteq  F_v^s([v_1]^s, \dots, [v_n]^s)$ (or equivalently $[v]^i = [v]^i \wedge    F_v^s([v_1]^s, \dots, [v_n]^s$) for every variable $v$, each program point $i$, and each $s \in \mathit{pred}(i)$ (resp. $s \in \mathit{succ}(i)$). 
 To simplify the discussion, any $\phi$-function (resp. $\sigma$-function) is seen as a set of copies, one per predecessor (resp. successor), which leads to as many constraints.
@@ -322,8 +336,8 @@ In order to ensure the SSI property in this example, the live range of variable 
 The live range of $s$, on the other hand, must be split only at its definition point, as it is not used in the conditional.
 Splitting at conditionals is done via $\sigma$-functions.
 The representation that we obtain by splitting live ranges at definitions and conditionals is called the Extended Static Single Assignment (e-SSA) form.
-Figure~\ref{fig:rangeAnalysis-sparse}(b) shows the result to the range analysis problem ran on this form.
-We can see that this result is an assignment of each variable to a unique range interval.
+Figure~\ref{fig:rangeAnalysis-sparse}(b) shows the result that we obtain by running the range analysis on this intermediate representation.
+This solution assigns to each variable a unique range interval.
 
 \begin{figure}[t!]
 \centering
@@ -660,6 +674,11 @@ If $l^j$ already contains a $\phi$-function $v' = \phi(\ldots, v_j, \ldots)$, th
 
 \section{Further Reading}
 
+The monotone data-flow framework is an old ally of compiler writers.
+Since the work of pionners like Prosser~\cite{Prosser59}, Allen~\cite{Allen70,Allen76}, Kildall~\cite{Kildall77} and Hecht~\cite{Hecht77}, data-flow analyses such as reaching definitions, available expressions and liveness analysis have made their way into the implementation of virtually every important compiler.
+Many compiler textbooks describes the theoretic basis of the notions of lattice, monotone data-flow framework and fixed points.
+For a comprehensive overview of these concepts, including algorithms and formal proofs, we refer the interested reader to Nielson {\em et al.}'s book~\cite{Nielson05} on static program analysis.
+
 The original description of the intermediate program representation known as Static Single Information form was given by Ananian in his Master's thesis~\cite{Ananian99}.
 The notation for $\sigma$-functions that we use in this chapter was borrowed from Ananian's work.
 The SSI program representation was subsequently revisited by Jeremy Singer in his PhD thesis~\cite{Singer06}.
@@ -667,6 +686,9 @@ Singer proposed new algorithms to convert programs to SSI form, and also showed 
 We did not discuss bidirectional data-flow problems, but the interested reader can find examples of such analyses in Khedker {\em et al.}'s work~\cite{Khedker99}.
 Working on top of Ananian's and Singer's work, Boissinot {\em et al.}~\cite{BoissinotBDR12} have proposed a new algorithm to convert a program to SSI form.
 Boissinot {\em et al.} have also separated the SSI program representation in two flavors, which they call {\em weak} and {\em strong}.
+Tavares {\em et al.}~\cite{Tavares11b} have extended the literature on SSI representations, defining building algorithms and giving formal proofs that these algorithms are correct.
+The presentation that we use in this chapter is mostly based on Tavares {\em et
+al.}'s work.
 
 There exist other intermediate program representations that, like the SSI form, make it possible to solve some data-flow problems sparsely.
 Well-known among these representations is the {\em Extended Static Single Assignment} form, introduced by Bodik {\em et al.} to provide a fast algorithm to eliminate array bound checks in the context of a JIT compiler~\cite{Bodik00}.
@@ -683,9 +705,6 @@ He also discussed a number of data-flow analyses that are partitioned variable p
 There are data-flow analyses that do not meet the Partitioned Variable Lattices property.
 Noticeable examples include abstract interpretation problems on relational domains, such as Polyhedrons~\cite{Cousot78}, Octagons~\cite{Mine06} and Pentagons~\cite{Logozzo08}.
 %This domain binds variables together in constraints such as $x + y \leq c$, where $c$ is an integer, and $x, y$ are program variables.
-
-
-Examples 
 
 In terms of data-structures, the first, and best known method proposed to support sparse data-flow analyses is Choi {\em et al.}'s {\em Sparse Evaluation Graph} (SEG)~\cite{Choi91}.
 The nodes of this graph represent program regions where information produced by the data-flow analysis might change.
