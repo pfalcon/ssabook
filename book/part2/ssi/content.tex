@@ -254,7 +254,7 @@ The propagation engine discussed in Chapter~\ref{chapter:constant_propagation_is
 If a given program fulfills the SSI property for a backward analysis, we can use a very similar propagation algorithm to communicate information backwardly.
 Figure~\ref{alg:ssi:propback} shows a worklist algorithm that propagates information backwardly.
 A slightly modified version of this algorithm, seen in Figure~\ref{alg:ssi:propforward} propagates information forwardly.
-If necessary, these algorithms can be made flow sensitive, like Algorithm~\ref{alg:constant_propagation_is_easier:ssa_propagation}. 
+If necessary, these algorithms can be made control flow sensitive, like Algorithm~\ref{alg:constant_propagation_is_easier:ssa_propagation}. 
 
 
 \def\1{\qquad}
@@ -398,6 +398,11 @@ On the other hand, in Figure~\ref{fig:ssi:nullAnalysis}(c) we notice that the st
 \def\Def{\mathrm{Def}}
 \def\Uses{\mathrm{Uses}}
 
+In the previous section we have seen how the static single information
+property gives the compiler the opportunity to solve a data-flow problem sparsely.
+However, we have not yet seen how to convert a program to a format that provides the SSI property.
+This is a task that we address in this section, via the three-steps algorithm from Section~\ref{sub:ssi:ssify}.
+
 \subsection{Splitting strategy}
 A {\em live range splitting strategy} \
 $\SS_v = I_\uparrow \cup I_\downarrow$ over a variable $v$ consists of a set
@@ -467,6 +472,7 @@ $_4$& \1\textsf{clean}($v$)\\
 \end{figure}
 
 \subsection{Splitting live ranges}
+\label{sub:ssi:ssify}
 
 In order to implement $\SS_v$ we must split the live ranges of $v$ at each
 program point listed by $\SS_v$.
@@ -646,22 +652,19 @@ Each non live variable (see line~15), i.e. either undefined or dead (non used) i
 This is done by lines~15-18.
 Finally every useless $\phi$, $\sigma$, or copy functions are removed by lines~19-20. 
 
-\subsection{Implementing parallel copies, $\phi$ and $\sigma$-functions and Destructing SSI}
+\subsection{Implementation Details}
 \label{sub:special}
+
 %TODO: we need to explain how to get rid of copies in parallel with another instruction here.
-Traditional instruction sets do not provide $\phi$-functions nor $\sigma$-functions.
-Thus, before producing an executable program, the compiler must implement these instructions.
-Normally, $\phi$-functions and parallel copies are replaced by ordinary copy instructions, as explained in Section~\ref{sec:classical_construction_algorithm} and Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}.
-A possible solution is to get rid of copies and $\sigma$-functions by simply copy-propagating them; thus, leaving for the SSA elimination module the task of replacing $\sigma$-functions with special instructions.
-As an example, Figure~\ref{fig:sigImpl}(a) shows the result of copy folding applied on Figure~\ref{fig:classInference}(d). 
-The $\sigma$-functions can be implemented as single arity $\phi$-functions.
-As an example, Figure~\ref{fig:sigImpl}(b) shows how we would represent the $\sigma$-functions of Figure~\ref{fig:classInference}(d). 
+\paragraph{Implementing $\sigma$-functions: }
+The most straightforward way to implement $\sigma$-functions, in a compiler that already supports the SSA form, is to represent them by $\phi$-functions.
+In this case, the $\sigma$-functions can be implemented as single arity $\phi$-functions.
+As an example, Figure~\ref{fig:sigImpl}(a) shows how we would represent the $\sigma$-functions of Figure~\ref{fig:classInference}(d). 
 If $l$ is a branch point with $n$ successors that would contain a $\sigma$-function $(v_1:l^1, \ldots, v_n:l^n) =\sigma(v)$, then, for each successor $l^j$ of $l$, we insert at the beginning of $l^j$ an instruction $v_j = \phi(v:l)$.
 Notice that it is possible that $l^j$ already contains a $\phi$-function for $v$.
 This case happens when the control flow edge $l \rightarrow l^j$ is {\em critical}.
 A critical edge links a basic block with several successors to a basic block with several predecessors.
 If $l^j$ already contains a $\phi$-function $v' = \phi(\ldots, v_j, \ldots)$, then we rename $v_j$ to $v$.
-
 
 \begin{figure}[t!]
 \centering
@@ -670,7 +673,13 @@ If $l^j$ already contains a $\phi$-function $v' = \phi(\ldots, v_j, \ldots)$, th
 \label{fig:sigImpl}
 \end{figure}
 
-
+\paragraph{SSI Destruction: }
+Traditional instruction sets do not provide $\phi$-functions nor $\sigma$-functions.
+Thus, before producing an executable program, the compiler must implement these instructions.
+We have already seen in Chapter~\ref{chap:classical_construction} how to replace $\phi$-functions with actual assembly instructions; however, now we must also replace $\sigma$-functions and parallel copies.
+Normally, $\phi$-functions and parallel copies are replaced by ordinary copy instructions, as explained in Section~\ref{sec:classical_construction_algorithm} and Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}.
+A way to perform this replacement is to copy-propagate the variables defined by $\sigma$-functions and parallel copies.
+As an example, Figure~\ref{fig:sigImpl}(b) shows the result of copy folding applied on Figure~\ref{fig:sigImpl}(a).
 
 \section{Further Reading}
 
