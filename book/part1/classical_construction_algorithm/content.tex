@@ -507,14 +507,12 @@ the corresponding pseudo-code.
 \begin{algorithm}
 \Begin{
  \ForEach{$B$: basic block of the CFG}{
-   \Let{$\mathrm{PC}_0$ be $() \leftarrow ()$, an empty parallel copy instruction}\;
-   insert $\mathrm{PC}_0$ immediately  after the \phiops\ at the beginning of $B$\;
-   \Let{$(B_1,\ldots,B_n)$ be the list of predecessor blocks of $B$}\;
-   \ForEach{$B_i$}{
+   \Let{$(E_1,\ldots,E_n)$ be the list of incoming edges of $B$}\;
+   \ForEach{$E_i=(B_i,B)$}{
      \Let{$\mathrm{PC}_i$ be $() \leftarrow ()$, an empty parallel copy instruction}\;
-     \If{$B_i$ has several successors}{
+     \If{$B_i$ has several outgoing edges}{
        create fresh empty basic block $B'_i$;
-       replace edge $B_i \rightarrow B$ by edges $B_i \rightarrow B'_i$ and $B'_i \rightarrow B$;
+       replace edge $E_i$ by edges $B_i \rightarrow B'_i$ and $B'_i \rightarrow B$;
        insert $PC_i$ in $B'_i$;
      }
     \Else{
@@ -522,9 +520,6 @@ the corresponding pseudo-code.
      }
    }
    \ForEach{\phiop\ at the entry of $B$ of the form $a_0=\phi(B_1:a_1,\ldots,B_n:a_n)$}{
-     \Let{$a'$ be a freshly created variable}\;
-     add copy $a_0 \leftarrow a'$ to $\mathrm{PC}_0$\;
-     replace $a_0$ by $a'$ in the \phiop\;
      \ForEach{$a_i$ (argument of the \phiop\ corresponding to $B_i$)}{
        add copy $a' \leftarrow a_i$ to $\mathrm{PC}_i$;
        replace $a_i$ by $a'$ in the \phiop;
@@ -537,20 +532,6 @@ the corresponding pseudo-code.
 \end{algorithm}
 
 
-Even this extremely conservative SSA destruction algorithm
-can potentially lead to potential bugs,
-particularly at the code generation stage.
-It is essential to ensure that it is possible
-to append a copy operation at the very end of a basic block.
-This would, for example, be problematic in the situation 
-where the jump at the end of the basic block
-defines a variable used in the following \phiop,
-(such as a Jump-And-Set instruction).
-Care must be taken with duplicated edges, i.e.\
-when the same basic block appears twice in the list of predecessors.
-This can occur after CFG structural optimizations like
-dead code elimination or empty block elimination.
-In such case, the edges should be considered as critical and then split.
 
 We stress that the above destruction technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not permit the splitting of a given edge; second, the resulting code contains many temporary-to-temporary copy operations. In theory, reducing the frequency of these copies is the role of the coalescer during the register allocation phase. A few memory and time-consuming existing coalescing heuristics mentioned in Chapter~\ref{chap:register-allocation} can handle the removal of these copies effectively. Coalescing can also, with less effort, be performed prior to the register allocation phase. As opposed to a (so-called conservative) coalescer during register allocation, this \emph{aggressive} coalescing would not cope with the interference graph colorability. Further, the process of copy insertion itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative-destruction} is to cope both with non-splittable edges and difficulties related with SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
 
