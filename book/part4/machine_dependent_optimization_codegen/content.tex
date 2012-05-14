@@ -316,62 +316,61 @@ in particular those resulting from control-flow constructs.
 
 \subsection{If-conversion}
 
-Unlike the hyperblock, the instructions within each superblock are not
-predicated instructions \cite{Mahlke:1992:MICRO}.
+If-conversion refers to optimization techniques that remove conditional branches
+from a program region. The basic idea is to replace conditional branches by
+straight-line computations that directly use the condition as a source operand.
+The scope and effectiveness of if-conversion depends on ISA support for predicated
+execution \cite{Mahlke:1995:ISCA}: \begin{description}
+\item[\bf No predicated execution support] The condition source operand is converted
+to $\{0, -1, 1\}$ integer values and used in AND or MUL instructions.
+\item[\bf Partial predicated execution support] The condition source operand is used
+as selector in conditional move (CMOV) or SELECT instructions. The CMOVxx
+instructions were introduced in the Alpha AXP architecture
+\cite{Blickstein:1992:DTJ} and are available in the ia32 ISA since the Pentium Pro.
+The SELECT instructions were introduced in the Multiflow TRACE 300 architecture
+family.
+\item[\bf Full predicated execution support] Most data processing instructions
+accept a Boolean predicate operand which nullifies the instruction effects if the
+predicate evaluates to false. Predicate define instructions (PDI) are also
+provided to efficiently evaluate the predicate of nested conditions. Classic PDI
+variants include Unconditional, OR-style, AND-style \cite{Mahlke:1995:ISCA}.
+The ARM architecture can also be considered as fully predicated, since most user
+instructions are conditionally executed depending on the evaluation of a 4-bit
+source operand.
+\end{description}
+Besides predicated execution, architectural support for if-conversion can be
+improved by supporting speculative execution. Speculative execution refers to
+the execution of instruction under a more general condition than prior to
+optimization, which occurs as a result of speculative code motion
+\cite{Lowney:1992:JS} or predicate promotion \cite{Mahlke:1995:ISCA}.
+Speculative execution is problematic with instructions with non-reversible side
+effects such as exceptions. On the Multiflow TRACE 300 architecture and later on
+the Lx VLIW architecture \cite{Faraboschi:2000:ISCA}, non-trapping memory loads
+known as 'dismissable' are provided. Further architectural support is provided
+on the IMPACT EPIC architecture \cite{August:1998:ISCA} and more generally,
+effective if-conversion techniques rely on predicated execution and speculative
+execution.
 
-\paragraph{Mahlke:1995:ISCA} Comparison of full and partial predication.
+If-conversion is primarily motivated by unlocking instruction scheduling on
+instruction-level parallel processors \cite{Mahlke:1995:ISCA}, as removing
+conditional branches: \begin{itemize} \item eliminates branch resolution stalls
+in the instruction pipeline, \item reduces uses of the branch unit, which is
+often single-issue, \item increases the size of the instruction scheduling
+regions.  \end{itemize} In case of inner loop bodies, if-conversion further
+enables vectorization \cite{Allen:1993:POPL} and software pipelining (modulo
+scheduling) \cite{Park:1991:HPL58}. Consequently, control-flow regions selected
+for if-conversion are acyclic, even though seminal if-conversion papers
+\cite{Allen:1993:POPL, Park:1991:HPL58} consider more general control-flow.
+The result of an if-converted region is typically a hyperblock, that is, a set
+of predicated basic blocks in which control may only enter from the top, but may
+exit from one or more locations \cite{Mahlke:1992:MICRO} (loop back edges are
+considered exits).
+\medskip
 
-\paragraph{Schlansker:1999:PLDI} Fully resolved predicates (FPRs)
-
-\paragraph{Jacome:2001:DAC} The idea of Static Single Assignment -- Predicated
-Switching transformation (SSA-PS) is to realize conditional assigmnents
-corresponding to $\phi$-functions by so-called predicated switching operations.
-This technique is aimed at clustered VLIW architectures, with predicated move
-instructions that operate inside clusters (internal moves) or between clusters
-(external moves).
-
-\paragraph{Chuang:2003:CGO} The phi-predication is motivated by the removal of
-conditional register writes in the architecture. The proposed instruction set
-includes select instructions called phi-op, predicated load and stores with
-loads that always update destination register, wide OR between predicates,
-unconditional compares. The floating-point instructions propagates NaN.
-Arithmetic instructions are not predicated. Start from a non-SSA from program
-representation. Use a modified R-K algorithm on acyclic single-entry single-exit
-regions. The modification is for using unconditional compares and the ORP. Use
-the phi-version of memory operation on basic block with control dependences, and
-convert all compares to unconditional.  Other instructions, such as arithmetic
-or prefetch, are left unchanged. The insertion point of PHI operations is
-computed like the placement of the $\phi$-functions. However the source operands
-of $\phi$-functions are replaced by so-called $\phi$-lists, where each operand
-is associated with the predicate of its source basic block. The $\phi$-lists are
-processed by topological order of the operand predicates to generate the PHI
-operations. The phi-predication algorithm is not an SSA algorithm, however it is
-straightforward to adapt to convert conventional SSA form to $\psi$-SSA form.
-
-If-conversion removes conditional branches. Uses a mix of predication and
-control speculation. Purpose is to collaborate with the pre-pass instruction
-scheduler. The inner loop optimizations and instruction reselection come in
-between. Three classes of predicated execution support in ISA.
-\cite{Mahlke:1995:ISCA} \cite{Chuang:2003:CGO}
-
-% Mainly for use by instruction scheduling:
-% - remove branch penalty
-% - lower use of the branch unit
-% - increase the size of scheduling regions
-% Fully resolved predicates, partially resolved predicates
-
-Steps of if-conversion: select region; code hoisting; assign predicates to
-basic blocks; compute basic block predicates; predicate or speculate
-instructions;
-
-Approaches to if-conversion
-
-(Chapter~\ref{chap:if_conversion}). A predicated instruction behavior includes a
-traditional data processing part such as arithmetic or memory access, and a
-predicate evaluation part often connected to a separate operand. When the
-predicate evaluates to false, the instruction has no architectural effects. The
-simplest form of predicated instruction is the conditional move such as
-CMOV\emph{xx} instructions on the x86. 
+The generic steps of if-conversion are \cite{Fang:1996:LCPC}: region selection;
+code hoisting; assignment of predicates to basic blocks; insertion of
+instructions to compute basic block predicates; predication or speculation of
+instructions and branch removal.
 
 If-conversion outside the SSA Form:
 \begin{itemize}
@@ -419,6 +418,35 @@ Architectures'' [ODES-4 2006]
 \item Ferriere ``Improvements to the Psi-SSA Representation" [SCOPES 2007]
 
 \end{itemize}
+
+
+%\paragraph{Schlansker:1999:PLDI} Fully resolved predicates (FPRs)
+
+%\paragraph{Jacome:2001:DAC} The idea of Static Single Assignment -- Predicated
+%Switching transformation (SSA-PS) is to realize conditional assigmnents
+%corresponding to $\phi$-functions by so-called predicated switching operations.
+%This technique is aimed at clustered VLIW architectures, with predicated move
+%instructions that operate inside clusters (internal moves) or between clusters
+%(external moves).
+
+%\paragraph{Chuang:2003:CGO} The phi-predication is motivated by the removal of
+%conditional register writes in the architecture. The proposed instruction set
+%includes select instructions called phi-op, predicated load and stores with
+%loads that always update destination register, wide OR between predicates,
+%unconditional compares. The floating-point instructions propagates NaN.
+%Arithmetic instructions are not predicated. Start from a non-SSA from program
+%representation. Use a modified R-K algorithm on acyclic single-entry single-exit
+%regions. The modification is for using unconditional compares and the ORP. Use
+%the phi-version of memory operation on basic block with control dependences, and
+%convert all compares to unconditional.  Other instructions, such as arithmetic
+%or prefetch, are left unchanged. The insertion point of PHI operations is
+%computed like the placement of the $\phi$-functions. However the source operands
+%of $\phi$-functions are replaced by so-called $\phi$-lists, where each operand
+%is associated with the predicate of its source basic block. The $\phi$-lists are
+%processed by topological order of the operand predicates to generate the PHI
+%operations. The phi-predication algorithm is not an SSA algorithm, however it is
+%straightforward to adapt to convert conventional SSA form to $\psi$-SSA form.
+
 
 % Weak control regions, strong control regions
 
@@ -584,8 +612,8 @@ of partially overlapping bit-fields in a processor status register.
 \item Aggressive instruction scheduling relaxes some flow data dependencies that
 are normally implied by SSA variable def-use ordering. A first example is 'move
 renaming' \cite{Young:1998:MICRO}, the dynamic switching of the definition of a
-source operand defined by a COPY instruction when the consumer indtructions ends
-up bering scheduled at the same cycle or earlier. Another example is 'inductive
+source operand defined by a COPY instruction when the consumer instructions ends
+up being scheduled at the same cycle or earlier. Another example is 'inductive
 relaxation' \cite{Dinechin:1997:PaCT}, where the dependence between additive
 induction variables and their use as base in base+offset addressing modes is
 relaxed to the extent permitted by the induction step and the range of the
