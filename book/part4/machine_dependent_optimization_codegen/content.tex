@@ -8,7 +8,7 @@ on a program representation close to the target processor ISA, and produce an
 assembly source or relocatable file with debugging information as result.
 
 The main duties of code generation are: lowering the program intermediate
-representation to the target processor instruction and calling conventions;
+representation to the target processor instructions and calling conventions;
 allocating variable live ranges to architectural registers; scheduling
 instructions to exploit micro-architecture; and producing assembly source or
 object code.
@@ -35,7 +35,7 @@ micro-architectures. Code generation techniques implement in these compilers
 include: \begin{itemize}
 \item If-conversion using conditional move, SELECT, or predicated, instructions.
 \item Use of specialized addressing modes such as auto-modified and modulo.
-\item Exploitation of hardware looping instruction or static branch prediction
+\item Exploitation of hardware looping instructions or static branch prediction
 hints.
 \item Matching fixed-point arithmetic and SIMD idioms by special instructions.
 \item Memory hierarchy optimizations, including pre-fetching and pre-loading
@@ -53,6 +53,27 @@ are presented in Section~\ref{sec:ssa-codegen-engineering}.  The suitability of
 the SSA form for main code generation phases is discussed in
 Section~\ref{sec:ssa-codegen-suitability}.
 
+In the remainder of this chapter, we adopt the following terminology. An
+\emph{instruction} is a member of the processor Instruction Set Architecture
+(ISA). Instructions access values and modify the processor state through
+\emph{operand}s. We distinguish \emph{explicit operands}, which are associated
+with a specific bit-field in the instruction encoding, from \emph{implict
+operands}, without any encoding bits. Explicit operands correspond to
+allocatable architectural registers or to immediate values. Implicit operands
+correspond to single instance architectural resources, such as a hardware loop
+counter, a procedure link register, or a processor status register.
+
+An \emph{operator} is the compiler view of an instruction, where its
+side-effects including clobbered registers, implicit operands, and ISA operand
+naming constraints, are exposed. An \emph{operation} is an instance of and
+instruction and its operands that compose a program. The compiler view of
+operations also includes \emph{indirect operands}. These are not apparent in the
+instruction behavior, but are required to connect the flow of values between
+operations. Implicit operands typically include the list of registers used for
+passing arguments and returning results at function boundaries, and also allow
+to make explicit the list of registers which are encoded in register mask
+immediates for instructions such as PUSH/POP on the ARM.
+
 \section{SSA form on machine code issues}
 \label{sec:ssa-codegen-issues}
 
@@ -60,18 +81,18 @@ Section~\ref{sec:ssa-codegen-suitability}.
 
 Unlike IR operators, there is no straightforward mapping between machine
 instruction and their operational semantics. For instance, a substract
-instruction with operands $(a,b,c)$ may either compute $c \leftarrow a-b$ or $c
+with operands $(a,b,c)$ may either compute $c \leftarrow a-b$ or $c
 \leftarrow b-a$ or any such expression with permuted operands. Yet basic SSA
 form code cleanups such as constant propagation and sign extension removal need
 to know what is actually computed by machine instructions.  Machine instructions
 may also have multiple target operands, such as memory accesses with
 auto-modified addressing, or combined division/modulus instructions.
 There are at least two ways to address this issue. \begin{itemize}
-\item Add properties to the instruction operation and to its operands, a
+\item Add properties to the instruction operator and to its operands, a
 technique used by the Open64 compiler. Typical operation properties include
 'isAdd', 'isLoad', etc. Typical operand properties include 'isLeft', 'isRigh',
 'isBase', 'isOffset', 'isPredicated', etc. Extended properties that involve the
-instruction operation and some of its operands include 'isAssociative',
+instruction operator and some of its operands include 'isAssociative',
 'isCommutative', etc.
 \item Associate a 'semantic combinator' \cite{Leung:1999:PLDI}, that is, a tree
 of IR-like operators, to each target operand of a machine instruction. This more
@@ -79,12 +100,12 @@ ambitious alternative was implemented in the SML/NJ \cite{Leung:1999:PLDI}
 compiler and the LAO compiler \cite{Dinechin:2000:CASES}.  \end{itemize}
 
 An issue related to the representation of instruction semantics is how to factor
-it. Most information can be statically tabulated by instruction opcode, yet
+it. Most information can be statically tabulated by the instruction operator, yet
 properties such as safety for control speculation, or being equivalent to a
 simple IR instruction, can be refined by the context where the instruction
 appears. For instance, range propagation may ensure that an addition cannot
 overflow, that a division by zero is impossible, or that a memory access is safe.
-Alternate semantic combinators, or modifiers of the instruction opcode semantic
+Alternate semantic combinators, or modifiers of the instruction operator semantic
 combinator, need to be associated with each machine instruction of the code
 generator internal representation.
 
@@ -104,18 +125,6 @@ loop-back branch is also conveniently materialized by a pseudo-instruction.
 
 \subsection{Operand naming constraints}
 
-Explicit instruction operands are those associated with a non-opcode bit-field
-in the instruction encoding. These operands correspond to allocatable
-architectural registers or to immediate values. Implicit operands do not have
-encoding bits, but their access is apparent in the instruction semantics. These
-operands correspond to single instance architectural resources, such as a
-hardware loop counter, a procedure link register, or a processor status
-register. Indirect operands are not apparent in the instruction semantics, but
-need to appear as instruction operands in order to connect the flow of values.
-Such operands correspond to registers masks in instructions such PUSH/POP on the
-ARM, and to the list of registers used for passing arguments are returning
-results at function boundaries.
-
 Implicit operands and indirect operands are constrained to specific
 architectural registers either by the instruction set architecture (ISA
 constraints), or by application binary interface (ABI constraints). An effective
@@ -123,7 +132,7 @@ way to deal with these constraints in the SSA form is by inserting parallel COPY
 instruction that write to the constrained source operands or read from the
 constrained target operands of the instructions. The new SSA variables thus
 created are pre-colored with the required architectural register. The parallel
-COPY instructions are coalesced away or sequentialized when going out of SSA
+COPY operations are coalesced away or sequentialized when going out of SSA
 \cite{Boissinot:2009:CGO}.
 
 Explicit instruction operands may also be constrained to use the same register
@@ -134,7 +143,7 @@ instruction set architectures such as x68 and the ARM~Thumb. In the setting of
 \cite{Boissinot:2009:CGO}, these constraints are represented by inserting a COPY
 between the constrained source operand and a new variable, then using this new
 variable as the constrained source operand. The COPY is a parallel copy in case
-of multiple constrained source operands. Again, the COPY instructions are
+of multiple constrained source operands. Again, the COPY operations are
 processed when going out of SSA.
 
 A difficult case of ISA or ABI operand constraint is when a variable must be
@@ -155,31 +164,31 @@ independent bit-fields. Moreover, some instruction effects on bit-field may be
 'sticky', that is, with an implied OR with the previous value. Typical sticky
 bits include exception flags of the IEEE~754 arithmetic, or the integer overflow
 flag on DSPs with fixed-point arithmetic. When mapping a processor status
-register to a SSA variable, any instruction that partially reads or modifies the
+register to a SSA variable, any operation that partially reads or modifies the
 register bit-fields should appear as reading and writing the corresponding
 variable.
 
-Predicated instructions present another aspect of definitions that do not kill
+Predicated operations present another aspect of definitions that do not kill
 the target register. Extensions of the SSA form such as the $\psi$-SSA
 (Chapter~\ref{chap:psi_ssa}) specifically address the issues of handling
-predicated instructions. Basic architectural support for if-conversion is
+predicated operations. Basic architectural support for if-conversion is
 provided by conditional move instructions and SELECT instructions
 \cite{Mahlke:1995:ISCA}.  The former are predicated, while the latter always
 write to their destination register. Observe that under the SSA form, a
 conditional move instruction is equivalent to a SELECT instruction with a 'must
 be same register' naming constraint between one source and the target operand.
 Generalizing this observation provides a simple way to handle predicated
-instructions: \begin{itemize}
+instruction sets: \begin{itemize}
 \item For each target operand of the predicated instruction, add a corresponding
 source operand in the instruction signature.
 \item For each added source operand, add a 'must be same same register' renaming
 constraint with the corresponding target operand.
 \end{itemize}
 This simple transformation enables SSA form analyses and optimizations to remain
-oblivious to predicated instructions. The drawback of this solution is that
-predicated definitions of a given variable (before SSA renaming) remain in
-dominance order across transformations, as opposed to $\psi$-SSA where predicate
-value analysis may enable to relax this order.
+oblivious to predicated code. The drawback of this solution is that predicated
+definitions of a given variable (before SSA renaming) remain in dominance order
+across transformations, as opposed to $\psi$-SSA where predicate value analysis
+may enable to relax this order.
 
 %\subsection{Un-splittable critical edges}
 %
@@ -212,7 +221,7 @@ value analysis may enable to relax this order.
 
 \begin{itemize}
 
-\item Control tree and memory dependencies and user hints
+\item Control tree and memory dependences and user hints
 
 \item Control structures Bourdoncle Havlak.
 
@@ -322,9 +331,9 @@ straight-line computations that directly use the condition as a source operand.
 The scope and effectiveness of if-conversion depends on ISA support for predicated
 execution \cite{Mahlke:1995:ISCA}: \begin{description}
 \item[\bf No predicated execution support] The condition source operand is converted
-to $\{0, -1, 1\}$ integer values and used in AND or MUL instructions.
+to $\{0, -1, 1\}$ integer values and used in bitwise AND operations.
 \item[\bf Partial predicated execution support] The condition source operand is used
-as selector in conditional move (CMOV) or SELECT instructions. The CMOVxx
+as selector in conditional move (CMOV) or SELECT operations. The CMOVxx
 instructions were introduced in the Alpha AXP architecture
 \cite{Blickstein:1992:DTJ} and are available in the ia32 ISA since the Pentium Pro.
 The SELECT instructions were introduced in the Multiflow TRACE 300 architecture
@@ -332,15 +341,22 @@ family.
 \item[\bf Full predicated execution support] Most data processing instructions
 accept a Boolean predicate operand which nullifies the instruction effects if the
 predicate evaluates to false. Predicate define instructions (PDI) are also
-provided to efficiently evaluate the predicate of nested conditions. Classic PDI
+provided to efficiently evaluate the predicate of nested conditions. EPIC-style PDI
 variants include Unconditional, OR-style, AND-style \cite{Mahlke:1995:ISCA}.
+The Multiflow TRACE 500 architecture was to include predicated store operations.
 The ARM architecture can also be considered as fully predicated, since most user
 instructions are conditionally executed depending on the evaluation of a 4-bit
 source operand.
-\end{description}
+\end{description} In principle, any if-conversion technique targeted to full
+predicated execution support may be adapted to partial predicated execution
+support. For instance, non-predicated instructions with side-effects such as
+throwing exceptions can be used in combination with CMOV or SELECT to provide a
+harmless effective address in case the operation must be nullified
+\cite{Mahlke:1995:ISCA}.
+
 Besides predicated execution, architectural support for if-conversion can be
 improved by supporting speculative execution. Speculative execution refers to
-the execution of instruction under a more general condition than prior to
+the execution of program operations under a more general condition than prior to
 optimization, which occurs as a result of speculative code motion
 \cite{Lowney:1992:JS} or predicate promotion \cite{Mahlke:1995:ISCA}.
 Speculative execution is problematic with instructions with non-reversible side
@@ -351,7 +367,7 @@ on the IMPACT EPIC architecture \cite{August:1998:ISCA} and more generally,
 effective if-conversion techniques rely on predicated execution and speculative
 execution.
 
-If-conversion is primarily motivated by unlocking instruction scheduling on
+If-conversion is primarily motivated by instruction scheduling on
 instruction-level parallel processors \cite{Mahlke:1995:ISCA}, as removing
 conditional branches: \begin{itemize} \item eliminates branch resolution stalls
 in the instruction pipeline, \item reduces uses of the branch unit, which is
@@ -359,7 +375,7 @@ often single-issue, \item increases the size of the instruction scheduling
 regions.  \end{itemize} In case of inner loop bodies, if-conversion further
 enables vectorization \cite{Allen:1993:POPL} and software pipelining (modulo
 scheduling) \cite{Park:1991:HPL58}. Consequently, control-flow regions selected
-for if-conversion are acyclic, even though seminal if-conversion papers
+for if-conversion are acyclic, even though seminal techniques
 \cite{Allen:1993:POPL, Park:1991:HPL58} consider more general control-flow.
 The result of an if-converted region is typically a hyperblock, that is, a set
 of predicated basic blocks in which control may only enter from the top, but may
@@ -369,11 +385,35 @@ considered exits).
 
 The generic steps of if-conversion are \cite{Fang:1996:LCPC}: region selection;
 code hoisting; assignment of predicates to basic blocks; insertion of
-instructions to compute basic block predicates; predication or speculation of
-instructions and branch removal.
+operations to compute basic block predicates; predication or speculation of
+operations and conditional branch removal. Early contributions to if-conversion
+dot not consider the SSA form. subsequent work consider the $\phi$-placement in
+order to insert CMOV or SELECT operations, while recent contributions accept SSA
+form as input and output. Precisely, the signficant contributions to
+if-conversion can be summarized as follows: \begin{itemize}
+
+\item Allen et al. \cite{Allen:1983:POPL} describe how to convert control
+dependences to data dependences, motivated by inner loop vectorization. They
+distinguish forward branches, exit branches, and backward branches, and compute
+Boolean guards accordingly. As this work pre-dates the Program Dependence Graph
+\cite{Ferreante:1987:TOPLAS}, complexity of the resulting Boolean expressions is
+an issue.
+
+\item Park \& Schlansker 
+
+\end{itemize}
+
+The evolution of if-conversion
+techniques can be summarized as follows
 
 If-conversion outside the SSA Form:
 \begin{itemize}
+
+\item Allen et al.
+
+\item Blickstein
+
+\item Multiflow
 
 \item Park \& Schlansker ``On Predicated Execution'' [HPL-91-58 1991]
 \begin{itemize}
@@ -590,7 +630,7 @@ semantics and the constraint to keep them first in basic blocks.
 required to execute a code region. If the only ordering constraints between
 instructions, besides control dependences and memory dependences, are limited to
 true data dependences on operands, code motion will create interferences that
-must later be resolved by inserting COPY instruction in the scheduled code
+must later be resolved by inserting COPY operations in the scheduled code
 region. (Except for interferences created by the overlapping of live ranges
 that results from modulo scheduling, as these are resolved by modulo renaming.)
 So scheduling instructions with SSA variables as operands is not effective
@@ -605,14 +645,14 @@ in Section~\ref{sec:non-kill-target}. In turn this implies def-use variable
 ordering that prevents aggressive instruction scheduling. For instance, all
 'sticky' bit-field definitions can be reordered with regards to the next use,
 and an instruction scheduler is expected to do so. Scheduling OR-type predicate
-define instructions \cite{Schlansker_1999_PLDI} raises the same issues. An
+define operations \cite{Schlansker_1999_PLDI} raises the same issues. An
 instruction scheduler is also expected to precisely track accesses to unrelated
 of partially overlapping bit-fields in a processor status register.
 
-\item Aggressive instruction scheduling relaxes some flow data dependencies that
+\item Aggressive instruction scheduling relaxes some flow data dependences that
 are normally implied by SSA variable def-use ordering. A first example is 'move
 renaming' \cite{Young:1998:MICRO}, the dynamic switching of the definition of a
-source operand defined by a COPY instruction when the consumer instructions ends
+source operand defined by a COPY operation when the consumer operations ends
 up being scheduled at the same cycle or earlier. Another example is 'inductive
 relaxation' \cite{Dinechin:1997:PaCT}, where the dependence between additive
 induction variables and their use as base in base+offset addressing modes is
