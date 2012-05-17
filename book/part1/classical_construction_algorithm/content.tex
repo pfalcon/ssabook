@@ -492,7 +492,7 @@ it is necessary to eliminate \phiops\ since these
 are not executable machine instructions.
 This elimination phase is known as \textit{SSA destruction}. 
 
-As a freshly constructed SSA code is conventional, its destruction is straightforward.
+Since a freshly constructed, untransformed SSA code is conventional, its destruction is straightforward.
 One simply has to rename all 
 $\phi$-related variables (source and destination operands of
 a single \phiop\ are related)
@@ -501,7 +501,12 @@ Then each \phiop\ should have identical names for all its operands,
 and thus can be removed to coalesce the related live-ranges.
 
 We refer to a set of $\phi$-related variables as
-an \textit{$\phi$-web}. Conventional SSA is defined as a flavor under which each $\phi$-web is interference free. The discovery of $\phi$-webs can be performed efficiently 
+an \textit{$\phi$-web}. We recall from
+Chapter \ref{chap:properties_and_flavours}
+that conventional SSA is defined as a flavor under which each
+$\phi$-web is interference free, i.e.\ each $\phi$-webs constituent
+variables have non-overlapping live ranges.
+The discovery of $\phi$-webs can be performed efficiently 
 using the classical \textit{union-find} algorithm 
 with a disjoint-set data structure,
 which keeps track of a set of elements
@@ -530,7 +535,6 @@ While freshly constructed SSA code is conventional,
 this may not be the case after optimizations 
 such as copy propagation have been performed.
 Going back to conventional SSA form implies the insertion of copies.
-{\emph FIXME: we need to talk about parallel copies at some points. You mention in the vanilla chapter the fact that phi are to be executed in parallel. An option is to explain the parallel semantics in the vanilla chapter using parallel copies on incoming edges. Up to you.}
 
 The simplest (although not the most efficient) way to destroy non-conventional SSA form is to split all \textit{critical edges}, and then replace \phiops\ by parallel copies at the end of predecessor basic blocks.
 A critical edge is an edge from a node with several successors to a node with several predecessors.
@@ -570,21 +574,21 @@ the corresponding pseudo-code.
 
 
 
-We stress that the above destruction technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not permit the splitting of a given edge; second, the resulting code contains many temporary-to-temporary copy operations. In theory, reducing the frequency of these copies is the role of the coalescer during the register allocation phase. A few memory and time-consuming existing coalescing heuristics mentioned in Chapter~\ref{chap:register-allocation} can handle the removal of these copies effectively. Coalescing can also, with less effort, be performed prior to the register allocation phase. As opposed to a (so-called conservative) coalescer during register allocation, this \emph{aggressive} coalescing would not cope with the interference graph colorability. Further, the process of copy insertion itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative-destruction} is to cope both with non-splittable edges and difficulties related with SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
+We stress that the above destruction technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not permit the splitting of a given edge; second, the resulting code contains many temporary-to-temporary copy operations. In theory, reducing the frequency of these copies is the role of the coalescer during the register allocation phase. A few memory and time-consuming existing coalescing heuristics mentioned in Chapter~\ref{chap:register-allocation} can handle the removal of these copies effectively. Coalescing can also, with less effort, be performed prior to the register allocation phase. As opposed to a (so-called conservative) coalescer during register allocation, this \emph{aggressive} coalescing would not cope with the interference graph colorability. Further, the process of copy insertion itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative_ssa_destruction_algorithm} is to cope both with non-splittable edges and difficulties related with SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
 
 Once \phiops\ have been replaced by parallel copies, we need to sequentialize the parallel copies, i.e.\ replace them by a sequence of simple copies. This phase can be performed immediately after SSA destruction or later on, perhaps even after register allocation (see Chapter~\ref{chap:register_allocation}). It might be useful to postpone the copy sequentialization since it introduces arbitrary interference between variables. As an example, $(a_1,b_1)\gets (a_2,b_2)$ can be sequentialized into $a_1\gets a_2;\ b_1\gets b_2$ which would make $b_2$ interfere with $a_1$ while the other way round $b_1\gets b_2;\ a_1\gets a_2$ would make $a_2$ interfere with $b_1$ instead.
 
-If we still decide to replace parallel copies into a sequence of simple copies immediately after SSA destruction described in this chapter (with no copy propagation / coalescing in between), this is straightforward: as no variable appears as both a source and a destination (either all the sources or all the destinations are freshly created variables), any order is correct. Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} will provide the pseudo-code that is required after coalescing have been performed and Chapter~\ref{chapter:register_allocation} will deal with the case involving register-allocated code.
+If we still decide to replace parallel copies into a sequence of simple copies immediately after SSA destruction described in this chapter (with no copy propagation or coalescing in between), this is straightforward: as no variable appears as both a source and a destination (either all the sources or all the destinations are freshly created variables), any order is correct. Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} will provide the pseudo-code that is required after coalescing have been performed and Chapter~\ref{chapter:register_allocation} will deal with the case involving register-allocated code.
 
 \section{Turning general SSA into minimal/conventional/pruned/dominance property}
 \label{section:classical_construction_algorithm:turning}
-As discussed in Chapter~\ref{chapter:properties_and_flavours},
+As discussed in Chapter~\ref{chap:properties_and_flavours},
 SSA comes in different flavors. 
 This section describes algorithms that transform
 arbitrary SSA code
 into the desired flavor.
 
-Making SSA \textit{conventional} corresponds exactly to the first phase of SSA destruction (described in Section~\ref{sec:classical_destruction}) that splits critical edges and introduces parallel copies (sequentialized later in bulk or on-demand) around \phiops. As already discussed, this straightforward algorithm has several drawbacks addressed in Chapter~\ref{chapter:chapter:alternative_ssa_destruction_algorithm}.
+Making SSA \textit{conventional} corresponds exactly to the first phase of SSA destruction (described in Section~\ref{sec:classical_construction_algorithm:destruction}) that splits critical edges and introduces parallel copies (sequentialized later in bulk or on-demand) around \phiops. As already discussed, this straightforward algorithm has several drawbacks addressed in Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}.
 
 Making SSA strict, i.e.\ fulfill the dominance property, is as `hard' as constructing SSA. Of course, a pre-pass through the graph can detect the offending variables that have definitions that do not dominate their uses. Then there are several possible single-variable \phiop\ insertion algorithms (see Chapter~\ref{chapter:alternative_ssa_construction_algorithms}) that can be used to patch up the SSA, by restricting attention to the set of non-conforming variables. The renaming phase can also be applied with the same filtering process. As the number of variables requiring repair might be a small proportion of all variables, a costly traversal of the whole program can be avoided by building the def-use chains (for non-conforming variables) during the detection pre-pass. Renaming can then be done on a per-variable basis or better (if pruned SSA is preferred) the reconstruction algorithm presented in Chapter~\ref{chapter:repair_maintain_ssa_after_optimization} can be used for both \phiops\ placement and renaming.
 
