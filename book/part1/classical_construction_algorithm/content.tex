@@ -61,7 +61,8 @@ and
 %% SSA extensions for high-level features like
 %% pointer-based aliasing, arrays, compound data structures, concurrency, etc.)
 
-Figure \ref{fig:examplecfg} shows an example CFG 
+Figure \ref{fig:classical_construction_algorithm:examplecfg}
+shows an example CFG 
 program. The set of nodes is $\{ r, A, B, C, D, E\}$.
 The set of variables is $\{ x, y, \mathit{tmp} \}$.
 Note that the program shows the complete control flow structure,
@@ -100,16 +101,19 @@ As already outlined in Chapter \ref{chap:properties_and_flavours},
 there are different flavors of SSA with distinct properties.
 In this chapter, we focus on the \textit{minimal} SSA form.
 
-\subsubsection*{Join Sets}
+\subsubsection*{Join Sets and Dominance Frontiers}
 
-Construction of minimal SSA 
-requires for each variable $v$ the insertion of \phiops\ at $\join(D_v)$.
-Here $D_v$ is the set of nodes that contain definitions of $v$, and,
-for a given set of nodes $S$, $\join(S)$ is the set of
-\textit{join nodes} of $S$
-i.e., nodes in the CFG that can be reached by
+In order to explain how \phiop\ insertions occur,
+it will be helpful 
+to review the related concepts of \textit{join sets} and
+\textit{dominance frontiers}.
+
+For a given set of nodes $S$ in a CFG, the join set $\join(S)$
+is the set of \textit{join nodes} of $S$,
+i.e.\ nodes in the CFG that can be reached by
 two (or more) distinct elements of $S$ using disjoint paths.
-Join sets were introduced in Section~\ref{sec:properties_and_flavors:minimality}.
+Join sets were introduced in
+Section~\ref{sec:properties_and_flavors:minimality}.
 
 Let us consider some join set examples from the
 program in Figure \ref{fig:classical_construction_algorithm:examplecfg}.
@@ -121,27 +125,42 @@ $A$, $D$, and $E$ are the only nodes with multiple predecessors in
 the program.
 \end{enumerate}
 
- 
-The original construction for SSA form uses an over-approximation of
-join sets, the
-\emph{iterated dominance frontier}, $\iDF(S)=\join(S\cup
-\{r\})$, i.e.\ it assumes an \emph{implicit} definition of every
-variable at the entry node $r$.
-The iterated dominance frontier is the limit $DF_{i\rightarrow\infty}(S)$
+
+% Chapter 2 defers definition of dominance frontiers
+% until here, and gives an explicit forward reference
+% Recall the definition of dominance frontiers from Section~\ref{sec:properties_and_flavors:minimalSSA}.
+The \textit{dominance frontier} of a node $n$,
+$\DF(n)$, is the border of the CFG region that is dominated by $n$.
+More formally,
+\begin{itemize}
+\item node $a$ \textit{strictly dominates} node $b$ if $a$ dominates
+  $b$ and $a \neq b$
+\item the set of nodes $\DF(a)$ contains all nodes $n$ such that $a$
+  dominates a predecessor of $n$ but $a$ does not strictly dominate $n$.
+\end{itemize}
+
+Note that $\DF$ is defined over individual nodes, 
+but for simplicity of presentation, we overload it to 
+operate over sets of nodes too, i.e.\ 
+$\DF(S) = \bigcup_{s\in S} \DF(s)$.
+The \textit{iterated dominance frontier}
+is the limit $DF_{i\rightarrow\infty}(S)$
 of the sequence:
 $$\begin{array}{lll}
 \DF_1(S) & = & \DF(S)\\
 \DF_{i+1}(S) & = & \DF\left(S\cup \DF_i(S)\right)
 \end{array}$$
 
-% described dominance frontiers? In chapter 2?
-Recall the definition of dominance frontiers from Section~\ref{sec:properties_and_flavors:minimalSSA}.
-Informally, the dominance frontier of a node $A$, $\DF(A)$,
-is the border of the CFG region that is dominated by $A$.
-Also note that $\DF$ is defined over individual nodes, 
-but for simplicity of presentation, we overload it to 
-operate over sets of nodes too, i.e.\ 
-$\DF(S) = \bigcup_{s\in S} \DF(s)$.
+Construction of minimal SSA 
+requires for each variable $v$ the insertion of \phiops\ at $\join(D_v)$,
+where $D_v$ is the set of nodes that contain definitions of $v$.
+The original construction algorithm
+for SSA form uses the iterated dominance frontier $\iDF(D_v)$.
+This is an over-approximation of join set, since
+$\iDF(S)=\join(S\cup \{r\})$,
+i.e.\ the original algorithm assumes an \emph{implicit} definition of every
+variable at the entry node $r$.
+
 
 \subsubsection*{\phiop\ Placement}
 
@@ -200,7 +219,7 @@ inserted at a node,
 there is no need to insert another, since a single \phiop\ per
 variable handles all incoming definitions of that variable to that node.
 
-Table \ref{tab:classical_construction:walkthru} 
+Table \ref{table:classical_construction:walkthru} 
 gives a walk-through example of Algorithm 
 \ref{alg:classical_construction:phi_insertion}.
 It shows the stages of execution for a single iteration of
@@ -260,14 +279,19 @@ inserted \phiops\ for variable $x$
 }
 \end{figure}
 
-Providing the dominance tree as a given, the computation of the dominance frontier is quite straight-forward. As illustrated by Figure~\ref{fig:classical_construction_algorithm:iDF}, this can be understood using the DJ-graph notation. The skeleton of the DJ-graph is the dominator tree of the CFG that makes the $D$-edges. This is augmented with $J$-edges (join edges) that correspond to all edges of the CFG whose source does not strictly dominate its destination. A $DF$-edge (dominance frontier edge) is an edge whose destination is in the dominance frontier of its source. By definition, there is a $DF$-edge $(a,b)$ between every CFG nodes $a$, $b$ such that $a$ dominates a predecessor of $b$, but does not strictly dominate $b$. 
-In other-words, for each  $J$-edge $(a,b)$, all ancestors (including $a$) that do not strictly dominate $b$ have $b$ in their dominance frontier. This leads to the pseudo-code given in Algorithm~\ref{alg:classical_construction:df}. The iterated dominance frontier is nothing else than the transitive closure of the dominance frontier and we can define the $iDF-graph$ as the transitive closure of the $DF$-graph. 
+Providing the dominator tree is given, the computation of the dominance frontier is quite straight-forward. As illustrated by Figure~\ref{fig:classical_construction_algorithm:iDF}, this can be understood using the DJ-graph notation. The skeleton of the DJ-graph is the dominator tree of the CFG that makes the $D$-edges. This is augmented with $J$-edges (join edges) that correspond to all edges of the CFG whose source does not strictly dominate its destination. A $DF$-edge (dominance frontier edge) is an edge whose destination is in the dominance frontier of its source. By definition, there is a $DF$-edge $(a,b)$ between every CFG nodes $a$, $b$ such that $a$ dominates a predecessor of $b$, but does not strictly dominate $b$. 
+In other-words, for each  $J$-edge $(a,b)$, all ancestors (including
+$a$) that do not strictly dominate $b$ have $b$ in their dominance
+frontier. This leads to the pseudo-code given in
+Algorithm~\ref{alg:classical_construction:df}.
 
-We can compute the iterated dominance frontier for each variable independently, as proposed in this chapter, or ``cache'' it to avoid multiple computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chap:alternative_ssa_construction_algorithms}.
+Since the iterated dominance frontier is simply the transitive closure
+of the dominance frontier, then we can define the $iDF-graph$ as the transitive closure of the $DF$-graph. 
+We can compute the iterated dominance frontier for each variable independently, as outlined in this chapter, or `cache' it to avoid repeated computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chap:alternative_ssa_construction_algorithms}.
 
 \begin{figure}
 \includegraphics[width=0.5\textwidth]{iDF.jpeg}
-\caption{An example CFG and it corresponding DJ-graph, DF-graph and iDF-graph}
+\caption{\label{fig:classical_construction_algorithm:iDF}An example CFG and it corresponding DJ-graph, DF-graph and iDF-graph}
 \end{figure}
 
 \begin{algorithm}
@@ -295,36 +319,46 @@ If we follow this convention,
 % Moreover, with the following semantics for \phiops\ where its
 % variable uses are considered to be on the corresponding predecessor
 % basic blocks,
-then use-def chains are aligned with the CFG dominance tree.
+then use-def chains are aligned with the CFG dominator tree.
 In other words,
 \emph{the single definition that reaches each use dominates that use}.
 
 \subsubsection*{Renaming Phase}
 \newcommand\reachingDef[1]{#1.\mathrm{reachingDef}}
 To obtain the desired property of a static single assignment per variable,
-it is necessary to perform \textbf{variable renaming}, which
+it is necessary to perform variable renaming, which
 is the second phase in the SSA construction process.
 \phiop\ insertions have the effect of splitting the live-range(s) of each original variable into pieces. The variable renaming phase associates to each individual live-range a new variable name, also called \emph{version}.
 Algorithm \ref{alg:classical:renaming} presents the pseudo-code
 for this process.
 Because of the dominance property outlined above,
 it is straightforward to rename variables
-using a depth-first traversal of the dominance tree.
+using a depth-first traversal of the dominator tree.
 During the traversal, for each variable $v$, it is necessary to
-remember its unique reaching version's definition at some point $p$ in the graph. This corresponds to the closest definition dominating $p$.
+remember its unique reaching version's definition at some point $p$ in
+the graph. This corresponds to the closest definition that dominates $p$.
 In Algorithm \ref{alg:classical:renaming}, we compute and cache the 
-reaching definition for $v$ in the variable field $\reachingDef{v}$ that is updated as the algorithm traverses the dominator tree of the SSA graph.
+reaching definition for $v$ in the per-variable slot $\reachingDef{v}$
+that is updated as the algorithm traverses the dominator tree of the
+SSA graph.
+This per-variable slot 
+% This renaming algorithm uses a single $\mathrm{reachingDef}$ slot 
+stores the in-scope, `new' variable name (version) for the equivalent
+variable at the same point in the un-renamed program.
 
 The variable renaming algorithm translates our running example 
-from Figure~\ref{fig:classical_construction_algorithm:examplecfg}.
+from Figure~\ref{fig:classical_construction_algorithm:examplecfg}
 into the SSA form of Figure
 \ref{fig:classical_construction_algorithm:renaming}.
 Table \ref{table:classical_construction_algorithm:renaming} 
-gives a walk-through example of this algorithm.
+gives a walk-through example of this algorithm,
+only considering variable $x$. The labels $l_i$ mark
+instructions in the program that mention $x$, shown in 
+Figure \ref{fig:classical_construction_algorithm:renaming}.
 
 \begin{table}
 \begin{tabular}{c|c|l}
-Basic-block & operand &  reachingDef\\ \hline
+Basic-block & operand &  $\reachingDef{x}$ \\ \hline
 Entry & use of $l_1$ & $\bot$\\
 $A$ & def of $l_1$ &  $\bot$ then $x_1$\\
 $B$ & def of $l_2$ &  $x_1$ then $x_2$\\
@@ -403,10 +437,13 @@ $E$ & use of $l_8$ & $x_6$
 
 % Some paragraphs summarizing similarities / diffs between this
 % algorithm and standard stack-based renaming algorithm.
-This renaming algorithm uses a single $\mathrm{reachingDef}$ slot 
-per variable to store the in-scope, `new' variable name (version) for each
-variable used in the un-renamed program. An equivalent approach uses a stack that stores all versions that dominate the current program point. 
-A stack value is pushed when a variable definition is
+The original presentation of the renaming algorithm uses
+a per-variable stack that stores
+all variable versions that dominate the current program
+point, rather than the slot-based approach outlined above.
+
+In the stack-based algorithm, 
+a stack value is pushed when a variable definition is
 processed (while we explicitly update the reachingDefs field at this point).
 The top stack value is peeked when a variable use is encountered
 (we read from the reachingDefs field at this point).
@@ -425,7 +462,7 @@ SSA properties that were introduced in
 Chapter \ref{chap:properties_and_flavours}.
 
 \begin{itemize}
-\item It is \textit{minimal}, see Section \ref{sec-prop-minimal}.
+\item It is \textit{minimal}, see Section \label{sec:properties_and_flavors:minimality}.
 After the \phiop\ insertion phase,
 but before variable renaming, the CFG contains the minimal 
 number of inserted \phiops\ to achieve the property that exactly
@@ -439,7 +476,7 @@ The transformation that renames all $\phi$-related variables into a
 unique representative name, and then removes all \phiops\ is a correct SSA-destruction algorithm.
 \item Finally, it has the \textit{dominance} property, see Section
 \ref{sec-prop-dominance}.
-Each variable use is dominated by its unique definition. This is due to the use during the $\phi$-placement phase of iterated dominance frontier instead of join set. Whenever the iterated dominance frontier of the set of definition points of a variable differs from the join set, then at least one program point can be reached both by $r$ (the entry of the CFG) and one of the definition points. In other words, as in Figure~\ref{fig:classical_construction_algorithm:examplecfg}, one of the uses of the \phiop\ inserted in block $A$ for $x$ does not have any actual reaching definition that dominates it. This corresponds to the undef value used to initialize reachingDef in the renaming phase pseudo code. Actual implementation can use NULL value, create a fake undefined variable at the entry of the CFG, or create on the fly undef pseudo operations just before the concerned used. We choose to use in this book the undef value, represented with the $\undef$ sign.
+Each variable use is dominated by its unique definition. This is due to the use during the $\phi$-placement phase of iterated dominance frontier instead of join set. Whenever the iterated dominance frontier of the set of definition points of a variable differs from the join set, then at least one program point can be reached both by $r$ (the entry of the CFG) and one of the definition points. In other words, as in Figure~\ref{fig:classical_construction_algorithm:examplecfg}, one of the uses of the \phiop\ inserted in block $A$ for $x$ does not have any actual reaching definition that dominates it. This corresponds to the undef value used to initialize reachingDef in the renaming phase pseudo code. Actual implementation can use \texttt{NULL} value, create a fake undefined variable at the entry of the CFG, or create on the fly undef pseudo operations just before the concerned used. We choose to use in this book the undef value, represented with the $\undef$ sign.
 \end{itemize}
 
 
