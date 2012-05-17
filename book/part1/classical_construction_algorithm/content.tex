@@ -658,7 +658,8 @@ it is generally much faster to first build semi-pruned SSA
 form, rather than minimal SSA form, and then apply
 dead code elimination.
 Semi-pruned SSA form is based on the observation that
-many variables are \emph{local} variables, i.e. are variables which live range is entirely enclosed in a single basic block. Consequently, pruned SSA would not 
+many variables are \emph{local}, i.e. have a single live range that is
+within a single basic block. Consequently, pruned SSA would not 
 instantiate any $\phi$-functions for these variables.
 Such variables can be identified by a linear traversal
 over each basic block of the CFG, which is less costly
@@ -682,7 +683,7 @@ as detailed below.
 In the pessimistic approach, a \phiop\ is inserted at the start of each CFG node
 (basic block) for each variable that is live at the start of that
 node.
-An even more naive (Fab says `lazy'? - Appel says `really crude') 
+A less sophisticated, crude %[Appel]
 strategy is to insert a \phiop\ for
 each variable at the head of each CFG node.
 This means the resulting SSA will not be pruned.
@@ -690,23 +691,30 @@ This means the resulting SSA will not be pruned.
 Code transformations such as code motion, or other CFG modifications, 
 can make a minimal SSA program become non-minimal.
 However minimality can be obtained or recovered using 
-\textit{copy propagation} whenever the CFG is reducible. 
-(FIXME - have we defined reducibility in chapter 2?)
+\textit{copy propagation} whenever the CFG is reducible\footnote{
+A CFG is reducible if there are no jumps into the middle of loops
+from the outside, so the only entry to a loop is through its header.
+Section \ref{sec:classical_construction_algorithm:reading} 
+gives a fuller discussion of reducibility, with
+pointers to further reading.
+}.
 To be efficient (otherwise as many iterations as the maximum loop
 depth might be necessary for copy propagation), 
 variable def-use chains should be pre-computed. 
-As already mentioned in Chapter~\ref{chapter:properties_and_flavours}, 
+As already mentioned in Chapter~\ref{chap:properties_and_flavours}, 
 copy propagation can break the dominance property by propagating
-variable $a$ through \phiops\ of the form $a'=\phi(a_1,...,a_n)$ where
-all the $a_i$ are either equal to $a$ or $\undef$. 
+variable $a$ through \phiops\ of the form $a'=\phi(...)$ where
+all the source operands are syntactically equal to either $a$ or $\undef$. 
 If we want to avoid breaking the dominance property we simply have to
 avoid the application of copy propagation that involves $\undef$. 
-A more interesting rule is the one that propagates $a$ through a \phiop\ of the form $a'=\phi(a_1,...,a_n)$ where $a_i$ is either equal to $a$ or $a'$. 
+A more interesting rule is the one that propagates $a$ through a
+\phiop\ of the form $a'=\phi(...)$ where all the source operands are
+syntactically equal to either $a$ or $a'$. 
 These \phiops\ turn out to be `identity' operations, where all the
 source operands become syntactically identical and equivalent to the 
 destination operand. As such, they can be trivially elided from the program.
 Identity \phiops\ can be simplified this way from inner to outer loops. 
-When the CFG is reducible, this leads to minimal SSA. 
+When the CFG is reducible, this simplication produces minimal SSA. 
 The underlying reason is that the def-use chain of a given variable is,
 in this context, a subgraph of a reducible graph: 
 all nodes except those that can be reached by two different paths (from
@@ -731,43 +739,51 @@ To be precise, we can simplify an SSA program as follows:
 \caption{\label{fig:t1t2transforms}T1 and T2 rewrite rules for graph reduction}
 \end{figure}
 
-This approach can be implemented with 
-a worklist algorithm where the worklist stores the nodes
-that might be simplified. The worklist can be initialized with
-successors of non-\phiop\ definitions of variables (sources of the
-graph) -- if we want to work within the framework of graph reduction --,
-or simply with all \phiops. Of course, if loop nesting forest
+This approach can be implemented using a work queue, 
+which stores the candidate nodes for simplification.
+In a data dependence graph reduction context, 
+the queue can be initialized with
+successors of non-\phiop\ definitions of variables.
+However for simplicity, we may simply insert all \phiops into the
+queue
+as potential simplification candidates.
+Of course, if loop nesting forest
 information is available, 
 the worklist can be avoided by traversing the CFG in a single pass 
 from inner to outer loops, and in a topological order within each loop (header excluded).
 However since we believe the main motivation for this approach to be its
 simplicity,
 the pseudo-code shown in Algorithm 
-\ref{alg:classical_construction_algorithm:pessimistic} uses a worklist.
-(JS - a queue??)
+\ref{alg:classical_construction_algorithm:pessimistic} uses a queue.
+% (JS - was a worklist???
 This algorithm is guaranteed to terminate in a fixed number of steps.
-At every iteration of the foreach loop, it removes a \phiop\ from the
-worklist
+At every iteration of the while loop, it removes a \phiop\ from the
+work queue
 $W$. Whenever it adds new \phiops\ to $W$, it removes a \phiop\ from
 the program.
 The number of \phiops\ in 
 the program is bounded so the number of insertions to $W$ is bounded.
 
+The queue could be replaced by a worklist, and the insertions/removals
+done at random. The algorithm would be less efficient, but the
+end-result would be the same.
+
 \begin{algorithm}
 \Begin{
 $W \leftarrow ()$ \;
-\ForEach{I: phiop in program}{
+\ForEach{I: phiop in program in reverse post-order}{
   W.enqueue(I) \;
   mark I\;
 }
  \While{W not empty}{
   $I \leftarrow W.\mathrm{dequeue}()$\;
   unmark I\;
-  let I be of the form $a'=\phi(a_1,\ldots,a_n)$\;
-  \If{$\forall i. a_i \in \{a_1,a'\}$}{
+  let I be of the form $a'=\phi(\ldots)$\;
+%  \If{$\forall i. a_i \in \{a_1,a'\}$}{
+  \If{all source operands of the phi fn are $\in \{a',a\}$}{
     Remove $I$ from program\;
     \ForEach{$I'$: instruction different from I that uses $a'$}{
-      replace $a'$ by $a_1$ in $I'$\;
+      replace $a'$ by $a$ in $I'$\;
       \If{$I'$ is a phiop and $I'$ is not marked}{
         mark $I'$\;
         W.{enqueue}(I')\;
@@ -782,6 +798,7 @@ Pessimistic rewriting algorithm}
 
 
 \section{Additional reading}
+\label{sec:classical_construction_algorithm:reading}
 
 The early literature on SSA form
 \cite{cytron89efficient,cytron91efficiently}
@@ -805,6 +822,11 @@ simple, syntax-directed approach to SSA construction from
 well structured high-level source code.
 Throughout this textbook, we consider the more
 general case of SSA construction from arbitrary CFGs.
+
+A reducible CFG is one that will collapse to a single node when 
+it is transformed using repeated application of T1/T2 transforms.
+Aho et al \cite{aho86compilers} describe the concept of reducibility
+and trace its history in early compilers literature.
 
 Wolf (FIXME cite) discusses iterative join set calculation in his
 seminal work on efficient data flow analysis.
