@@ -578,7 +578,30 @@ We stress that the above destruction technique has several drawbacks: first beca
 
 Once \phiops\ have been replaced by parallel copies, we need to sequentialize the parallel copies, i.e.\ replace them by a sequence of simple copies. This phase can be performed immediately after SSA destruction or later on, perhaps even after register allocation (see Chapter~\ref{chap:register_allocation}). It might be useful to postpone the copy sequentialization since it introduces arbitrary interference between variables. As an example, $(a_1,b_1)\gets (a_2,b_2)$ can be sequentialized into $a_1\gets a_2;\ b_1\gets b_2$ which would make $b_2$ interfere with $a_1$ while the other way round $b_1\gets b_2;\ a_1\gets a_2$ would make $a_2$ interfere with $b_1$ instead.
 
-If we still decide to replace parallel copies into a sequence of simple copies immediately after SSA destruction described in this chapter (with no copy propagation or coalescing in between), this is straightforward: as no variable appears as both a source and a destination (either all the sources or all the destinations are freshly created variables), any order is correct. Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} will provide the pseudo-code that is required after coalescing have been performed and Chapter~\ref{chapter:register_allocation} will deal with the case involving register-allocated code.
+If we still decide to replace parallel copies into a sequence of simple copies immediately after SSA destruction, this can be done as follow:
+
+\begin{algorithm}
+\Begin{
+    \Let $pcopy$ denote the parallel copy to be sequentialized\;
+    \Let $seq=()$ denote the sequence of copies\;
+    \While{$\lnot\left[\forall (b\leftarrow a) \in pcopy,\, a=b\right]$}{
+      \If{$\exists (b\leftarrow a)\in pcopy$ s.t. $\not\exists (c\leftarrow b)\in pcopy$}{
+        \tcc{$b$ is not live-in of $pcopy$}
+        append $b\leftarrow a$ to $seq$\;
+        remove copy $b\leftarrow a$ from $pcopy$\;
+      }
+      \Else{ \tcc{$pcopy$ is only made-up of cycles; Break one of them}
+        \Let $b\leftarrow a \in pcopy$ s.t. $a\neq b$\;
+        \Let $a'$ be a freshly created variable\;
+        append $a'\leftarrow a$ to $seq$\;
+        replace in $pcopy$ $b\leftarrow a$ into $b\leftarrow a'$\;
+      }
+    }
+}
+\end{algorithm}
+
+To see that this algorithm converges, one can visualize the parallel copy as a graph where nodes represent resources and edges represent transfer of values: the number of steps is exactly the number of cycles plus the number of non-self edges of this graph. The correctness comes from the invariance of the behavior of $seq; pcopy$. An optimized implementation of this algorithm will be detailed in Chapter~\ref{chapter:alternative_ssa_destruction}.
+
 
 \section{Turning general SSA into minimal/conventional/pruned/dominance property}
 \label{section:classical_construction_algorithm:turning}
