@@ -43,18 +43,9 @@ Furthermore, register allocation has to remove spurious copy operations (copy co
 
 \section{Introduction}
 
-{\sl
-\begin{itemize}
-  \item based on graph coloring, linear scan
-  \item spilling \& coloring are dependent
-  \item heuristics are used to find a working solution
-  \item avoiding spills is more important than coalescing
-  \item Fab: It is important to outline that with decoupled reg-alloc, spilling and coloring become much simpler and more efficient.
-\end{itemize}
-}
+Register allocation is usually performed per procedure. In each procedure,
+a liveness analysis determines for each variable the program points where the variable is live.
 
-Register allocation is usually performed per procedure.
-A liveness analysis determines for each variable the program points where the variable is live.
 A variable is live at a program point if there exists a path from this point on which the variable will be used later on and is not overwritten before that use.
 Hence, storage needs to be allocated for that variable; ideally a register.
 The set of all program points where a variable is live is called the \emph{live-range} of the variable.
@@ -178,62 +169,9 @@ First, lower the register pressure to~$k$ everywhere in the program;
 Then, color the interference graph with~$k$ colors in polynomial time.
 
 
-\section{Spilling}
-
-The term spilling is heavily overloaded:
-In the graph-coloring setting it often means to spill a node of the interference graph and thus the \emph{entire} live-range of a variable.
-This implies inserting load instructions in front of every use and store instructions after each definition of the (non-SSA) variables.
-Other approaches, like some linear scan allocators, are able to keep parts of the live-range of a variable in a register such that multiple uses can potentially reuse the same reload.
-
-\subsection{Spilling under the SSA Form}
-
-As stated above, lowering \maxlive to~\regs ensures that a register allocation with \regs registers can be found in polynomial time for SSA programs.
-Thus, spilling should takes place before registers are assigned \emph{and} yield a program in SSA form.
-For the moment, let us ignore \emph{how} to choose ``what'' to spill and ``where,'' and concentrate on the implications of spilling in SSA programs.
-Because many compilers use SSA heavily, it is a reasonable assumption that the program was in SSA before spilling.
-Hence, we consider spilling as an SSA program transformation that establishes $\maxlive\le\regs$ by inserting loads and stores into the program.
-
-
-\subsection{Finding Spilling Candidates}
-
-How to find program points to place loads and stores such that $\maxlive\le\regs$?
-Let us start with a simplistic setting where the location of loads and stores is not optimized:
-loads are placed directly in front of uses and stores directly after the definition.
-Furthermore we consider a \emph{spill everywhere} setting:
-a variable is either spilled completely or not at all;
-If spilled, the live-range of a variable then degenerates into small intervals: one between the definition and the store, and one between each load and its subsequent use.
-\todo{figure? Flo: if space allows it, yes.}
-Gavril and Yannakakis~\cite{YannakakisGavril87} showed that, even in this simplistic setting, it is NP-complete to find the minimum number of nodes to establish $\maxlive\le\regs$.
-Bouchez et al.~\cite{BouchezDR07:spill} showed that it is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive just by one.
-Thus, finding spill candidates is not facilitated by SSA.
-
-
-Moreover, formulations like \emph{spill everywhere} are often not appropriate for practical purposes,
-and putting the whole live-range to memory is too simplistic.
-A variable might be spilled because at some program point the pressure is too high;
-However, if that same variable is later used in a loop where the register pressure is low,
-spilling everywhere will place a superfluous (and costly!) load in that loop.
-Spill everywhere approaches try to minimize this behavior by adding costs to variables;
-These bring in a flow-insensitive algorithm information that a variable reside an frequently executed area.
-However, such approximations are often too coarse to give good performance.
-Hence, it is imperative to intelligently split the live-range of the variable according to the \emph{program structure} and spill only parts of it.
-
-More promising spilling techniques are based on Belady's algorithm~\cite{belady:1966:storage}.
-Belady's algorithm was developed in the context of page replacement in operating systems;
-When all pages slots are used a new page must be mapped in, the question is: ``which page to evict?''
-Each time this question arise, a different page might be chosen;
-If an evicted page was brought back, it is not necessarily evicted again.
-This problem is very similar to register allocation, besides the fact that \emph{putting} a register to memory (evicting a page) also incurs a cost (a store) in the register allocation setting while it does not in the page replacement setting.
-Belady showed that evicting the page whose next use is farthest in the future leads to the minimum number of page loads. 
-Nevertheless, Farrach and Liberatore~\cite{farach:98:local} showed that Belady's algorithm gives good results on straight-line code.
-
-Braun and Hack~\cite{BH:2009:Spill} extended Belady's algorithm to general control-flow graphs in two ways.
-First, they gave a data-flow analysis to compute approximate next use values on the control-flow graph.
-In this next use calculation, loops are virtually unrolled by a large factor such that code ``behind'' loop appears far away from code in front of the loop.
-This forces the eviction algorithm to prefer variables that are not used in loops and to leave parts of live-ranges that are used within loops in registers.
-Second, they showed how and in which order to process the basic blocks of the control-flow graph in order to determine a reasonable initial register occupation for each block.
-
 \subsection{Maxlive and colorability of graphs}
+\todo{Florent: This part does not seem to be useful, but double-check my words !}
+
 \todo{seb: do we need this? doing  a standard liveness analysis does the job. we can also refer to Appel's liveness algo.}
 
 {\sl
@@ -285,6 +223,68 @@ dominance tree, starting from the root. We only need to know which uses are
 
 
 
+
+\section{Spilling}
+
+The term spilling is heavily overloaded:
+In the graph-coloring setting it often means to spill a node of the interference graph and thus the \emph{entire} live-range of a variable.
+This implies inserting load instructions in front of every use and store instructions after each definition of the (non-SSA) variables.
+Other approaches, like some linear scan allocators, are able to keep parts of the live-range of a variable in a register such that multiple uses can potentially reuse the same reload.
+
+\subsection{Spilling under the SSA Form}
+
+As stated above, lowering \maxlive to~\regs ensures that a register allocation with \regs registers can be found in polynomial time for SSA programs.
+Thus, spilling should takes place before registers are assigned \emph{and} yield a program in SSA form.
+For the moment, let us ignore \emph{how} to choose ``what'' to spill and ``where,'' and concentrate on the implications of spilling in SSA programs.
+Because many compilers use SSA heavily, it is a reasonable assumption that the program was in SSA before spilling.
+Hence, we consider spilling as an SSA program transformation that establishes $\maxlive\le\regs$ by inserting loads and stores into the program.
+
+
+\subsection{Finding Spilling Candidates}
+
+We need to find program points to place loads and stores such that $\maxlive\le\regs$.
+Let us start with a simplistic setting where the location of loads and stores is not optimized:
+loads are placed directly in front of uses and stores directly after the definition.
+Furthermore we consider a \emph{spill everywhere} setting:
+a variable is either spilled completely or not at all;
+If spilled, the live-range of a variable then degenerates into small intervals: one from the definition and the store, and one from each load to its subsequent use.
+\todo{figure? Flo: if space allows it, yes.}
+However, even in this simplistic setting, it is NP-complete to find the minimum number of nodes to establish $\maxlive\le\regs$.
+It is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive just by one!
+Finding spill candidates is not facilitated by SSA.
+
+
+Moreover, formulations like \emph{spill everywhere} are often not appropriate for practical purposes,
+and putting the whole live-range to memory is too simplistic.
+A variable might be spilled because at some program point the pressure is too high;
+However, if that same variable is later used in a loop where the register pressure is low,
+a spill everywhere will place a superfluous (and costly!) load in that loop.
+Spill everywhere approaches try to minimize this behavior by adding costs to variables, to make the spilling of such a variable less likely.
+These bring in a flow-insensitive information that a variable reside an frequently executed area.
+However, such approximations are often too coarse to give good performance.
+Hence, it is imperative to cleverly split the live-range of the variable according to the \emph{program structure} and spill only parts of it.
+
+\bigskip
+
+In the context of a basic block, a simple algorithm that works well is the ``furthest first'' algorithm.
+The idea is to scan the block from to bottom,
+whenever where the register pressure is too high, we spill the variable whose next use is the furthest away;
+And we spill it only \emph{up to this next use}.
+Spilling this variable frees a register for the longest time, hence diminishing the chances to have to spill other variables later.
+This algorithm is not optimal since the first time a variable is spilled, a load and a store are added;
+For subsequent spilling of the same variable (but on a different part of its live-range), only a load must be added.
+Hence this algorithm may produce more stores than necessary (e.g., by spilling two variables while spilling an other part of the first one would have been enough), but it gives good results on ``straight-line code,'' i.e., basic blocks.
+
+
+We will present in the next section an algorithm that extends this ``furthest first'' algorithm to general control-flow graphs.
+The idea is to use a data-flow analysis to approximately compute the next use values on the control-flow graph.
+In this next use calculation, loops are virtually unrolled by a large factor such that code ``behind'' loops appears far away from code in front of the loop.
+This forces the spilling algorithm to prefer variables that are not used in loops and to leave in registers the parts of live-ranges that are used inside loops.
+We then have to find how and in which order to process the basic blocks of the control-flow graph in order to determine a reasonable initial register occupation for each block.
+
+
+
+\begin{comment}
 
 \section{The problem of spilling}
 \subsection{Lowering Maxlive}
@@ -452,6 +452,7 @@ the same memory slot is affected to all definitions of the same variable so no
 post-treatment is required as it is under SSA.
 
 
+\end{comment}
 
 \subsection{Spilling under SSA}
 Still, we give a possibility to perform spilling under SSA
@@ -1016,7 +1017,17 @@ References to give:
   \item IRC of George and Appel~\cite{george:96:iterated}
   \item Coalescing is NP-complete in most cases~\cite{BouchezDR07:coalescing-cplx}
   \item Repairing ABI constraints: cite Fab's paper on tree-scan~\cite{todo}
+  \item Spilling techniques are based on page eviction, Belady's algorithm~\cite{belady:1966:storage}.
+  \item Farrach and Liberatore~\cite{farach:98:local} showed that Belady's algorithm gives good results on straight-line code.
+  \item Braun and Hack~\cite{BH:2009:Spill} extended Belady's algorithm to general control-flow graphs.
+
+  \item Gavril and Yannakakis~\cite{YannakakisGavril87} showed that, even in this simplistic setting (spilleverywhere ``with holes''), it is NP-complete to find the minimum number of nodes to establish $\maxlive\le\regs$.
+  \item Bouchez et al.~\cite{BouchezDR07:spill} showed that it is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive just by one.
 \end{itemize}
+
+
+
+
 
 \endofchapter
 }
