@@ -10,24 +10,23 @@
 %\setcounter{tocdepth}{3} 
 %\tableofcontents
 
-\section{Overview/Motivations}
+\section{Introduction}
 
-If-conversion is the process of transforming a control flow region containing several basic blocks into a single basic block of conditional instructions, Different form of conditional instructions will be detailled later. 
-We start with a description of a full SSA model, taking as input a region in SSA form producing a if-converted SSA representation using control speculation techniques.
+If-conversion is the process of transforming control dependent basic blocks into a single basic block of conditional instructions. The primary outcome of this optimization is that different multiple flow of execution are merged into one, as such this both a global process, because it selects and restructures a control flow region, and a local process because new instructions are emitted and data dependencies created.
+In this chapter, we describe an if-conversion SSA framework and techniques, taking as input a region in SSA form producing a if-converted SSA representation using control speculation.
 We then describe how this framework is extended to use predicated execution, producing the $\psi$-SSA form presented in chapter~\ref{chap:psi_ssa}.
-This if-converted, or predicated representation can then exploited by VLIW or hyperblocks scheduling frameworks.
 
-\subsection{Introduction}
+\subsection{Overview/Motivations}
 
-A way to increase the instruction throughput is to increase the IPC (number of instructions per cycle), either by increasing the pipeline depth, or by increasing the number of instructions that are executed simultaneously. Such as out-of-order superscalar execution, using dynamic scheduling modelsy, or with use in-order execution model, popular in embedded processors requiring lower hardware complexity and usage costs. 
+A way to increase the instruction throughput is to increase the IPC (number of instructions per cycle), either by increasing the pipeline depth, or by increasing the number of instructions that are executed simultaneously.
 
-In order to exploit this ILP, VLIW (Very Large Instruction World) or EPIC (Explicitly Parallel Architectures) make the parallelism visible to the ISA (Instruction Set Architecture), relaying on the static scheduler to organize the compiler output so that multiple instructions can be issued for each cycle. 
+In order to exploit this ILP, VLIW (Very Large Instruction World) or EPIC (Explicitly Parallel Architectures) make the parallelism visible to the ISA (Instruction Set Architecture), relaying on the static scheduler to organize the compiler output so that multiple instructions can be issued at each cycle. The out-of-order execution model that can use hardware techniques such as dynamic scheduler or branch prediction to perform this task, if-conversion can also be efficient, but on a smaller scopes.
 
-Unfortunately, programs contain sequences of instructions that cannot be parallelized, because of control or data dependencies. In order to remove those dependencies, the compiler uses ILP techniques such as software pipeline, vectorization or loop optimizations. But still, despite those efforts, the execution flow is still disrupted by conditional branches, and many ALU cycles are wasted. 
+Unfortunately, structured programs contain sequences of instructions that cannot be parallelized, because of control or data dependencies. In order to remove those dependencies, the compiler uses ILP techniques such as software pipeline, vectorization or loop optimizations. But still, despite those efforts, the execution flow is still disrupted by conditional branches, and many ALU cycles are wasted. 
 
 Conditional branches introduce control dependencies between instructions. An instruction is control dependent on a preceding instruction if the first one determines the execution of the second one. They act as a bottleneck for exposing parallelism.
 
-Removing branches improves performance in several ways: by removing the mis-prediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows earlier execution of long latency operations and merge of multiple control paths into a single flow of execution for use by scheduling frameworks. Many other compiler optimizations are impacted by branches. 
+Removing branches improves performance in several ways: by removing the misprediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of the basic blocks allows earlier execution of long latency operations and merge of multiple control paths into a single flow of execution for use by scheduling frameworks, such as VLIW scheduling; hyperblock scheduling, modulo scheduling. Many other compiler optimizations are impacted by branches. 
 
 Consider the simple example \ref{fig:example1}, that represents the execution of an if-then-else statement on a 4-issue processor. Branches are highly biased, so the basic blocks can be reordered to favor the critical path. Even with this optimistic case, the schedule height is still 6 cycles (assuming that all instructions have a one cycle latency), with a maximal schedule height of 7 instructions. 
 
@@ -77,20 +76,21 @@ From this introductory example, we can observe that the transformation implies:
 \begin{itemize}
 \item The merge of execution paths into a single execution path, implying a  better exploitation of available resources.  
 \item The reduction of the schedule length, because instructions can be speculated before the branch.
-\item That the variables need to be renamed, 
+\item That the variables need to be renamed, production of new data dependencies.
 \item The introduction of a \textit{merge} pseudo operation.
-\item The production of new data dependencies.
 \end{itemize}
 
 % \annotation{Reference join sets; phi-congruence already here?}
 Thanks to SSA, the merging point is already materialized into the original control flow by the $\phi$ pseudo operation and register renaming is a basic property of SSA. Given those similarities between SSA and the if-conversion requirements, the transformation if-converted code seems natural. We describe here the framework to use those properties to more complex regions.
 
 \subsection{Architectural requirements}
-Note that the \textit{merge} pseudo operations needs to be mapped to a conditional form of execution on the target's architecture. Depending on the available support, the algorithm must be able to match the ISA, to provide support for conditional execution of instructions, or to conditionally commit the result of an instruction. \ref{fig:pred} shows a conditional execution using the different models.
+
+The \textit{merge} pseudo operations needs to be mapped to a conditional form of execution on the target's architecture. \ref{fig:pred} shows different models of conditional execution that the algorithm can use, thanks to:
 
 \begin{itemize}
-\item Speculative execution by mean of conditional moves. A partial predication model is used to predicate only the subset of the ISA that are not easily speculable, usually memory operations.
-\item Predicated execution by mean of is an architectural feature that allows an instruction to be executed conditionally by means of a predicate field in the instruction encoding.
+\item Speculative execution by mean of conditional moves, using temporary registers.
+\item Predicated execution by mean of architectural feature that allows an instruction to be executed conditionally by mean of a predicate operand.
+\item A partially predication model can be used to predicate only the subset of the ISA that are not easily speculable, usually memory operations. Other instructions are speculated.
 \end{itemize}
 
 \begin{figure}
@@ -115,11 +115,7 @@ $x = cmov p,t$ \\
 \label{fig:pred}
 \end{figure}
 
-Using speculative execution, if-conversion enables allows dependent instructions to be executed unconditionally, using a temporary register, committed only when the condition is known to be true. Examples of conditional moves are the $cmov$ (Pentium Pro) or the $select$ (Multiflow, ST231 VLIW) instructions.
-
-To be speculated, an instruction should not potentially create any other side effects, or hazards. For instance a memory load should not trap (cache misses can also be considered for performance). This of course prevents unconditional execution by means of speculation of memory access for which the address is valid only on the selected path. Because of those reasons memory operations are a major impediment to ILP. 
-
-Since load are long latency operations, speculative load support is effective to fetch data earlier in the instruction stream, reducing stalls. Modern architectures provide architectural supports to dismiss invalid address exceptions. Examples are the $ldw.d$ dismissible load operation of the $ST231$ processor or the $IA64$ speculative loads. Note that $IA64$ provides both speculative and predicate loads, so the former will be preferred by if-conversion. 
+To be speculated, an instruction should not potentially create any side effects, or hazards. For instance a memory load should not trap (cache misses can also be considered for performance). This prevents the conditional execution by means of speculation of memory access for which the address is valid only on the selected path. Other reasons are may-alias problems during the memory operation layout. Memory operations are therefore a major impediment to if-conversion. This is regrettable, because as long latency operations, speculative load can be very effective to fetch data earlier in the instruction stream, reducing stalls. Modern architectures provide architectural supports to dismiss invalid address exceptions. Examples are the $ldw.d$ dismissible load operation of the $ST231$ or $multiflow$ processors or the $IA64$ speculative loads. Note that $IA64$ provides both speculative and predicate loads.
 
 \begin{figure}
 \begin{minipage}[t]{4cm}
@@ -149,11 +145,11 @@ $stw (x[index], value) $ \\
 \caption{Example of speculated memory operations}
 \end{figure}
 
-Stores can be performed by speculating the address value, and forcing it to be a dummy valid address in the case of not taken path. Naturally store hoisting can only be done if there is no aliasing conflict between different memory operations merged into a single execution path.
+Stores can be performed by speculating the address value, and forcing it to be a dummy valid address in the case of not taken path. Naturally store hoisting can only be done if there is no aliasing conflict between different memory operations merged into a single execution path. For those reasons architectures provides predicated stores.
 
 \section{Classical If-Conversion process}
 
-Original approaches to perform if-conversion in SSA form, was using classical if-conversion algortihms on a SSA on a conventional SSA representation. The difficulty of predicating $\phi$ operations, control flow join point, is solved by using $\psi$ operations, merging different values their $\psi-congruence$ class. 
+Original approaches to perform if-conversion in SSA form, was using classical if-conversion algorithms on a SSA on a conventional SSA representation. The difficulty of predicating $\phi$ operations, control flow join point, is solved by using $\psi$ operations, merging different values their $\psi-congruence$ class. 
 Standard if-conversion techniques addresses the problem in the following order: First allocates boolean variables to the basic blocks, on an identified sub-region, then perform predicate initialization placement and then restructure the CFG sub-region into the final if-converted region. 
  Another approach is to merge all those actions in a single process, incrementally build-up the if-converted region during the SSA traversal using a native SSA framework 
 
@@ -314,7 +310,7 @@ The $\psi$ definition is defined on the $T$ predicate set, therefore it is specu
 
 Since $\psi$ operations are part of the intermediate representation, they can be considered for inclusion in a candidate region for if-conversion. Conditional operations defined are thus in turn speculated or conditioned. We define here promotion rules for $\psi$ operands, whereas the instructions defining the $\psi$ operands will be speculated, and the condition realized by the use of the $\psi$ definition.
 
-Consider the instructions \ref{nested_psi} containing a subregion already processed. The $\psi$ operation can be safely speculated if all the instructions defining its operands can be speculated: they don't produce hazardous execution and they don't produce any side effects and there exist a conditional move instruction to merge the operands. Then the block can be executed regardless of the value of $c$. The use of the $\psi$ result is also unconditionally executed, and the condition realized in the $\phi$ transformation.
+Consider the instructions \ref{nested_psi} containing a sub region already processed. The $\psi$ operation can be safely speculated if all the instructions defining its operands can be speculated: they don't produce hazardous execution and they don't produce any side effects and there exist a conditional move instruction to merge the operands. Then the block can be executed regardless of the value of $c$. The use of the $\psi$ result is also unconditionally executed, and the condition realized in the $\phi$ transformation.
 
 \subsubsection{$\psi$ predication properties}
 
@@ -432,7 +428,7 @@ We describe here how Hyperblocks are build using this SSA framework, and how the
 
 \subsection{SSA Iterative if-conversion}
 
-The region to if-convert must be carefully selected. Because of resource consumption issues, merging different paths together can over commit the architectural ability to execute in parallel the multiple instructions: The data dependences and registers renaming, introduce new register constraints. Moving operations earlier in the instruction stream increases live-ranges. 
+The region to if-convert must be carefully selected. Because of resource consumption issues, merging different paths together can over commit the architectural ability to execute in parallel the multiple instructions: The data dependencies and registers renaming, introduce new register constraints. Moving operations earlier in the instruction stream increases live-ranges. 
 Another pitfall is to increase the critical path by merging long latency operation from a less frequently executed path, thus moving to the critical paths more instructions than the parallelism can absorb.
 Finally, for each basic block considered into the region, a predicate must be computed and assigned to the corresponding instructions. Those predicate computations introduce new instructions and new data dependencies.
 
