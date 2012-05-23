@@ -330,14 +330,17 @@ from a program region. The basic idea is to replace conditional branches by
 straight-line computations that directly use the condition as a source operand.
 The scope and effectiveness of if-conversion depends on ISA support for predicated
 execution \cite{Mahlke:1995:ISCA}: \begin{description}
-\item[\bf No predicated execution support] The condition source operand is converted
-to $\{0, -1, 1\}$ integer values and used in bitwise AND operations.
+
+%\item[\bf No predicated execution support] The condition source operand is converted
+%to $\{0, -1, 1\}$ integer values and used in bitwise AND operations.
+
 \item[\bf Partial predicated execution support] The condition source operand is used
 as selector in conditional move (CMOV) or SELECT operations. The CMOVxx
 instructions were introduced in the Alpha AXP architecture
 \cite{Blickstein:1992:DTJ} and are available in the ia32 ISA since the Pentium Pro.
 The SELECT instructions were introduced in the Multiflow TRACE 300 architecture
 family.
+
 \item[\bf Full predicated execution support] Most data processing instructions
 accept a Boolean predicate operand which nullifies the instruction effects if the
 predicate evaluates to false. Predicate define instructions (PDI) are also
@@ -348,6 +351,7 @@ floating-point operations \cite{Lowney:1993:JS}.
 The ARM architecture can also be considered as fully predicated, since most user
 instructions are conditionally executed depending on the evaluation of a 4-bit
 source operand.
+
 \end{description} In principle, any if-conversion technique targeted to full
 predicated execution support may be adapted to partial predicated execution
 support. For instance, non-predicated instructions with side-effects such as
@@ -357,16 +361,16 @@ harmless effective address in case the operation must be nullified
 
 Besides predicated execution, architectural support for if-conversion can be
 improved by supporting speculative execution. Speculative execution refers to
-executing an operation before knowing that its execution is required,
-such as when moving code above a branch
-\cite{Lowney:1993:JS} or promoting predicates \cite{Mahlke:1995:ISCA}.
-Speculative execution applies to instructions with reversible side effects, so
-speculating potentially excepting istructions requires architectural support. On
-the Multiflow TRACE 300 architecture and later on the Lx VLIW architecture
-\cite{Faraboschi:2000:ISCA}, non-trapping memory loads known as 'dismissable'
-are provided. Further architectural support is provided on the IMPACT EPIC
-architecture \cite{August:1998:ISCA} and more generally, effective if-conversion
-techniques rely on both predicated execution and speculative execution.
+executing an operation before knowing that its execution is required, such as
+when moving code above a branch \cite{Lowney:1993:JS} or promoting predicates
+\cite{Mahlke:1995:ISCA}.  Speculative execution applies to instructions with
+reversible side effects, so speculating potentially excepting istructions
+requires architectural support. On the Multiflow TRACE 300 architecture and
+later on the Lx VLIW architecture \cite{Faraboschi:2000:ISCA}, non-trapping
+memory loads known as 'dismissable' are provided. Further architectural support
+for speculative execution is provided on the IMPACT EPIC architecture
+\cite{August:1998:ISCA} and more generally, effective if-conversion techniques
+rely on both predicated execution and speculative execution.
 
 If-conversion is primarily motivated by instruction scheduling on
 instruction-level parallel processors \cite{Mahlke:1995:ISCA}, as removing
@@ -383,70 +387,55 @@ of predicated basic blocks in which control may only enter from the top, but may
 exit from one or more locations \cite{Mahlke:1992:MICRO}.
 \medskip
 
-The generic steps of if-conversion are \cite{Fang:1996:LCPC}: region selection;
-code hoisting; assignment of predicates to basic blocks; insertion of
-operations to compute basic block predicates; predication or speculation of
-operations and conditional branch removal. Early contributions to if-conversion
-dot not consider the SSA form. Subsequent work compute the $\phi$-placement in
-order to insert CMOV or SELECT operations. Recent contributions accept the SSA
-form as input and output. Precisely, the signficant contributions to
-if-conversion can be summarized as follows: \begin{itemize}
+%The generic steps of if-conversion are \cite{Fang:1996:LCPC}: region selection;
+%code hoisting; assignment of predicates to basic blocks; insertion of
+%operations to compute basic block predicates; predication or speculation of
+%operations and conditional branch removal.
+Early contributions to if-conversion
+dot not consider the SSA form, or only compute the $\phi$-placement in order to
+insert CMOV or SELECT operations: \begin{itemize}
 
 \item Allen et al. \cite{Allen:1983:POPL} describe how to convert control
 dependences to data dependences, motivated by inner loop vectorization. They
 distinguish forward branches, exit branches, and backward branches, and compute
 Boolean guards accordingly. As this work pre-dates the Program Dependence Graph
 \cite{Ferrante:1987:TOPLAS}, complexity of the resulting Boolean expressions is
-an issue.
+an issue. When comparing to later if-conversion techniques, only the conversion
+of forward branches is relevant.
 
 \item Park \& Schlansker \cite{Park:1991:TR58} propose the RK algorithm based
-the theory of control dependences and assumes a fully predicated architecture,
-including the predicate define instructions. The R function assigns a minimal
-set of Boolean predicates to basic blocks, and the K function express the way
-these predicates are computed.
+the control dependences. They assume a fully predicated architecture, including
+conditional predicate define instructions (PDI). The R function assigns a
+minimal set of Boolean predicates to basic blocks, and the K function express
+the way these predicates are computed. The algorithm is in principle able to
+processe cyclic and irreducible rooted flow graphs, but it practice it is
+applied to single entry acyclic regions.
 
-\item Fang \cite{Fang:1996:LCPC} also assumes a fully predicated architecture.
-The proposed algorithm restristing to acyclic regions with single entry and multiple exits
+\item Blickstein \cite{Blickstein:1992:DTJ}
 
-\end{itemize}
+\item Lowney et al. \cite{Lowney:1993:JS}
 
-The evolution of if-conversion
-techniques can be summarized as follows
+\item Fang \cite{Fang:1996:LCPC} assumes a fully predicated architecture with
+conditional PDIs. The proposed algorithm is tailored to acyclic regions with
+single entry and multiple exits, and as such is able to compute R and K
+functions without relying on explicit control dependences.  The main improvement
+of this algorithm over \cite{Park:1991:TR58} is that it also speculates
+instructions up the dominance tree through predicate promotion, except for
+stores and PDIs. This work further proposes a pre-optimization pass to hoist or
+sink common subexpressions before predication and speculation.
 
-If-conversion outside the SSA Form:
-\begin{itemize}
-
-\item Allen et al.
-
-\item Blickstein
-
-\item Multiflow
-
-\item Park \& Schlansker ``On Predicated Execution'' [HPL-91-58 1991]
-\begin{itemize}
-\item 'R-K algorithm' generalizes the Cydrome if-conversion
-\item operates on the control dependence graph
-\end{itemize}
-
-\item Fang ``Compiler Algorithms on If-Conversion, Speculative Predicates
-Assignment and Predicated Code Optimizations'' [LCPC 1996]
-\begin{itemize}
-\item simple and effective if-conversion using (post) dominance
-\item operates on acyclic SEME code regions
-\end{itemize}
-
-\item Chuang et al. ``Phi-Predication for Light-Weight If-Conversion'' [CGO
-2003]
+\item Chuang et al. \cite{Chuang:2003:CGO}
 \begin{itemize}
 \item generates SELECT operations (not SSA form if-conversion)
 \end{itemize}
 
-\end{itemize}
+\end{itemize} 
+Recent contributions to if-conversion accept the SSA
+form as input and output: \begin{itemize}
 
-If-conversion Under SSA Form:
-\begin{itemize}
+\item Stoutchinin \& Ferri\`ere \cite{Stoutchinin:2001:MICRO}
 
-\item Stoutchinin \& Gao ``If-Conversion in SSA Form'' [Euro-Par 2004]
+\item Stoutchinin \& Gao \cite{Stoutchinin:2004:EuroPar}
 \begin{itemize}
 \item prove it is correct to replace $\Phi$-functions by $\Psi$-functions
 in conventional SSA form
@@ -454,17 +443,17 @@ in conventional SSA form
 \item implement in Open64 for IA64
 \end{itemize}
 
-\item Bruel ``If-Conversion SSA Framework for Partially Predicated VLIW
-Architectures'' [ODES-4 2006]
+\item Bruel \cite{Bruel:2006:ODES}
 \begin{itemize}
 \item rework Muliflow-like if-conversion algorithm for SSA form
 \item locally generate $\Psi$-functions for predicated LOAD \& STORE
 \item production use in ST200 compilers (ST220, ST231, ST240)
 \end{itemize}
 
-\item Ferriere ``Improvements to the Psi-SSA Representation" [SCOPES 2007]
+\item Ferri\`ere \cite{Ferriere:2007:SCOPES}
 
 \end{itemize}
+
 
 
 %\paragraph{Schlansker:1999:PLDI} Fully resolved predicates (FPRs)
@@ -494,12 +483,6 @@ Architectures'' [ODES-4 2006]
 %operations. The phi-predication algorithm is not an SSA algorithm, however it is
 %straightforward to adapt to convert conventional SSA form to $\psi$-SSA form.
 
-
-% Weak control regions, strong control regions
-
-% Full predication support, partial predication support
-
-% If-conversion includes predication and speculation
 
 % Park \& Schlansker RK algorithm:
 % - Minimal in predicates and predicate defines
