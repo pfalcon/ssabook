@@ -57,7 +57,7 @@ In the remainder of this chapter, we adopt the following terminology. An
 \emph{instruction} is a member of the processor Instruction Set Architecture
 (ISA). Instructions access values and modify the processor state through
 \emph{operand}s. We distinguish \emph{explicit operands}, which are associated
-with a specific bit-field in the instruction encoding, from \emph{implict
+with a specific bit-field in the instruction encoding, from \emph{implicit
 operands}, without any encoding bits. Explicit operands correspond to
 allocatable architectural registers or to immediate values. Implicit operands
 correspond to single instance architectural resources, such as a hardware loop
@@ -80,7 +80,7 @@ immediates for instructions such as PUSH/POP on the ARM.
 \subsection{Representation of instruction semantics}
 
 Unlike IR operators, there is no straightforward mapping between machine
-instruction and their operational semantics. For instance, a substract
+instruction and their operational semantics. For instance, a subtract
 with operands $(a,b,c)$ may either compute $c \leftarrow a-b$ or $c
 \leftarrow b-a$ or any such expression with permuted operands. Yet basic SSA
 form code cleanups such as constant propagation and sign extension removal need
@@ -364,10 +364,10 @@ improved by supporting speculative execution. Speculative execution refers to
 executing an operation before knowing that its execution is required, such as
 when moving code above a branch \cite{Lowney:1993:JS} or promoting predicates
 \cite{Mahlke:1995:ISCA}.  Speculative execution applies to instructions with
-reversible side effects, so speculating potentially excepting istructions
+reversible side effects, so speculating potentially excepting instructions
 requires architectural support. On the Multiflow TRACE 300 architecture and
 later on the Lx VLIW architecture \cite{Faraboschi:2000:ISCA}, non-trapping
-memory loads known as 'dismissable' are provided. Further architectural support
+memory loads known as 'dismissible' are provided. Further architectural support
 for speculative execution is provided on the IMPACT EPIC architecture
 \cite{August:1998:ISCA} and more generally, effective if-conversion techniques
 rely on both predicated execution and speculative execution.
@@ -391,6 +391,7 @@ exit from one or more locations \cite{Mahlke:1992:MICRO}.
 %code hoisting; assignment of predicates to basic blocks; insertion of
 %operations to compute basic block predicates; predication or speculation of
 %operations and conditional branch removal.
+
 Early contributions to if-conversion
 dot not consider the SSA form, or only compute the $\phi$-placement in order to
 insert CMOV or SELECT operations: \begin{itemize}
@@ -415,6 +416,10 @@ applied to single entry acyclic regions.
 instructions to replace conditional branches in the GEM compilers for the Alpha
 AXP architecture.
 
+\item Lowney et al. \cite{Lowney:1993:JS} match innermost if-then constructs in
+the Multiflow compiler in order to generate SELECT operations and predicate
+memory store operations.
+
 \item Fang \cite{Fang:1996:LCPC} assumes a fully predicated architecture with
 conditional PDIs. The proposed algorithm is tailored to acyclic regions with
 single entry and multiple exits, and as such is able to compute R and K
@@ -422,35 +427,44 @@ functions without relying on explicit control dependences.  The main improvement
 of this algorithm over \cite{Park:1991:TR58} is that it also speculates
 instructions up the dominance tree through predicate promotion, except for
 stores and PDIs. This work further proposes a pre-optimization pass to hoist or
-sink common subexpressions before predication and speculation.
+sink common sub-expressions before predication and speculation.
 
-\item Chuang et al. \cite{Chuang:2003:CGO}
-\begin{itemize}
-\item generates SELECT operations (not SSA form if-conversion)
+\item Chuang et al. \cite{Chuang:2003:CGO} introduce a predicated execution
+support aimed at removing conditional register writes from the processor
+micro-architecture. This includes SELECT instructions called 'phi-ops',
+predicated memory accesses, unconditional PDIs, and ORP instructions for OR-ing
+multiple predicates. A restriction of the RK algorithm to single-entry
+single-exit regions is proposed, adapted to the unconditional PDIs and the ORP
+instructions. The key contribution from this work is the generation of
+'phi-ops', whose insertion points are computed like the placement of the SSA
+$\phi$-functions. The source operands of the $\phi$-functions are replaced by
+so-called $\phi$-lists, where each operand is associated with the predicate of
+its source basic block. The $\phi$-lists are processed by topological order of
+the operand predicates to generate the 'phi-ops'.
+
 \end{itemize}
-
-\end{itemize} 
 Recent contributions to if-conversion accept the SSA
 form as input and output: \begin{itemize}
 
-\item Stoutchinin \& Ferri\`ere \cite{Stoutchinin:2001:MICRO}
+\item Stoutchinin \& Ferri\`ere \cite{Stoutchinin:2001:MICRO} introduce
+$\psi$-functions in order to handle predicated code under the SSA form.
+The $\psi$-functions arguments are paired with predicates and are
+ordered in dominance order. TBD
 
-\item Stoutchinin \& Gao \cite{Stoutchinin:2004:EuroPar}
-\begin{itemize}
-\item prove it is correct to replace $\Phi$-functions by $\Psi$-functions
-in conventional SSA form
-\item apply to Fang [LCPC 1996] for if-conversion under SSA form
-\item implement in Open64 for IA64
-\end{itemize}
+\item Stoutchinin \& Gao \cite{Stoutchinin:2004:EuroPar} propose an
+if-conversion technique based on the predication of Fang \cite{Fang:1996:LCPC}
+and the replacement of $\phi$-functions by $\psi$-functions. They prove the
+conversion is correct provided the SSA form is conventional. The technique is
+implemented in the Open64 for the ia64 architecture.
 
-\item Bruel \cite{Bruel:2006:ODES}
-\begin{itemize}
-\item rework Muliflow-like if-conversion algorithm for SSA form
-\item locally generate $\Psi$-functions for predicated LOAD \& STORE
-\item production use in ST200 compilers (ST220, ST231, ST240)
-\end{itemize}
+\item Bruel \cite{Bruel:2006:ODES} revisits the Multiflow compiler if-conversion
+algorithms by reducing acyclic control-flow constructs from innermost to
+outermost, intermingled with tail duplication. This technique operates on the
+SSA form and generates $\psi$-functions for predicating the memory operations of
+the ST200 / Lx VLIW architecture family. A generalization is described in
+Chapter~\ref{chap:if_conv}.
 
-\item Ferri\`ere \cite{Ferriere:2007:SCOPES}
+\item Ferri\`ere \cite{Ferriere:2007:SCOPES} TBD
 
 \end{itemize}
 
