@@ -2,7 +2,7 @@
 \inputprogress
 \label{chap:ssa-codegen}
 
-In a compiler for imperative languages like C, C++, or Fortran, the code
+In a compiler for imperative languages like C, C++, or FORTRAN, the code
 generator covers the set of code transformations and optimizations that operate
 on a program representation close to the target processor ISA, and produce an
 assembly source or relocatable file with debugging information as result.
@@ -132,7 +132,7 @@ way to deal with these constraints in the SSA form is by inserting parallel COPY
 instruction that write to the constrained source operands or read from the
 constrained target operands of the instructions. The new SSA variables thus
 created are pre-colored with the required architectural register. The parallel
-COPY operations are coalesced away or sequentialized when going out of SSA
+COPY operations are coalesced away or sequentialized when going out of SSA form
 \cite{Boissinot:2009:CGO}.
 
 Explicit instruction operands may also be constrained to use the same register
@@ -144,7 +144,7 @@ instruction set architectures such as x68 and the ARM~Thumb. In the setting of
 between the constrained source operand and a new variable, then using this new
 variable as the constrained source operand. The COPY is a parallel copy in case
 of multiple constrained source operands. Again, the COPY operations are
-processed when going out of SSA.
+processed when going out of SSA form.
 
 A difficult case of ISA or ABI operand constraint is when a variable must be
 bound to a specific register at all points in the program. This is the case of
@@ -168,27 +168,59 @@ register to a SSA variable, any operation that partially reads or modifies the
 register bit-fields should appear as reading and writing the corresponding
 variable.
 
-Predicated operations present another aspect of definitions that do not kill
-the target register. Extensions of the SSA form such as the $\psi$-SSA
-(Chapter~\ref{chap:psi_ssa}) specifically address the issues of handling
-predicated operations. Basic architectural support for if-conversion is
-provided by conditional move instructions and SELECT instructions
-\cite{Mahlke:1995:ISCA}.  The former are predicated, while the latter always
-write to their destination register. Observe that under the SSA form, a
-conditional move instruction is equivalent to a SELECT instruction with a 'must
-be same register' naming constraint between one source and the target operand.
+Predicated or conditional execution is the other main case of definitions that do
+not kill the target register. Predicated and conditional execution refer to:
+\begin{description}
+
+\item[\bf Partial predicated execution support] Availability of SELECT
+instructions like those of the Multiflow TRACE architecture
+\cite{Colwell:1987:ASPLOS}. The Multiflow TRACE 500 architecture was to include
+predicated store and floating-point instructions \cite{Lowney:1993:JS}.
+
+\item[\bf Full predicated execution support] Most instructions accept a Boolean
+predicate operand which nullifies the instruction effects if the predicate
+evaluates to false. EPIC-style architectures also provide Predicate define
+instructions (PDIs) to efficiently evaluate predicates corresponding to nested
+conditions, including Unconditional, OR-style, AND-style PDIs
+\cite{Mahlke:1995:ISCA}.
+
+\item[\bf Partial conditional execution support] Availability of conditional
+move (CMOV) instructions similar to those introduced in the Alpha AXP
+architecture \cite{Blickstein:1992:DTJ}. In particular CMOV instructions are
+available in the ia32 ISA since the Pentium Pro.
+
+\item[\bf Full conditional execution support] Most instructions are
+conditionally executed depending on the evaluation of a condition of a source
+operand. On the ARM architecture, the implicit source operand is a bit-field in
+the processor status register and the condition is encoded on 4 bits. On the
+VelociTI{\texttrademark} TMS230C6xxx architecture, the source operand is a
+general register encoded on 3 bits and the condition is encoded on 1 bit.
+
+\end{description}
+Extensions of the SSA form such as the $\psi$-SSA \cite{Stoutchinin:2001:MICRO}
+presented in Chapter~\ref{chap:psi_ssa} specifically address the handling
+operations that do not kill the target operand because of predicated or
+conditional execution.
+
+Observe however that under the SSA form, a CMOV instruction is
+equivalent to a SELECT instruction with a 'must be same register' naming
+constraint between one source and the target operand. Unlike other predicated or
+conditional instructions, the SELECT instructions kill the target register.
 Generalizing this observation provides a simple way to handle predicated
-instruction sets: \begin{itemize}
+instruction sets in vanilla SSA form: \begin{itemize}
+
 \item For each target operand of the predicated instruction, add a corresponding
 source operand in the instruction signature.
+
 \item For each added source operand, add a 'must be same same register' renaming
 constraint with the corresponding target operand.
+
 \end{itemize}
 This simple transformation enables SSA form analyses and optimizations to remain
-oblivious to predicated code. The drawback of this solution is that predicated
-definitions of a given variable (before SSA renaming) remain in dominance order
-across transformations, as opposed to $\psi$-SSA where predicate value analysis
-may enable to relax this order.
+oblivious to predicated and conditional code. The drawback of this solution is
+that predicated definitions of a given variable (before SSA renaming) remain in
+dominance order across transformations, as opposed to $\psi$-SSA where predicate
+value analysis may enable to relax this order.
 
 %\subsection{Un-splittable critical edges}
 %
@@ -251,6 +283,17 @@ may enable to relax this order.
 
 \end{itemize}
 
+\subsection{Variable lineness and interference}
+
+\begin{itemize}
+
+\item liveness sets, liveness checking
+(Chapter~\ref{chap:liveness_analysis}).
+
+\item Variable interference,
+
+\end{itemize}
+
 %More generally, the code generator intermediate representation should allow
 %that machine instruction operands mix SSA variables, ordinary compiler
 %temporaries, and possibly architectural registers.
@@ -299,23 +342,6 @@ register allocation. After register allocation, program variables are mapped to
 architectural registers or to memory locations, so the SSA form analyses and
 optimizations no longer apply.
 
-\subsection{Classic analyses and optimizations}
-
-\begin{itemize}
-
-\item Induction variable classification (Chapter~\ref{chap:}),
-
-\item Bit-width analysis,
-
-\item liveness sets, liveness checking
-(Chapter~\ref{chap:liveness_analysis}).
-
-\item Variable interference,
-
-\item GVN or LICM of PRE
-
-\end{itemize}
-
 \subsection{Instruction selection}
 
 Instruction selection (Chapter~\ref{chapter:code_selection}). Unlike
@@ -329,30 +355,8 @@ If-conversion refers to optimization techniques that remove conditional branches
 from a program region. The basic idea is to replace conditional branches by
 straight-line computations that directly use the condition as a source operand.
 The scope and effectiveness of if-conversion depends on ISA support for predicated
-execution \cite{Mahlke:1995:ISCA}: \begin{description}
-
-%\item[\bf No predicated execution support] The condition source operand is converted
-%to $\{0, -1, 1\}$ integer values and used in bitwise AND operations.
-
-\item[\bf Partial predicated execution support] The condition source operand is used
-as selector in conditional move (CMOV) or SELECT operations. The CMOVxx
-instructions were introduced in the Alpha AXP architecture
-\cite{Blickstein:1992:DTJ} and are available in the ia32 ISA since the Pentium Pro.
-The SELECT instructions were introduced in the early Multiflow VLIW architecture
-\cite{Colwell:1987:ASPLOS}.
-
-\item[\bf Full predicated execution support] Most data processing instructions
-accept a Boolean predicate operand which nullifies the instruction effects if the
-predicate evaluates to false. Predicate define instructions (PDI) are also
-provided to efficiently evaluate the predicate of nested conditions. EPIC-style PDI
-variants include Unconditional, OR-style, AND-style \cite{Mahlke:1995:ISCA}.
-The Multiflow TRACE 500 architecture was to include predicated store and
-floating-point operations \cite{Lowney:1993:JS}.
-The ARM architecture can also be considered as fully predicated, since most user
-instructions are conditionally executed depending on the evaluation of a 4-bit
-source operand.
-
-\end{description} In principle, any if-conversion technique targeted to full
+execution \cite{Mahlke:1995:ISCA}:
+In principle, any if-conversion technique targeted to full
 predicated execution support may be adapted to partial predicated execution
 support. For instance, non-predicated instructions with side-effects such as
 memory accesses can be used in combination with CMOV or SELECT to provide a
@@ -392,25 +396,23 @@ exit from one or more locations \cite{Mahlke:1992:MICRO}.
 %operations to compute basic block predicates; predication or speculation of
 %operations and conditional branch removal.
 
-Early contributions to if-conversion
-dot not consider the SSA form, or only compute the $\phi$-placement in order to
-insert CMOV or SELECT operations: \begin{itemize}
+Classic contributions to if-conversion
+dot not consider the SSA form: \begin{itemize}
 
-\item Allen et al. \cite{Allen:1983:POPL} describe how to convert control
-dependences to data dependences, motivated by inner loop vectorization. They
-distinguish forward branches, exit branches, and backward branches, and compute
-Boolean guards accordingly. As this work pre-dates the Program Dependence Graph
-\cite{Ferrante:1987:TOPLAS}, complexity of the resulting Boolean expressions is
-an issue. When comparing to later if-conversion techniques, only the conversion
-of forward branches is relevant.
+%\item Allen et al. \cite{Allen:1983:POPL} describe how to convert control
+%dependences to data dependences, motivated by inner loop vectorization. They
+%distinguish forward branches, exit branches, and backward branches, and compute
+%Boolean guards accordingly. As this work pre-dates the Program Dependence Graph
+%\cite{Ferrante:1987:TOPLAS}, complexity of the resulting Boolean expressions is
+%an issue. When comparing to later if-conversion techniques, only the conversion
+%of forward branches is relevant.
 
 \item Park \& Schlansker \cite{Park:1991:TR58} propose the RK algorithm based
 the control dependences. They assume a fully predicated architecture, including
-conditional predicate define instructions (PDI). The R function assigns a
-minimal set of Boolean predicates to basic blocks, and the K function express
-the way these predicates are computed. The algorithm is general enough to
-process cyclic and irreducible rooted flow graphs, but it practice it is
-applied to single entry acyclic regions.
+predicated PDIs. The R function assigns a minimal set of Boolean predicates to
+basic blocks, and the K function express the way these predicates are computed.
+The algorithm is general enough to process cyclic and irreducible rooted flow
+graphs, but it practice it is applied to single entry acyclic regions.
 
 \item Blickstein et al. \cite{Blickstein:1992:DTJ} pioneer the use of CMOV
 instructions to replace conditional branches in the GEM compilers for the Alpha
@@ -421,7 +423,7 @@ the Multiflow compiler in order to generate SELECT operations and predicate
 memory store operations.
 
 \item Fang \cite{Fang:1996:LCPC} assumes a fully predicated architecture with
-conditional PDIs. The proposed algorithm is tailored to acyclic regions with
+predicated PDIs. The proposed algorithm is tailored to acyclic regions with
 single entry and multiple exits, and as such is able to compute R and K
 functions without relying on explicit control dependences.  The main improvement
 of this algorithm over \cite{Park:1991:TR58} is that it also speculates
@@ -429,27 +431,37 @@ instructions up the dominance tree through predicate promotion, except for
 stores and PDIs. This work further proposes a pre-optimization pass to hoist or
 sink common sub-expressions before predication and speculation.
 
+\end{itemize} A few contributions to if-conversion only rely on the SSA form
+$\phi$-placement: \begin{itemize}
+
+\item Jacome et al. {Jacome:2001:DAC} propose the Static Single Assignment --
+Predicated Switching transformation (SSA-PS) technique aimed at clustered VLIW
+architectures, with predicated move instructions that operate inside clusters
+(internal moves) or between clusters (external moves). The main idea is to
+realize the conditional assignments corresponding to $\phi$-functions by
+using predicated move operations. The predicated external moves leverage the
+penalties associated with inter-cluster data transfers.
+
 \item Chuang et al. \cite{Chuang:2003:CGO} introduce a predicated execution
-support aimed at removing conditional register writes from the processor
-micro-architecture. This includes SELECT instructions called 'phi-ops',
+support aimed at removing non-kill register writes from the processor
+micro-architecture. They propose SELECT instructions called 'phi-ops',
 predicated memory accesses, unconditional PDIs, and ORP instructions for OR-ing
 multiple predicates. A restriction of the RK algorithm to single-entry
 single-exit regions is proposed, adapted to the unconditional PDIs and the ORP
-instructions. The key contribution from this work is the generation of
-'phi-ops', whose insertion points are computed like the placement of the SSA
+instructions. The other contribution from this work is the generation of
+'phi-ops', whose insertion points are computed like the SSA form placement of the
 $\phi$-functions. The source operands of the $\phi$-functions are replaced by
 so-called $\phi$-lists, where each operand is associated with the predicate of
 its source basic block. The $\phi$-lists are processed by topological order of
 the operand predicates to generate the 'phi-ops'.
 
-\end{itemize}
-Recent contributions to if-conversion accept the SSA
-form as input and output: \begin{itemize}
+\end{itemize} Recent contributions to if-conversion input SSA form
+and output $\psi$-SSA form: \begin{itemize}
 
-\item Stoutchinin \& Ferri\`ere \cite{Stoutchinin:2001:MICRO} introduce
-$\psi$-functions in order to handle predicated code under the SSA form.
-The $\psi$-functions arguments are paired with predicates and are
-ordered in dominance order. TBD
+%\item Stoutchinin \& Ferri\`ere \cite{Stoutchinin:2001:MICRO} introduce
+%$\psi$-functions in order to handle predicated code under the SSA form.
+%The $\psi$-functions arguments are paired with predicates and are
+%ordered in dominance order.
 
 \item Stoutchinin \& Gao \cite{Stoutchinin:2004:EuroPar} propose an
 if-conversion technique based on the predication of Fang \cite{Fang:1996:LCPC}
@@ -468,23 +480,12 @@ Chapter~\ref{chap:if_conv}.
 
 \end{itemize}
 
-
-
-%\paragraph{Schlansker:1999:PLDI} Fully resolved predicates (FPRs)
-
-%\paragraph{Jacome:2001:DAC} The idea of Static Single Assignment -- Predicated
-%Switching transformation (SSA-PS) is to realize conditional assigmnents
-%corresponding to $\phi$-functions by so-called predicated switching operations.
-%This technique is aimed at clustered VLIW architectures, with predicated move
-%instructions that operate inside clusters (internal moves) or between clusters
-%(external moves).
-
 %\paragraph{Chuang:2003:CGO} The phi-predication is motivated by the removal of
 %conditional register writes in the architecture. The proposed instruction set
 %includes select instructions called phi-op, predicated load and stores with
 %loads that always update destination register, wide OR between predicates,
 %unconditional compares. The floating-point instructions propagates NaN.
-%Arithmetic instructions are not predicated. Start from a non-SSA from program
+%Arithmetic instructions are not predicated. Start from a non-SSA form program
 %representation. Use a modified R-K algorithm on acyclic single-entry single-exit
 %regions. The modification is for using unconditional compares and the ORP. Use
 %the phi-version of memory operation on basic block with control dependences, and
@@ -581,6 +582,8 @@ self assignment technique also pioneered by the Multiflow Trace Scheduling
 compiler \cite{Lowney:1993:JS}. A main motivation for inner loop unrolling is to
 unlock modulo scheduling benefits \cite{Lavery:1995:MICRO}.
 
+Induction variable classification (Chapter~\ref{chap:}),
+
 %SIMD instruction reselection.
 
 %Hardware loop mapping.
@@ -592,11 +595,13 @@ modes. Memory packing optimizations select wider memory access instructions
 whenever the effective addresses are provably adjacent, and no side effects such
 as possible address misalignment traps are introduced.
 
-\subsection{Code cleanups}
+\subsection{Code cleanups and instruction re-selection}
 
 Constant propagation, copy folding, and dead code elimination.
 
-\subsection{Instruction re-selection}
+Bit-width analysis,
+
+GVN or LICM or PRE
 
 Instruction re-selection. Uses bit width analysis. SIMD idioms.
 Required because analyses and code specialization
@@ -677,4 +682,7 @@ The last major phase of code generation where SSA form has demonstrated benefits
 is register allocation and its three sub-problems: variable spilling, variable
 coloring, and variable coalescing (Chapter~\ref{chap:register_allocation}).
 
+Issue with predicated code.
+
+Issue with aliased registers.
 
