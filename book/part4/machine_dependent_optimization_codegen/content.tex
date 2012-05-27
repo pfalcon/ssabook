@@ -33,7 +33,7 @@ techniques have significantly evolved, as they are mainly responsible for
 exploiting the performance-oriented features of processor architectures and
 micro-architectures. Code generation techniques implement in these compilers
 include: \begin{itemize}
-\item If-conversion using conditional move, SELECT, or predicated, instructions.
+\item If-conversion using SELECT, conditional move, or predicated, instructions.
 \item Use of specialized addressing modes such as auto-modified and modulo.
 \item Exploitation of hardware looping instructions or static branch prediction
 hints.
@@ -168,9 +168,12 @@ register to a SSA variable, any operation that partially reads or modifies the
 register bit-fields should appear as reading and writing the corresponding
 variable.
 
-Predicated or conditional execution is the other main source of definitions that
-do not kill the target register. Predicated and conditional execution refer to:
-\begin{description}
+Predicated execution and conditional execution are the other main source of
+definitions that do not kill the target register. The execution of predicated
+instructions is guarded by the evaluation of a single bit operand. The execution
+of conditional instructions is guarded by the evaluation of a condition on a
+multi-bit operand. We extend the classification of \cite{Mahlke:1995:ISCA} and
+distinguish four classes of ISA support: \begin{description}
 
 \item[\bf Partial predicated execution support] SELECT instructions like those
 of the Multiflow TRACE architecture \cite{Colwell:1987:ASPLOS} are provided. The
@@ -366,16 +369,16 @@ used in combination with SELECT to provide a harmless effective address in case
 the operation must be nullified \cite{Mahlke:1995:ISCA}.
 
 Besides predicated execution, architectural support for if-conversion can be
-improved by supporting speculative execution. Speculative execution refers to
-executing an operation before knowing that its execution is required, such as
-when moving code above a branch \cite{Lowney:1993:JS} or promoting predicates
-\cite{Mahlke:1995:ISCA}.  Speculative execution assumes instructions have
-reversible side effects, so speculating potentially excepting instructions
-requires architectural support. On the Multiflow TRACE 300 architecture and
-later on the Lx VLIW architecture \cite{Faraboschi:2000:ISCA}, non-trapping
-memory loads known as 'dismissible' are provided. The IMPACT EPIC architecture
-speculative execution \cite{August:1998:ISCA} is generalized from the 'sentinel'
-model \cite{Mahlke:1992:ASPLOS}.
+improved by supporting speculative execution. Speculative execution (control
+speculation) refers to executing an operation before knowing that its execution
+is required, such as when moving code above a branch \cite{Lowney:1993:JS} or
+promoting predicates \cite{Mahlke:1995:ISCA}.  Speculative execution assumes
+instructions have reversible side effects, so speculating potentially excepting
+instructions requires architectural support. On the Multiflow TRACE 300
+architecture and later on the Lx VLIW architecture \cite{Faraboschi:2000:ISCA},
+non-trapping memory loads known as 'dismissible' are provided. The IMPACT EPIC
+architecture speculative execution \cite{August:1998:ISCA} is generalized from
+the 'sentinel' model \cite{Mahlke:1992:ASPLOS}.
 
 If-conversion is primarily motivated by instruction scheduling on
 instruction-level parallel processors \cite{Mahlke:1995:ISCA}, as removing
@@ -432,16 +435,26 @@ instructions up the dominance tree through predicate promotion, except for
 stores and PDIs. This work further proposes a pre-optimization pass to hoist or
 sink common sub-expressions before predication and speculation.
 
-\end{itemize} A few contributions to if-conversion only rely on the SSA form
-$\phi$-placement: \begin{itemize}
+\item Leupers \cite{Leupers:1999:DATE} focuses on if-conversion of nested
+if-then-else (ITE) statements on architectures with full conditional execution
+support. A dynamic programming technique appropriately selects either a
+conditional jump or a conditional instruction based implementation scheme for
+each ITE statement, and the objective is the reduction of worst-case execution
+time (WCET).
+
+\end{itemize} A few contributions to if-conversion only use the SSA form
+internally: \begin{itemize}
 
 \item Jacome et al. \cite{Jacome:2001:DAC} propose the Static Single Assignment
--- Predicated Switching transformation (SSA-PS) technique aimed at clustered
-VLIW architectures, with predicated move instructions that operate inside
-clusters (internal moves) or between clusters (external moves). The SSA-PS
-technique realizes the conditional assignments corresponding to $\phi$-functions
-by using predicated move operations, and the predicated external moves leverage
-the penalties associated with inter-cluster data transfers.
+-- Predicated Switching (SSA-PS) transformation aimed at clustered VLIW
+architectures, with predicated move instructions that operate inside clusters
+(internal moves) or between clusters (external moves). The first idea of the
+SSA-PS transformation is to realize the conditional assignments corresponding to
+$\phi$-functions via predicated switching operations, in particular predicated
+move operations. The second idea is that the predicated external moves leverage
+the penalties associated with inter-cluster data transfers. The SSA-PS
+implicitly assumes that all non-move operations can be speculated and is
+apparently restricted to innermost if-then-else constructs.
 
 \item Chuang et al. \cite{Chuang:2003:CGO} introduce a predicated execution
 support aimed at removing non-kill register writes from the processor
@@ -470,12 +483,12 @@ and the replacement of $\phi$-functions by $\psi$-functions. They prove the
 conversion is correct provided the SSA form is conventional. The technique is
 implemented in the Open64 for the ia64 architecture.
 
-\item Bruel \cite{Bruel:2006:ODES} revisits the Multiflow compiler if-conversion
-algorithms by reducing acyclic control-flow constructs from innermost to
-outermost, intermingled with tail duplication. This technique operates on the
-SSA form and generates $\psi$-functions for predicating the memory operations of
-the ST200 / Lx VLIW architecture family. A generalization is described in
-Chapter~\ref{chap:if_conv}.
+\item Bruel \cite{Bruel:2006:ODES} targets VLIW architectures with SELECT and
+dismissible memory load instructions. The proposed technique reduces acyclic
+control-flow constructs from innermost to outermost, and the monitoring of the
+if-conversion benefits provides the stopping criterion. This technique control
+speculates operations, reduces height of predicate computation, and perform tail
+duplication.  A generalization is described in Chapter~\ref{chap:if_conv}.
 
 \item Ferri\`ere \cite{Ferriere:2007:SCOPES} TBD
 
@@ -684,6 +697,7 @@ is register allocation and its three sub-problems: variable spilling, variable
 coloring, and variable coalescing (Chapter~\ref{chap:register_allocation}).
 
 Issue with predicated or conditional instructions.
+\cite{Eichenberger:1995:MICRO} \cite{Johnson:1996:MICRO}
 
 Issue with aliased registers.
 
