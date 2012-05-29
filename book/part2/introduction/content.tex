@@ -1,7 +1,36 @@
-\chapter{Introduction \Author{V. Sarkar}}
+\chapter{Introduction \Author{V. Sarkar \andAuthor F. Rastello}}
 \inputprogress
 
-\section{TODO}
-\chapterauthor{Sarkar}
+
+We think the choice of a good intermediate representation (IR) depends on its use. In particular we must distinguish at some points program analysis to code generation or synthesis, and interpretation in between.
+
+Why extending SSA?
+
+\paragraph{Static Single Information revisited}
+SSA is well suited for many data flow analysis as it provides def-use chains without much efforts (see Chapter~\ref{chapter:properties_and_flavors}). Many data flow analysis associate to each program point and each variable an information. As an example, constant propagation would aim at computing for each program point and each variable, the (usually over-approximated) set of possible values carried by this variable at this program point. At an instruction that defines a variable say a and uses variables b and c, the information associated to a below this instruction is to be different than above it, and depends on the information associated to b and c. Def-use chains allows to propagate directly the information from definition points (e.g. the ones of b and c) to places where it is useful (here the definition point of a). This leads to what we call sparse data flow analysis: in SSA based data-flow analysis the information is associated to variables, not to couples (variables,prog-points) and flows through def-use chains (ie flow SSA edges) instead of control flow edges: only one information is associated to each variable, not different ones along its live-range. In other word we exploit the static single information property of the SSA form. The problem is that for many analysis, not only definition points "create" new information. As an example, conditional tests can also be used to refine the knowledge about the possible values taken by a variable. Same for the use of a variable... In this context one may want to enforce each variable not to have only a single static definition, but also a single use, or a single test... Because of that the domain of sparse data-flow analysis enabled by SSA is quite restricted. The goal of Chapter~\ref{chapter:ssi} is to revisit the notion of static single information form initially introduced by Ananian then Singer.
 
 
+\paragraph{Control dependences}
+SSA goes with a control flow graph that inherently imposes some ordering: we know well how to schedule instructions within a basic-block, we know how to extend it to hyper-blocks. So as to expose parallelism / locality one need to get rid of the CFG at some points. For loop transformations, software pipelining, one need  to manipulate a higher degree of abstraction to represent the iteration space of nested loops and to extend data flow information to this abstraction. One can expose even more parallelism (at the level of instructions) by replacing control flow by control dependences: the goal is either to express a predicate expression under which a given basic block is to be executed, or select afterward (using similar predicate expressions) the correct value among a set of eagerly computed ones.
+\begin{enumerate}
+\item technically, we say that SSA provides data flow (data dependences). The goal is to enrich it with control dependences. Program dependence graph (PDG) constitute the basis of such IR extensions. Gated-SSA (GSA) provides an interpretable (data or demand driven) IR that uses this concept. PDG and GSA are described in Chapter~\ref{chapter:vsdg}. Psi-SSA is a very similar IR but more appropriated to code generation for architectures with predication. Psi-SSA is described in Chapter~\ref{chapter:psi_ssa}.
+\item Note that such extensions sometimes face difficulties to handle loops correctly (need to avoid deadlock between the loop predicate and the computation of the loop body, replicate the behavior of infinite loops, etc.). However, we believe that, as we will illustrate further, loop carried control dependences complicate the recognition of possible loop transformations: it is usually better to represent loops and there corresponding iteration space using a dedicated abstraction. 
+\end{enumerate}
+
+\paragraph{Memory based data-flow}
+SSA provides data flow / dependences between \emph{scalar} variables. Execution order of side effect instructions must also be respected. Indirect memory access can be considered very conservatively as such and lead to (sometimes called state, see Chapter~\ref{chapter:vsdg}) dependence edges. Too conservative dependences annihilate the potential of optimizations. Alias analysis is the first step toward more precise dependence information. Representing this information efficiently in the IR is important. One could simply add a dependence (or a flow arc) between two "consecutive" instructions that may or must alias. Then in the same spirit than SSA phi-nodes aim at combining the information as early as possible (as opposed to standard def-use chains, see the discussion in Chapter~\ref{chapter:properties_and_flavors}), similar nodes can be used for memory dependences. Consider the following sequential code 
+\begin{verbatim}
+*p=...; *q=...; ...=*p; ...=*p
+\end{verbatim}
+ where p, and q may alias, to illustrate this point. Without the use of phi-nodes, the amount of def-use chains required to link the assignments to their uses would be quadratic (4 here). Hence the usefulness of generalizing SSA and its phi-node for scalars to handle memory access for sparse analyzes. HSSA (see Chapter~\ref{chapter:hssa}) and Array-SSA (see the Chapter~\ref{chapter:array_ssa}) are two different implementations of this idea. One have to admit that if this early combination is well suited for analysis or interpretation, the introduction of a phi-function might add a control dependence to an instruction that would not exist otherwise. In other words only simple loop carried dependences can be expressed this way. Let us illustrate this point using a simple example: 
+\begin{verbatim}
+for i { A[i]=f(A[i-2]) }
+\end{verbatim}
+where the computation at iteration indexed by $i+2$ accesses the value computed at iteration indexed by $i$. Suppose we know that $f(x)>x$ and that prior to entering the loop $A[*]\geq 0$. Then a SSA like representation 
+\begin{verbatim}
+for i { 
+  A2=phi(A0,A1); 
+  A1=PHI(j==i:A1[j]=f(A2[j-2]), j!=i:A1[j]=A2[j]) 
+}
+\end{verbatim}
+would easily allow for the propagation of information that $A2\geq 0$. On the other hand, by adding this phi-node, it becomes difficult to devise that iteration $i$ and $i+1$ can be executed in parallel: the phi node adds a loop carried dependence. If one is interested in performing more sophisticated loop transformations than just exposing fully parallel loops (such as loop interchange, loop tiling or multidimensional software pipelining), then (Dynamic) Single Assignment forms should be his friend. There exists many formalisms including Kahn Process Networks (KPN), or Fuzzy Data Flow Analysis (FADA) that implement this idea. But each time restrictions apply. This is part of the huge research area of automatic parallelization outside of the scope of this book. For further details we refer to the corresponding Encyclopedia of Parallel Computing~\cite{Padua}.
