@@ -1,4 +1,4 @@
-\chapter{Loop tree \Author{S. Pop}}
+\chapter{Loop tree and induction variables \Author{S. Pop}}
 \inputprogress
 \graphicspath{{fig/}{loop_tree/fig/}{part3/loop_tree/fig/}}
 
@@ -11,10 +11,9 @@
 
 This chapter presents an extension of the \SSA{} under which the
 extraction of the reducible loop tree can be done only on the \SSA{}
-graph itself.  This extension of the \SSA{} representation captures
-more than the scalar computations: the phi nodes and the scalar
-assignments encode the strongly connected components of the CFG that
-are the reducible loops.  This chapter will first illustrate this property and will show its usefulness through the problem of induction variable recognition.
+graph itself.  This extension also captures reducible loops in the
+CFG.  This chapter first illustrates this property then shows its
+usefulness through the problem of induction variable recognition.
 
 \section{Part of the \CFG{} and Loop Tree can be exposed from the \SSA{}}
 
@@ -30,18 +29,17 @@ Furthermore, it is possible to identify higher level constructs
 inherent to the \CFG{} representation, such as strongly connected
 components of basic blocks (or reducible loops), based only on the
 patterns of the \SSA{} definitions and uses.  The induction variable
-analysis, that we will see in this chapter, is based on the detection
-of self references in the \SSA{} representation, and on the
-characterization of these cyclic definitions.
+analysis presented in this chapter is based on the detection of self
+references in the \SSA{} representation and on its characterization.
 
 This first section shows that the classical \SSA{} representation is
 not enough to represent the semantics of the original program.  We
 will see the minimal amount of information that has to be added to the
 classical \SSA{} representation in order to represent the loop
-information in an elegant way: similar to the $\eta$-function used in the
-Gated \SSA{} presented in Chapter~\ref{chapter:vsdg}, the loop closed \SSA{} form adds an extra variable at
-the end of a loop for each variable defined in a loop and used after
-the loop.
+information: similar to the $\eta$-function used in the Gated \SSA{}
+presented in Chapter~\ref{chapter:vsdg}, the loop closed \SSA{} form
+adds an extra variable at the end of a loop for each variable defined
+in a loop and used after the loop.
 
 \subsection{An \SSA{} representation without the \CFG{}}
 
@@ -74,8 +72,8 @@ bb_4 (preds = {bb_3}, succs = {bb_5})
   return c;
 }
 \end{verbatim}
-after removing the \CFG{} structure, using a random order traversal,
-we could obtain this:
+after removing the \CFG{} structure, listing the definitions in an
+arbitrary order, we could obtain this:
 \begin{verbatim}
   return c;
   b = #some computation independent of a
@@ -176,10 +174,13 @@ extension that adds the loop exit condition to the syntax of the \closephi{}, th
 So $k$ is defined as the ``first value'' of $i$ satisfying the loop
 exit condition, ``$i \geq N$''.  In the case of finite loops, this is well defined as being the first element satisfying the loop exit condition of the sequence defined by the corresponding \loopphi{} node.
 
-In the next section, we will look at an algorithm that translates the
+In the following, we will look at an algorithm that translates the
 \SSA{} representation into a representation of polynomial functions,
 describing the sequence of values that \SSA{} names take during the
-execution of a loop.
+execution of a loop. The algorithm is restricted to the loops that are
+reducible. All such loops are labeled. Note that irreducible control
+flow is not forbidden: only the loops carrying self-definitions must
+be reducible.
 
 \section{Analysis of Induction Variables}
 
@@ -193,25 +194,31 @@ domain.  In this section, we will see a possible characterization of
 induction variables in terms of sequences.  The domain of sequences
 will be represented by {\em chains of recurrences}: as an example, a
 canonical induction variable with an initial value $0$ and a stride
-$1$ that would occur in loop $x$, will be syntactically represented by
+$1$ that would occur in the loop with label $x$ will be represented by
 the chain of recurrence $\CHREC{0, +, 1}_x$.
 
 \subsection{Stride detection}
 
-The first phase of the induction variables analysis is the detection of
-the strongly connected components of the \SSA{}.  This can be
-performed by traversing the use-def \SSA{} chains and detecting that some definitions are visited twice.
-For a self referring use-def chain, it is possible to derive the step of the corresponding induction variable as the  
-overall effect of one iteration of the loop on the value of the \loopphi{} node.  When the step of an
-induction variable depends on another cyclic definition, one has to
-further analyze the inner cycle.  The analysis of the induction
-variable ends when all the inner cyclic definitions used for the
-computation of the step are analyzed. Note that it is possible to
-construct \SSA{} graphs with strongly connected components that are
-impossible to characterize with the chains of recurrences. This is precisely the case of the following example that shows two inter-dependent circuits, the first that involves $a$ and $b$ with step $c+2$, and the second that involves $c$ and $d$ with step $a+2$. The inerrant recursive behavior of the resolution process would loop here.
+The first phase of the induction variables analysis is the detection
+of the strongly connected components of the \SSA{}.  This can be
+performed by traversing the use-def \SSA{} chains and detecting that
+some definitions are visited twice.  For a self referring use-def
+chain, it is possible to derive the step of the corresponding
+induction variable as the overall effect of one iteration of the loop
+on the value of the \loopphi{} node.  When the step of an induction
+variable depends on another cyclic definition, one has to further
+analyze the inner cycle.  The analysis of the induction variable ends
+when all the inner cyclic definitions used for the computation of the
+step are analyzed. Note that it is possible to construct \SSA{} graphs
+with strongly connected components that are impossible to characterize
+with the chains of recurrences. This is precisely the case of the
+following example that shows two inter-dependent circuits, the first
+that involves $a$ and $b$ with step $c+2$, and the second that
+involves $c$ and $d$ with step $a+2$. This leads to an endless loop,
+which must be detected.
 \begin{verbatim}
-  a = loop-phi (0, b)
-  c = loop-phi (1, d)
+  a = loop-phi-x (0, b)
+  c = loop-phi-x (1, d)
   b = c + 2
   d = a + 3
 \end{verbatim}
@@ -226,36 +233,37 @@ impossible to characterize with the chains of recurrences. This is precisely the
   \label{spop:fig:ivstep}
 \end{figure}
 
-Let's now look at an example, presented in Figure~\ref{spop:fig:ivstep},
-to see how the stride detection works.  The arguments of a $\phi$-node are
-analyzed to determine whether they contain self references or if they
-are pointing towards the initial value of the induction variable.  In
-this example, (1) represents the use-def edge that points towards the
-invariant definition.  When the argument to be analyzed points towards
-a longer use-def chain, the full chain is traversed, as shown in (2),
-until a phi node is reached.  In this example, the phi node that is
-reached in (2) is different to the phi node from which the analysis
-started, and so in (3) a search starts over the uses that have not yet
-been analyzed.  When the original phi node is found, as in (3), the
-cyclic def-use chain provides the step of the induction variable: in
-this example, the step is ``+ e''.  Knowing the symbolic expression
-for the step of the induction variable may not be enough, as we will
-see next, one has to instantiate all the symbols (``e'' in the current
-example) defined in the varying loop to precisely characterize the
-induction variable.
+Let's now look at an example, presented in
+Figure~\ref{spop:fig:ivstep}, to see how the stride detection works.
+The arguments of a $\phi$-node are analyzed to determine whether they
+contain self references or if they are pointing towards the initial
+value of the induction variable.  In this example, (1) represents the
+use-def edge that points towards the invariant definition.  When the
+argument to be analyzed points towards a longer use-def chain, the
+full chain is traversed, as shown in (2), until a phi node is reached.
+In this example, the phi node that is reached in (2) is different to
+the phi node from which the analysis started, and so in (3) a search
+starts over the uses that have not yet been analyzed.  When the
+original phi node is found, as in (3), the cyclic def-use chain
+provides the step of the induction variable: in this example, the step
+is ``\texttt{+ e}''.  Knowing the symbolic expression for the step of
+the induction variable may not be enough, as we will see next, one has
+to instantiate all the symbols (``\texttt{e}'' in the current example)
+defined in the varying loop to precisely characterize the induction
+variable.
 
 \subsection{Translation to chains of recurrences}
 
 Once the def-use circuit  and its corresponding overall loop
 update expression have been identified, it is possible to translate the
 sequence of values of the induction variable to a chain of recurrence.
-The syntax of a polynomial chain of recurrence is: $\CHREC{base, +,
-  step}_x$, where $base$ and $step$ may be arbitrary expressions
+The syntax of a polynomial chain of recurrence is: $\CHREC{\textit{base}, +,
+  \textit{step}}_x$, where $\textit{base}$ and $\textit{step}$ may be arbitrary expressions
 or constants, and $x$ is the loop to which the sequence is
 associated.  As a chain of recurrence represents the sequence of values
 taken by a variable during the execution of a loop, the associated expression of a
-chain of recurrence is given by $\CHREC{base, +, step}_x (\ell_x) =
-base + step * \ell_x$, that is a function of $\ell_x$,
+chain of recurrence is given by $\CHREC{\textit{base}, +, \textit{step}}_x (\ell_x) =
+\textit{base} + \textit{step} \times \ell_x$, that is a function of $\ell_x$,
 the number of times the body of loop $x$ has been executed.
 
 When $base$ or $step$ translates to sequences varying in outer
@@ -265,13 +273,13 @@ defines a multivariate chain of recurrence with a step of $1$ in loop
 $x$ and a step of $2$ in loop $y$, where loop $y$ is enclosed in loop
 $x$.
 
-When $step$ translates into a sequence varying in the same loop,
-the chain of recurrence represents a polynomial of a higher degree.
-For example, $\CHREC{3, +, \CHREC{8, +, 5}_x}_x$ represents a
-polynomial evolution of degree $2$ in loop $x$.  In this case,
-the chain of recurrence is also written omitting the extra braces:
-$\CHREC{3, +, 8, +, 5}_x$.  The semantics of the chains of recurrences
-is defined, using the binomial coefficients $\binom{n}{p} = \frac{n!}{p!(n-p)!}$, by the
+When $step$ translates into a sequence varying in the same loop, the
+chain of recurrence represents a polynomial of a higher degree.  For
+example, $\CHREC{3, +, \CHREC{8, +, 5}_x}_x$ represents a polynomial
+evolution of degree $2$ in loop $x$.  In this case, the chain of
+recurrence is also written omitting the extra braces: $\CHREC{3, +, 8,
+  +, 5}_x$.  The semantics of a chain of recurrences is defined using
+the binomial coefficient $\binom{n}{p} = \frac{n!}{p!(n-p)!}$, by the
 equation:
 \begin{equation*}
   \CHREC{c_0,+,c_1,+,c_2,+,\ldots,+,c_n}_x(\vec{\ell_x})=
@@ -279,11 +287,12 @@ equation:
 \end{equation*}
 with $\vec{\ell}$ the iteration domain vector (the iteration loop
 counters for all the loops in which the chain of recurrence variates),
-and $\ell_x$ the iteration counter for loop $x$.  This semantics is very useful in the analysis of induction variables, as it
-makes it possible to split the analysis into two phases, with a
-symbolic representation as a partial intermediate result:
+and $\ell_x$ the iteration counter of loop $x$.  This semantics is
+very useful in the analysis of induction variables, as it makes it
+possible to split the analysis into two phases, with a symbolic
+representation as a partial intermediate result:
 \begin{enumerate}
-\item first, the analysis leads to a symbolic form, where the step
+\item first, the analysis leads to an expression, where the step
   part ``s'' is left in a symbolic form, i.e., $\CHREC{c_0, +, s}_x$;
 \item then, by instantiating the step, i.e., $s = \CHREC{c_1, +,
   c_2}_x$, the chain of recurrence is that of a higher degree
@@ -295,14 +304,14 @@ symbolic representation as a partial intermediate result:
 
 The last phase of the induction variable analysis consists in the
 instantiation (or further analysis) of symbolic expressions left from
-the previous phase.  This includes the analysis of induction variables in
-outer loops, the analysis of the end value of a loop preceding the
-analyzed loop, and the replacement of other definitions occurring before the loop with their corresponding defined expression.  In some
-cases, it becomes necessary to leave in a symbolic form every
-definition outside a given region, and these symbols are then called
-parameters of the region.
+the previous phase.  This includes the analysis of induction variables
+in outer loops, computing the last value of the counter of a preceding
+loop, and the propagation of closed form expressions for loop
+invariants defined earlier.  In some cases, it becomes necessary to
+leave in a symbolic form every definition outside a given region, and
+these symbols are then called parameters of the region.
 
-Let's look again at the example of Figure~\ref{spop:fig:ivstep} to see
+Let us look again at the example of Figure~\ref{spop:fig:ivstep} to see
 how the sequence of values of the induction variable $c$ is
 characterized with the chains of recurrences notation.  The first
 step, after the cyclic definition is detected, is the translation of
@@ -324,20 +333,24 @@ degree two:
 
 \subsection{Number of iterations and computation of the end of loop value}
 
-One of the important properties of loops is their trip count (i.e.,
-the number of times the loop body is executed before the exit
-condition becomes true).  In simple loops, the exit condition of the
-loop is a comparison of an induction variable against some constant,
-parameter, or another induction variable.  The number of iterations is
-then computed as the (minimum) solution of an (in)equality with integer solutions, also called a Diophantine (in)equality.  When one
-or more coefficients of the Diophantine (in)equality are parameters, the
-solution is left under a parametric form.  The number of iterations
-can also be an expression varying in an outer loop, in which case,
-it can be characterized using a chain of recurrence expression.
+One of the important static analyses for loops is to evaluate their
+trip count, i.e., the number of times the loop body is executed before
+the exit condition becomes true.  In common cases, the loop exit
+condition is a comparison of an induction variable against some
+constant, parameter, or another induction variable.  The number of
+iterations is then computed as the minimum solution of a polynomial
+inequality with integer solutions, also called a Diophantine
+inequality.  When one or more coefficients of the Diophantine
+inequality are parameters, the solution is left under a parametric
+form.  The number of iterations can also be an expression varying in
+an outer loop, in which case, it can be characterized using a chain of
+recurrence.
 
-Consider a scalar variable varying in an outer loop with strides dependent on the value computed in an inner loop. 
-The expression representing the number of iterations in the inner loop can then be used to express the evolution function of the scalar
-variable varying in the outer loop.
+Consider a scalar variable varying in an outer loop with strides
+dependent on the value computed in an inner loop.  The expression
+representing the number of iterations in the inner loop can then be
+used to express the evolution function of the scalar variable varying
+in the outer loop.
 
 For example, the following code
 \begin{verbatim}
@@ -389,46 +402,83 @@ the other variables defined in the loop closed \SSA{} form as follows:
     \CHREC{0, +, M}_1$
   \end{itemize}
 \item and finally the analysis of $x_4$ ends with $x_4 = \textrm{\closephi}_1 (i
-  < N, x_1) = \CHREC{0, +, M}_1 (N) = M * N$.
+  < N, x_1) = \CHREC{0, +, M}_1 (N) = M \times N$.
 \end{itemize}
 
 
 \section{Further reading}
-FAB: des copier-coller pour remplir cette partie:\\
 
-As we have seen in this chapter, the \CFG{} representation is embedded
-in the \SSA{} structure, and properties of the \CFG{} like the
-execution order and the natural loops can be detected by only looking
-at the \SSA{} definitions and uses.  The detection of natural loops is
-the first step in the analysis of induction variables: after the
-detection of self referent definitions, it is practical to use the
-chains of recurrences \cite{BWZ94,KMZ98,Zim01} to characterize the
-sequence of values taken by a variable during the execution of a loop.
-The number of iterations of loops can be computed based on the
-characterization of induction variables.  This paves the way to
-advanced loop optimizations that need both the number of iterations
-and induction variable characterizations.
+Induction variable detection has been studied extensively in the past
+because of its central role in loop optimizations. Wolfe \cite{Wol92}
+designed the first SSA-based induction variable recognition
+technique. It abstracts the SSA graph and classifies inductions
+according to a wide spectrum of patterns.
 
-The computation of the end of loop value can also be used for scalar
-optimization purposes, for example in the case of the constant
-propagation or the value range propagation after loops.  It enables
-more scalar transformations when the induction variable is used after
-its defining loop.  Loop transformations also benefit from the
-replacement of the end of loop value as this removes scalar
-dependencies between consecutive loops.  Another interesting use of the
-end of loop value is the estimation of the worst case execution time
-(WCET) where one tries to obtain an upper bound approximation of the
-time necessary for a program to terminate.
+When operating on a low-level intermediate representation with
+arbitrary \texttt{goto}s, detecting the natural loops is the first
+step in the analysis of induction variables. In general, and when
+operating on low-level code in particular, it is preferable to use
+analyses that are more robust to complex control flow that do not
+resort to an early classification into predefined patterns.  Chains of
+recurrences \cite{BWZ94,KMZ98,Zim01} have been proposed to
+characterize the sequence of values taken by a variable during the
+execution of a loop \cite{vEn01}, and it has proven to be more robust
+to the presence of complex, unstructured control flow, to the
+characterization of induction variables over modulo-arithmetic such as
+unsigned wrap-around types in C, and to the implementation in a
+production compiler \cite{Pop05}.
 
-Dans le désordre je pense aux choses suivantes pour mettre dans cette partie:
-\begin{itemize}
-\item référence concernant la théorie sur les chaines de récurrence
-\item référence sur la résolution d'inegalités diophantines. Eventuellement donner des références d'outils.
-\item donner des références pour le calcul du nombre de points dans un polyhèdre.
-\item référence au papier et/ou la thèse qui contient les pseudo-codes 
-\item parler de SCEV qu'il y a dans LLVM (connais pas dixit Albert) et aussi de la technique initiale de Wolf.
-\item parler des "extentions" de ce type de technique qui permet entre autre de détecter les réductions (j'ai un papier là dessus je crois mais pas sur. Ca existe clairement dans le monde single assignment à la Feautrier (par Paul lui même je crois). C'est trivial dans le cas scalaire faudrait trouver une référence je pense.
-\item je pense que l'on peut parler de toutes les applications liées au calcul de IV. Entre autre la transformation de boucle (whatever le monde polyhedrique) qui nécessite si la variable d'induction est live-out de la boucle de savoir calculer sa valeur de sortie.
-\item parler du gated SSA (décrit dans le chapitre vsdg) qui pour pouvoir faire du demand driven implémente aussi une loop-close form.
-\item de manière plus générale, la technique de loop-closed form qui encapsule une boucle, permet d'isoler l'effet des transformations effectuées au sein de la boucle. C'est une technique classique utilisée pour simplifier la mise à jour de SSA pour par exemple du loop unrolling ou je crois (à vérifier dans le chapitre associé) de if-conversion.
-\end{itemize}
+The formalism and presentation of this chapter is derived from the
+thesis work of Sebastian Pop. The manuscript \cite{TPop} contains
+pseudo-code and links to the implementation of scalar evolutions in
+GCC since version 4.0. The same approach has also influenced the
+design of LLVM's scalar evolution, but the implementation is
+different.  Parler des types, arith modulo, traitement dans GCC et
+LLVM, citer comme difficulte.
+
+Induction varaible analysis is used in dependence tests for scheduling
+and parallelization \cite{Wol96}, and more recently, the extraction of
+short-vector to SIMD instructions \cite{Nuz06}.\footnote{Note however
+  that the computation of closed form expressions is not required for
+  dependence testing itself \cite{Wu01}.} The Omega test \cite{Pug91}
+and parametric integer linear programming \cite{Fea88b} have typically
+used to reason about system parametric affine Diophantine
+inequalities. But in many cases, simplications and approximations can
+lead to polynomial decision procedures \cite{Ban88}. Modern
+parallelizing compilers tend to implement both kinds, depending on the
+context and aggressiveness of the optimization.
+
+Substituting an induction variable with a closed form expression is
+also useful to the removal of the cyclic dependences associated with
+the computation of the induction variable itself \cite{Ger95}. Other
+applications include enhancements to strength reduction and
+loop-invariant code motion \cite{Ger95}, induction variable
+canonicalization (reducing induction variables to a single one in a
+given loop) \cite{Liu96}.
+
+The number of iterations of loops can also be computed based on the
+characterization of induction variables.  This information is
+essential to advanced loop analyses such as value-range propagation
+propagation \cite{VRP}, and enhance dependence tests for scheduling
+and parallelization \cite{Ban88,Pug91}.  It also enables more
+opportunities for scalar optimization when the induction variable is
+used after its defining loop.  Loop transformations also benefit from
+the replacement of the end of loop value as this removes scalar
+dependencies between consecutive loops.  Another interesting use of
+the end of loop value is the estimation of the worst case execution
+time (WCET) where one tries to obtain an upper bound approximation of
+the time necessary for a program to terminate.
+
+%\item Donner des références pour le calcul du nombre de points dans un polyhèdre.
+%AC. Je pense que ce n'est plus nécessaire dans la version actuelle.
+
+%\item Parler des "extentions" de ce type de technique qui permet entre autre de détecter les réductions (j'ai un papier là dessus je crois mais pas sur. Ca existe clairement dans le monde single assignment à la Feautrier (par Paul lui même je crois). C'est trivial dans le cas scalaire faudrait trouver une référence je pense.
+%AC. Je n'ai pas de référence la dessus. C'est en effet très lié, mais je ne connais pas la littérature pour le cas scalaire... honte à moi.
+
+%\item Je pense que l'on peut parler de toutes les applications liées au calcul de IV. Entre autre la transformation de boucle (whatever le monde polyhedrique) qui nécessite si la variable d'induction est live-out de la boucle de savoir calculer sa valeur de sortie.
+%AC. Je pense que ça va trop loin, j'ai cité Wolfe96 et les tests de dépendance et outils Presburger.
+
+%\item Parler du gated SSA (décrit dans le chapitre vsdg) qui pour pouvoir faire du demand driven implémente aussi une loop-close form.
+
+% \item De manière plus générale, la technique de loop-closed form qui encapsule une boucle, permet d'isoler l'effet des transformations effectuées au sein de la boucle. C'est une technique classique utilisée pour simplifier la mise à jour de SSA pour par exemple du loop unrolling ou je crois (à vérifier dans le chapitre associé) de if-conversion.
+%\end{itemize}
