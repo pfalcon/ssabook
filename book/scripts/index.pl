@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 $bookdir = "/home/frastell/ssabook/book/";
-open GREP, "find . -name '*.tex' -exec grep -HE 'index\{[^\\}]+\}' {} \\;|";
+open GREP, "find . -name '*.tex' -exec grep -HE 'index\{.+\}' {} \\;|";
 my %indexes = ();
 
 while (my $indexref=<GREP>) {
@@ -15,5 +15,6 @@ while (my $indexref=<GREP>) {
 }
 
 foreach my $index (sort {uc($a) cmp uc($b)} (keys %indexes)) {
-    print "$index: ", join(" ", keys %{$indexes{$index}}), "\n";
+    printf "%-30s:", $index;
+    print join(" ", keys %{$indexes{$index}}), "\n";
 }

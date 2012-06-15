@@ -169,7 +169,7 @@ This also paves the way toward a formal definition of the Static Single Informat
 A program representation fulfills the Static Single Information property iff:\begin{description}
 \item {\bf [SPLIT]:} let $s$ be the unique predecessor (resp. successor) of a program point $i$ where a variable $v$ is live and such that $F_v^s\neq \lambda x.\bot$ is non-trivial, i.e. is not the simple projection on ${\cal L}_v$, then $s$ should contain a definition (resp. last use) of $v$; 
 Let $(Y_v^i)_{(v,i)\in variables\times prog\_points}$ be a maximum solution to $E_{dense}$. 
-Each node $i$ that has several predecessors (resp. successors), and for which $F_v^s(Y_{v_1}^s,\dots,Y_{v_n}^s)$ has different values on its incoming edges $(s,i)$ (resp. outgoing edges $(i,s)$) should have a $\phi$-function at the entry of $i$ (resp. $\sigma$ function at the exit of $i$) for $v$
+Each node $i$ that has several predecessors (resp. successors), and for which $F_v^s(Y_{v_1}^s,\dots,Y_{v_n}^s)$ has different values on its incoming edges $(s,i)$ (resp. outgoing edges $(i,s)$) should have a \phifun at the entry of $i$ (resp. \sigmafun at the exit of $i$) for $v$
 as defined in Section~\ref{sub:ssi:split}.
 \item {\bf [INFO]:} each program point $i\not\in \textrm{live}(v)$ should be bound to an undefined  transfer function, i.e., $F_v^i=\lambda x.\bot$.
 \item {\bf [LINK]:} each instruction {\em inst} for which $F_v^{inst}$ depends on some $[u]^s$ should contain an use (resp. def) of $u$ live-out (resp. live-in) at
@@ -195,10 +195,10 @@ We accomplish this last task by inserting into the program pseudo-uses and pseud
 \subsection{Special instructions used to split live ranges}
 \label{sub:ssi:split}
 
-We perform live range splitting via special instructions: the $\sigma$-functions and parallel copies that, together with $\phi$-functions, create new definitions of variables.
+We perform live range splitting via special instructions: the \sigmafuns and parallel copies that, together with \phifuns, create new definitions of variables.
 These notations are important elements of the propagation engine described in the section that follows.
-In short, a $\sigma$-function (for a branch point) is the dual of a \phiop (for a join point), and a parallel copy is a copy that \emph{must} be done in parallel with another instruction.
-Each of these special instructions, \phiop, $\sigma$-functions, and parallel copies split live ranges at different kinds of program points: interior nodes, branches and joins.
+In short, a \sigmafun (for a branch point) is the dual of a \phifun (for a join point), and a parallel copy is a copy that \emph{must} be done in parallel with another instruction.
+Each of these special instructions, \phifun, \sigmafuns, and parallel copies split live ranges at different kinds of program points: interior nodes, branches and joins.
 
 {\em Interior nodes} are program points that have a unique predecessor and a unique successor.
 At these points we perform live range splitting via copies.
@@ -213,27 +213,27 @@ The null pointer analysis example of Figure~\ref{fig:ssi:nullAnalysis}(d), that 
 We call {\em joins} the program points that have one successor and multiple predecessors.
 For instance, two different definitions of the same variable $v$ might be associated with two different constants; hence, providing two different pieces of information about $v$.
 To avoid that these definitions reach the same use of $v$ we merge them at the earliest program point where they meet.
-We do it via our well-known $\phi$-functions.
+We do it via our well-known \phifuns.
 
 % need sigma
 In backward analyses the information that emerges from different uses of a variable may reach the same {\em branch point}, which is a program point with a unique predecessor and multiple successors.
 To ensure Property~\ref{pro:ssi}, the use that reaches the definition of a
 variable must be unique, in the same way that in a SSA-form program the definition that reaches a use is unique.
-We ensure this property via special instructions called $\sigma$-functions.
-The $\sigma$-functions are the dual of $\phi$-functions, performing a parallel assignment depending on the execution path taken.
-The assignment \[(v_1^1:l^1, \ldots, v_1^q:l^q) = \sigma(v_1) \ \parallel\  \dots \ \parallel\  (v_m^1:l^1, \ldots, v_m^q:l^q) = \sigma(v_m)\] represents $m$ $\sigma$-functions that assign to each variable $v_i^j$ the value in $v_i$ if control flows into block $l^j$.
-These assignments happen in parallel, i.e., the $m$ $\sigma$-functions encapsulate $m$ parallel copies.
+We ensure this property via special instructions called \sigmafuns.
+The \sigmafuns are the dual of \phifuns, performing a parallel assignment depending on the execution path taken.
+The assignment \[(v_1^1:l^1, \ldots, v_1^q:l^q) = \sigma(v_1) \ \parallel\  \dots \ \parallel\  (v_m^1:l^1, \ldots, v_m^q:l^q) = \sigma(v_m)\] represents $m$ \sigmafuns that assign to each variable $v_i^j$ the value in $v_i$ if control flows into block $l^j$.
+These assignments happen in parallel, i.e., the $m$ \sigmafuns encapsulate $m$ parallel copies.
 Also, notice that variables live in different branch targets are given
-different names by the $\sigma$-function that ends that basic block.
+different names by the \sigmafun that ends that basic block.
 %TODO FAB: add reference to gated SSA, loop closed form etc.
 
 \subsection{Propagating Information Forwardly and Backwardly}
 \label{sec:ssi:pereira:engine}
 
 Let us consider a unidirectional forward (resp. backward) PVL problem $E^{ssi}_{\mathit{dense}}$ stated as a set of equations $[v]^i \sqsubseteq  F_v^s([v_1]^s, \dots, [v_n]^s)$ (or equivalently $[v]^i = [v]^i \wedge    F_v^s([v_1]^s, \dots, [v_n]^s$) for every variable $v$, each program point $i$, and each $s \in \mathit{pred}(i)$ (resp. $s \in \mathit{succ}(i)$). 
-To simplify the discussion, any $\phi$-function (resp. $\sigma$-function) is seen as a set of copies, one per predecessor (resp. successor), which leads to as many constraints.
-In other words, a $\phi$-function such as $a=\phi(a_1:l^1,\dots,a_m:l^m)$, gives us $n$ constraints such as $[a]^i \sqsubseteq  F_v^{l^j}([v_1]^{l^j}, \dots, [v_n]^{l^j})$, which usually simplifies into $[a]^i \sqsubseteq [a_j]^{l^j}$. This last can be written equivalently into the classical meet $[a]^i \sqsubseteq \bigwedge_{l^j \in \mathit{pred}(i)} [a_j]^{l^j}$ used in Chapter~\ref{chapter:constant_propagation_is_easier}.
-Similarly, a $\sigma$-function $(l^1:a_1,\dots,l^m:a_m)=\sigma(a)$ at program point $i$ yields $n$ constraints such as $[a_j]^{l_j} \sqsubseteq  F_v^{l^j}([v_1]^{l^j}, \dots, [v_n]^{l^j})$, which usually simplifies into $[a_j]^{l_j} \sqsubseteq [a]^i$.
+To simplify the discussion, any \phifun (resp. \sigmafun) is seen as a set of copies, one per predecessor (resp. successor), which leads to as many constraints.
+In other words, a \phifun such as $a=\phi(a_1:l^1,\dots,a_m:l^m)$, gives us $n$ constraints such as $[a]^i \sqsubseteq  F_v^{l^j}([v_1]^{l^j}, \dots, [v_n]^{l^j})$, which usually simplifies into $[a]^i \sqsubseteq [a_j]^{l^j}$. This last can be written equivalently into the classical meet $[a]^i \sqsubseteq \bigwedge_{l^j \in \mathit{pred}(i)} [a_j]^{l^j}$ used in Chapter~\ref{chapter:constant_propagation_is_easier}.
+Similarly, a \sigmafun $(l^1:a_1,\dots,l^m:a_m)=\sigma(a)$ at program point $i$ yields $n$ constraints such as $[a_j]^{l_j} \sqsubseteq  F_v^{l^j}([v_1]^{l^j}, \dots, [v_n]^{l^j})$, which usually simplifies into $[a_j]^{l_j} \sqsubseteq [a]^i$.
 Given a program that fulfills the SSI property for $E^{ssi}_{\mathit{dense}}$ and the set of transfer functions $F_v^s$, we show here how to build an equivalent sparse constrained system.  
 
 \begin{definition}[SSI constrained system]
@@ -313,7 +313,7 @@ $_{11}$& \1   \3 $\val{v} = \val{v}_{new}$\\
 Still we should outline a quite important subtlety that appears in line~8 of algorithms~\ref{alg:ssi:propback} and~\ref{alg:ssi:propforward}. $[v]$ appears (and has to) on the right hand side of the assignment for Algorithm~\ref{alg:ssi:propback} while it does not for Algorithm~\ref{alg:ssi:propforward}. This comes from the asymmetry of our SSI form that ensures (for practical purpose only as we will explain soon) the Static Single Assignment property but not the Static Single Use (SSU) property.
 If we have several uses of the same variable, then the sparse backward constraint system will have several inequations -- one per variable use -- with the same left-hand-side.
 Technically this is the reason why we manipulate a constraint system (system with inequations) and not an equation system as in Chapter~\ref{chapter:constant_propagation_is_easier}. Both systems can be solved~\footnote{in the ideal world with monotone framework and lattice of finite height} using a scheme known as \emph{chaotic iteration} such as the worklist algorithm we provide here. The slight and important difference for a constraint system as opposed to an equation system, is that one needs to meet $G_v^i(\dots)$ with the old value of $[v]$ to ensure the monotonicity of the consecutive values taken by $[v]$.
-It would be still possible to enforce the SSU property, in addition to the SSA property, of our intermediate representation at the expenses of adding more \phiops and $\sigma$-functions.
+It would be still possible to enforce the SSU property, in addition to the SSA property, of our intermediate representation at the expenses of adding more \phifuns and \sigmafuns.
 However, this guarantee is not necessary to every sparse analysis.
 The dead-code elimination problem illustrates well this point:
 for a program under SSA form, replacing $G_v^i$ in Algorithm~\ref{alg:ssi:propback} by ``\emph{i is a useful instruction or one of its definitions is marked as useful}'' leads to the standard SSA-based dead-code elimination algorithm.
@@ -336,7 +336,7 @@ Therefore, in order to achieve the SSI property, we should split the live ranges
 Figure~\ref{fig:rangeAnalysis-sparse}(a) shows the original example after live range splitting.
 In order to ensure the SSI property in this example, the live range of variable $i$ must be split at its definition, and at the conditional test.
 The live range of $s$, on the other hand, must be split only at its definition point, as it is not used in the conditional.
-Splitting at conditionals is done via $\sigma$-functions.
+Splitting at conditionals is done via \sigmafuns.
 The representation that we obtain by splitting live ranges at definitions and conditionals is called the Extended Static Single Assignment (e-SSA) form.
 Figure~\ref{fig:rangeAnalysis-sparse}(b) shows the result that we obtain by running the range analysis on this intermediate representation.
 This solution assigns to each variable a unique range interval.
@@ -359,7 +359,7 @@ A class inference engine tries to assign a class to a variable $v$ based on the 
 The Python program in Figure~\ref{fig:classInference}(a) illustrates this optimization.
 Our objective is to infer the correct suite of methods for each object bound to variable $v$.
 Figure~\ref{fig:classInference}(b) shows the control flow graph of the program, and Figure~\ref{fig:classInference}(c) shows the results of a dense implementation of this analysis.
-Because type inference is a backward analysis that extracts information from use sites, we split live ranges at these program points, and rely on $\sigma$-functions to merge them back, as we see in Figure~\ref{fig:classInference}(e).
+Because type inference is a backward analysis that extracts information from use sites, we split live ranges at these program points, and rely on \sigmafuns to merge them back, as we see in Figure~\ref{fig:classInference}(e).
 The use-def chains that we derive from the program representation lead naturally to a constraint system, which we show in Figure~\ref{fig:classInference}(f), where $[v_j]$ denotes the set of methods associated with variable $v_j$.
 A fix-point to this constraint system is a solution to our data-flow problem.
 This instance of class inference is a Partitioned Variable Problem~(PVP)~\footnote{Actually class inference is no more a PVP as soon as we want to propagate the information through copies.}, because the data-flow information associated with a variable $v$ can be computed independently from the other variables.
@@ -545,7 +545,7 @@ $v$, as we see in line 11, because we want to stay in SSA form in order to
 have access to a fast liveness check as described in Chapter~\ref{chapter:ssa_tells_nothing_of_liveness}.
 Finally, in lines 17-23 we actually insert the new definitions of $v$.
 These new definitions might be created by $\sigma$ functions (due to $\SS_v$ or
-to the splitting in lines 3-9); by $\phi$-functions (due to $\SS_v$ or to the
+to the splitting in lines 3-9); by \phifuns (due to $\SS_v$ or to the
 splitting in lines 10-16); or by parallel copies.
 
 \begin{figure}[t!]
@@ -606,11 +606,11 @@ If the stack is empty, this means that the variable is not defined at this point
 The renaming process replaces the uses of undefined variables by $\bot$ (line~3). 
 We have two methods, {\sf stack.set\_use} and {\sf stack.set\_def} that build
 the chains of relations between variables.
-Notice that sometimes we must rename a single use inside a $\phi$-function,
+Notice that sometimes we must rename a single use inside a \phifun,
 as in lines~19-20 of the algorithm.
 For simplicity we consider this single use as a simple
 assignment when calling {\sf stack.set\_use}, as one can see in line 20.
-Similarly, if we must rename a single definition inside a $\sigma$-function, then we treat it as a simple assignment, like we do in lines 15-16 of the algorithm.
+Similarly, if we must rename a single definition inside a \sigmafun, then we treat it as a simple assignment, like we do in lines 15-16 of the algorithm.
 
 \begin{figure}[t!]
 \begin{small}
@@ -642,11 +642,11 @@ $_{20}$ & \1  \2 remove \var{inst}\\
 
 \subsection{Dead and Undefined Code Elimination}
 
-Just as Algorithm~\ref{alg:classical_construction_algorithm:pruning}, the algorithm in Figure~\ref{fig:clean} eliminates $\phi$-functions and parallel copies that define variables not actually used in the code. By symmetry, it also eliminates $\sigma$-functions  and parallel copies  that use variables not actually defined in the code.
+Just as Algorithm~\ref{alg:classical_construction_algorithm:pruning}, the algorithm in Figure~\ref{fig:clean} eliminates \phifuns and parallel copies that define variables not actually used in the code. By symmetry, it also eliminates \sigmafuns  and parallel copies  that use variables not actually defined in the code.
 We mean by ``actual'' instructions, those instructions that already existed in the program before we transformed it with {\sf split}.
 In line~3 we let ``web'' be the set of versions of $v$, so as to restrict the cleaning process to variable~$v$, as we see in lines~4-6 and lines~10-12.
 The set ``active'' is initialized to actual instructions in line~4.
-Then, during the loop in lines~5-8 we add to active $\phi$-functions, $\sigma$-functions, and copies that can reach actual definitions through use-def chains.
+Then, during the loop in lines~5-8 we add to active \phifuns, \sigmafuns, and copies that can reach actual definitions through use-def chains.
 The corresponding version of $v$ is then marked as \emph{defined} (line~8).
 The next loop, in lines 11-14 performs a similar process, this time to add to the active set instructions that can reach actual uses through def-use chains.
 The corresponding version of $v$ is then marked as \emph{used} (line~14).
@@ -658,28 +658,28 @@ Finally every useless $\phi$, $\sigma$, or copy functions are removed by lines~1
 \label{sub:special}
 
 %TODO: we need to explain how to get rid of copies in parallel with another instruction here.
-\paragraph{Implementing $\sigma$-functions: }
-The most straightforward way to implement $\sigma$-functions, in a compiler that already supports the SSA form, is to represent them by $\phi$-functions.
-In this case, the $\sigma$-functions can be implemented as single arity $\phi$-functions.
-As an example, Figure~\ref{fig:sigImpl}(a) shows how we would represent the $\sigma$-functions of Figure~\ref{fig:classInference}(d). 
-If $l$ is a branch point with $n$ successors that would contain a $\sigma$-function $(v_1:l^1, \ldots, v_n:l^n) =\sigma(v)$, then, for each successor $l^j$ of $l$, we insert at the beginning of $l^j$ an instruction $v_j = \phi(v:l)$.
-Notice that it is possible that $l^j$ already contains a $\phi$-function for $v$.
+\paragraph{Implementing \sigmafuns: }
+The most straightforward way to implement \sigmafuns, in a compiler that already supports the SSA form, is to represent them by \phifuns.
+In this case, the \sigmafuns can be implemented as single arity \phifuns.
+As an example, Figure~\ref{fig:sigImpl}(a) shows how we would represent the \sigmafuns of Figure~\ref{fig:classInference}(d). 
+If $l$ is a branch point with $n$ successors that would contain a \sigmafun $(v_1:l^1, \ldots, v_n:l^n) =\sigma(v)$, then, for each successor $l^j$ of $l$, we insert at the beginning of $l^j$ an instruction $v_j = \phi(v:l)$.
+Notice that it is possible that $l^j$ already contains a \phifun for $v$.
 This case happens when the control flow edge $l \rightarrow l^j$ is {\em critical}.
 A critical edge links a basic block with several successors to a basic block with several predecessors.
-If $l^j$ already contains a $\phi$-function $v' = \phi(\ldots, v_j, \ldots)$, then we rename $v_j$ to $v$.
+If $l^j$ already contains a \phifun $v' = \phi(\ldots, v_j, \ldots)$, then we rename $v_j$ to $v$.
 
 \begin{figure}[t!]
 \centering
 \includegraphics[width=\textwidth]{sigImpl}
-\caption{(a) getting rid of copies and $\sigma$-functions; (b) implementing $\sigma$-functions via single arity $\phi$-functions.}
+\caption{(a) getting rid of copies and \sigmafuns; (b) implementing \sigmafuns via single arity \phifuns.}
 \label{fig:sigImpl}
 \end{figure}
 
 \paragraph{SSI Destruction: }
-Traditional instruction sets do not provide $\phi$-functions nor $\sigma$-functions.
+Traditional instruction sets do not provide \phifuns nor \sigmafuns.
 Thus, before producing an executable program, the compiler must implement these instructions.
-We have already seen in Chapter~\ref{chap:classical_construction} how to replace $\phi$-functions with actual assembly instructions; however, now we must also replace $\sigma$-functions and parallel copies.
-A simple way to eliminate all the $\sigma$-functions and parallel copies is via copy-propagation.
+We have already seen in Chapter~\ref{chap:classical_construction} how to replace \phifuns with actual assembly instructions; however, now we must also replace \sigmafuns and parallel copies.
+A simple way to eliminate all the \sigmafuns and parallel copies is via copy-propagation.
 In this case, we copy-propagate the variables that these special instructions define.
 As an example, Figure~\ref{fig:sigImpl}(b) shows the result of copy folding applied on Figure~\ref{fig:sigImpl}(a).
 
@@ -691,7 +691,7 @@ Many compiler textbooks describes the theoretic basis of the notions of lattice,
 For a comprehensive overview of these concepts, including algorithms and formal proofs, we refer the interested reader to Nielson {\em et al.}'s book~\cite{Nielson05} on static program analysis.
 
 The original description of the intermediate program representation known as Static Single Information form was given by Ananian in his Master's thesis~\cite{Ananian99}.
-The notation for $\sigma$-functions that we use in this chapter was borrowed from Ananian's work.
+The notation for \sigmafuns that we use in this chapter was borrowed from Ananian's work.
 The SSI program representation was subsequently revisited by Jeremy Singer in his PhD thesis~\cite{Singer06}.
 Singer proposed new algorithms to convert programs to SSI form, and also showed how this program representation could be used to handle truly bidirectional data-flow analyses.
 We did not discuss bidirectional data-flow problems, but the interested reader can find examples of such analyses in Khedker {\em et al.}'s work~\cite{Khedker99}.
