@@ -2,10 +2,66 @@
 \inputprogress
 \numberofpages{6}
 \label{chap:alternative_ssa_destruction_algorithm}
-Describes the context: cannot necessarily split critical edges, some variables have renaming constraints, some instructions have renaming constraints that we want to handle during SSA destruction (some may be handled during register allocation).
+\index{interference}
+\index{ssa destruction}
 
-Renaming constraints are handled using copies around constrained instructions. Go to conventional-SSA using Sreedhar's~I technique. Outline the limitation of this technique when dealing with condional jump instruction that define a variable itself; when dealing with renaming constraints for variables that interfere...
+\section{Introduction}
+Chapter~\ref{chapter:classical_construction_algorithm} provides a basic algorithm for destructing SSA that suffers from several limitations and drawbacks: first, it works under implicit assumptions that are not necessarily fulfilled at machine level; second, it must rely on subsequent phases to improve back the bad code quality it generates; finally, it increases subsequently the size of the intermediate representation, thus making it not suitable for just-in-time compilation.   
 
-Define our ``ultimate'' notion of interference using value. Build the interference graph (provide the simplified pseudo-code). Do coalescing. Refer to CGO'09 paper for issues concerning JIT compilation. Remove $\phi$-functions and perform renaming. Provide a more sophisticated pseudo-code (than for \ref{sec:classical_destruction}) for parallel copies sequentialisation (that can be performed before or after coalescing and $\phi$ removal.
+{\bf Machine level code}
+SSA at machine level complicates the process of destruction that can potentially lead to bugs if not performed carefully. The algorithm described in Section~\ref{sec:classical_construction_algorithm:destruction} involves the splitting of every (critical) edges. Unfortunately, because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not permit the splitting of a given edge. Fortunately, as we will see further, this obstacle can easily be overcame. But then it becomes essential to be able to append a copy operation at the very end of a basic block which might neither be possible. Also, care must be taken with duplicated edges, i.e. when the same basic block appears twice in the list of predecessors.
+This can occur after control flow graph structural optimizations like
+dead code elimination or empty block elimination.
+In such case, the edges should be considered as critical and then split.
+
+SSA imposes a strict discipline on variable naming: every ``name'' must be associated to only one definition which is obviously most of the time not compatible with the instruction set of the targeted architecture. As an example, a two-address mode instruction, such as auto-increment would enforce its definition to use the same resource than one of its arguments (defined elsewhere), thus imposing two different definitions for the same temporary variable. This is why some prefer using, for SSA construction, the notion of versioning\index{variable version} in place of renaming. Implicitly, two versions of the same original variable should not interfere, while two names can. The former simplifies the SSA destruction phase, while the latter simplifies and allows more transformations to be performed under SSA. Apart from dedicated registers for which optimizations are usually very careful in changing there live-range, register constraints related to calling conventions or instruction set architecture might be handled by the register allocation phase. However, there are some cases where we want those constraints to be expressed earlier (such as for the pre-pass scheduler), in which case the SSA destruction phase might have to cope with them.
+
+{\bf Code quality}
+The natural way of getting rid of \phifuns and expressing register constraints is through the insertion of copies (when edge-splitting is not mandatory as discussed above). If done carelessly, the resulting code will contain many temporary-to-temporary copy operations. In theory, reducing the frequency of these copies is the role of the coalescer during the register allocation phase.
+A few memory and time-consuming existing coalescing heuristics mentioned in Chapter~\ref{chapter:register_allocation} can handle the removal of these copies effectively. The difficulty comes both from the size of the interference graph (the information of colorability is spread out) and the presence of many overlapping live-ranges that carry the same value (so non-interfering).
+Coalescing can also, with less effort, be performed prior to the register allocation phase. As opposed to a (so-called conservative) coalescer during register allocation, this aggressive coalescing would not cope with the interference graph colorability. As we will see, strict SSA form is really helpful for both computing and representing equivalent variables. This makes the SSA destruction phase the good candidate for eliminating (or not inserting) those copies.
+
+{\bf Speed and Memory Footprint} 
+The cleanest and simplest way to perform SSA destruction with good code quality is to first insert copy instructions to make the SSA form conventional, then take advantage of the SSA form to run efficiently aggressive coalescing (without breaking the conventional property), before eventually renaming \phiwebs\index{\phiweb} and getting rid of \phifuns. Unfortunately this approach will lead, in a transitional stage, to an intermediate representation with a substantial number of variables: the size of the liveness sets and interference graph classically used to perform coalescing become prohibitively large for dynamic compilation. To overcome this difficulty one can compute liveness and interference on demand which, as we already mentioned, is made simpler by the use of SSA form. Remains the process of copy insertion itself that might still take a substantial amount of time. To fulfill constraints imposed by just-in-time compilation, the idea is to \emph{virtually} insert those copies, and only \emph{effectively} insert the un-coalesced ones.    
+
+This chapter addresses those three issues: handling of machine level constraints, code quality (elimination of copies), and algorithm efficiency (speed and memory footprint). The layout falls into three corresponding sections.
+
+\section{Machine-code level Constraints}
+\section{Code Quality}
+\section{Speed and Memory Footprint}
+\section{Further Readings}
+
+\section{Notes (to be removed)}
+
+Define our ``ultimate'' notion of interference using value. Build the interference graph (provide the simplified pseudo-code). Do coalescing. Refer to CGO'09 paper for issues concerning JIT compilation. Remove \phifuns and perform renaming. Provide a more sophisticated pseudo-code (than for \ref{sec:classical_destruction}) for parallel copies sequentialisation (that can be performed before or after coalescing and $\phi$ removal.
+
+Even this extremely conservative SSA destruction algorithm
+can potentially lead to potential bugs,
+particularly at the code generation stage.
 
 
+%% +Pour l'implémenter on différentie resources et valeurs . La copie a->b
+%% +signifie que la valeur dans la resource a doit être copiee dans la
+%% +resource b.  On racourcit en disant que la valeur ``a'' initialement
+%% +dans la resource ``a'' doit être copiee dans la resource
+%% +``b''.\\ Ainsi on maintient pour chaque valeur (v) dans quelle
+%% +resource elle est disponible (Rcur(v)) et pour chaque resource (r)
+%% +quelle valeur (s'il y en a une) elle devra contenir à la fin (Vend(r))
+%% +(predecesseur dans le graphe).\\ On construit initialement et
+%% +maintient la liste des feuilles ``leaves'' ie de resources qui ne
+%% +contiennent pas de valeur (où bien la valeur est disponible
+%% +ailleur). On est pour cela obligé de parcourir la liste des valeurs et
+%% +marquer les resource qui contiennent une valeur. \\ On construit une
+%% +autre liste ``todo'' qui est la liste des resources qui doivent avoir
+%% +une valeur à la fin et qui ne contiennent pas cette valeur.\\ Si
+%% +leaves n'est pas vide on pull une feuille b, et donc une copie de a->b
+%% +avec a=Rcur(Vend(b)). On génère cette copie, et on set
+%% +Rcur(Vend(b)):=b (la valeur Vend(b) qui était dans a est maintenant
+%% +dans b). a est donc libérée de la valeur Vend et on push  a dans
+%% +leaves.\\ Si leaves est vide, c'est soit que c'est terminé, soit qu'il
+%% +y a un cycle sans duplication. Dans ce cas, on pull une resource a. Si
+%% +Rcur(Vend(a))==a, a a déjà été traité, on passe. Sinon, on est en
+%% +présence d'un cycl avec Rcur(a)=a. on génère une nouvelle variable
+%% +(resource) a', on genère la copie a->a'. On met à jour Rcur(a):=a'. A
+%% +est libéré, on le met dans leaves.
+ 
