@@ -1,4 +1,4 @@
-\chapter{Classical construction/update/destruction algorithm \Author{J. Singer \andAuthor F. Rastello}}
+\chapter{Standard Construction and Destruction Algorithms \Author{J. Singer \andAuthor F. Rastello}}
 \label{chap:classical_construction}
 \inputprogress
 
@@ -23,7 +23,7 @@ one that satisfies the SSA constraints. In general, this transformation
 occurs as one of the
 earliest phases in the middle-end of an optimizing compiler, when the program
 has been converted to three-address intermediate code.
-SSA \emph{destruction} is sometimes called out-of-SSA translation. This phase
+SSA \emph{destruction} is sometimes called out-of-SSA translation. This step
 generally
 takes place in an optimizing compiler after all SSA optimizations have
 been performed, and prior to code generation. However note that there are
@@ -37,7 +37,7 @@ The algorithms presented in this chapter are
 based on material from the seminal research papers on SSA.
 These original algorithms are 
 straightforward to implement and have acceptable efficiency.
-For these reasons, the algorithms
+Therefore such algorithms
 are widely implemented in current compilers.
 Note that more
 efficient, albeit more complex, alternative algorithms have been devised.
@@ -162,7 +162,7 @@ i.e.\ the original algorithm assumes an \emph{implicit} definition of every
 variable at the entry node $r$.
 
 
-\subsubsection*{\phiop\ Placement}
+\subsubsection*{\phiop\ Insertion}
 
 This concept of dominance frontiers 
 naturally leads to a
@@ -171,8 +171,8 @@ on a per-variable basis.
 For a given variable $v$, we place \phiops\ at the
 iterated dominance frontier $\iDF(D_v)$ where
 $D_v$ is the set of nodes containing definitions of $v$.
-This leads to the construction of a form that has 
-the dominance property, i.e. where each variable's definition dominates its entire live-range.
+This leads to the construction of SSA form that has 
+the dominance property, i.e.\ where each variable's definition dominates its entire live-range.
 
 Consider again our running example from Figure 
 \ref{fig:classical_construction_algorithm:examplecfg}. The set of nodes containing definitions
@@ -286,7 +286,7 @@ frontier. This leads to the pseudo-code given in
 Algorithm~\ref{alg:classical_construction:df}.
 
 Since the iterated dominance frontier is simply the transitive closure
-of the dominance frontier, then we can define the $iDF-graph$ as the transitive closure of the $DF$-graph. 
+of the dominance frontier, then we can define the $iDF$-graph as the transitive closure of the $DF$-graph. 
 We can compute the iterated dominance frontier for each variable independently, as outlined in this chapter, or `cache' it to avoid repeated computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chap:alternative_ssa_construction_algorithms}.
 
 \begin{figure}
@@ -323,7 +323,7 @@ then use-def chains are aligned with the CFG dominator tree.
 In other words,
 \emph{the single definition that reaches each use dominates that use}.
 
-\subsubsection*{Renaming Phase}
+\subsubsection*{Renaming}
 \newcommand\reachingDef[1]{#1.\mathrm{reachingDef}}
 To obtain the desired property of a static single assignment per variable,
 it is necessary to perform variable renaming, which
@@ -355,24 +355,29 @@ gives a walk-through example of this algorithm,
 only considering variable $x$. The labels $l_i$ mark
 instructions in the program that mention $x$, shown in 
 Figure \ref{fig:classical_construction_algorithm:renaming}.
+The table records (1) when $\reachingDef{x}$ is updated
+from $x_\mathrm{old}$ into
+$x_\mathrm{new}$ due to a call of updateReachingDef,
+and (2) when $\reachingDef{x}$ is $x_\mathrm{old}$ before
+a definition statement, then $x_\mathrm{new}$ afterwards.
 
 \begin{table}
 \begin{tabular}{c|c|l}
-Basic-block & operand &  $\reachingDef{x}$ \\ \hline
-Entry & use of $l_1$ & $\bot$\\
-$A$ & def of $l_1$ &  $\bot$ then $x_1$\\
-$B$ & def of $l_2$ &  $x_1$ then $x_2$\\
-$B$ & use of $l_5$ & $x_2$\\
-$C$ & use of $l_3$ & $x_2$ updated into $x_1$\\
-$C$ & def of $l_4$ &  $x_1$ then $x_3$\\
-$C$ & use of $l_5$ & $x_3$\\
-$D$ & def of $l_5$ & $x_3$ updated into $x_1$ then $x_4$\\
-$D$ & use of $l_6$ & $x_4$\\
-$D$ & def of $l_6$ & $x_4$ then $x_5$\\
-$D$ & use of $l_1$ & $x_5$\\
-$D$ & use of $l_7$ & $x_5$\\
-$E$ & def of $l_5$ & $x_5$ then $x_6$\\
-$E$ & use of $l_8$ & $x_6$
+Basic-block & $x$ mention &  $\reachingDef{x}$ \\ \hline
+Entry & use at $l_1$ & $\bot$\\
+$A$ & def at $l_1$ &  $\bot$ then $x_1$\\
+$B$ & def at $l_2$ &  $x_1$ then $x_2$\\
+$B$ & use at $l_5$ & $x_2$\\
+$C$ & use at $l_3$ & $x_2$ updated into $x_1$\\
+$C$ & def at $l_4$ &  $x_1$ then $x_3$\\
+$C$ & use at $l_5$ & $x_3$\\
+$D$ & def at $l_5$ & $x_3$ updated into $x_1$ then $x_4$\\
+$D$ & use at $l_6$ & $x_4$\\
+$D$ & def at $l_6$ & $x_4$ then $x_5$\\
+$D$ & use at $l_1$ & $x_5$\\
+$D$ & use at $l_7$ & $x_5$\\
+$E$ & def at $l_5$ & $x_5$ then $x_6$\\
+$E$ & use at $l_8$ & $x_6$
 \end{tabular}
 \caption{\label{table:classical_construction_algorithm:renaming}Walkthrough of renaming for variable $x$ in example CFG}
 \end{table}
@@ -444,12 +449,12 @@ point, rather than the slot-based approach outlined above.
 
 In the stack-based algorithm, 
 a stack value is pushed when a variable definition is
-processed (while we explicitly update the reachingDefs field at this point).
+processed (while we explicitly update the reachingDef field at this point).
 The top stack value is peeked when a variable use is encountered
-(we read from the reachingDefs field at this point).
+(we read from the reachingDef field at this point).
 Multiple stack values may be popped when moving to a different node
 in the dominator tree 
-(we always check whether we need to update the reachingDefs field
+(we always check whether we need to update the reachingDef field
 before we read from it).
 
 While the slot-based algorithm requires more memory, it can take advantage of an existing variable's working field, and be more efficient in practice. 
@@ -462,7 +467,7 @@ SSA properties that were introduced in
 Chapter \ref{chap:properties_and_flavours}.
 
 \begin{itemize}
-\item It is \textit{minimal}, see Section \label{sec:properties_and_flavors:minimality}.
+\item It is \textit{minimal}, see Section \ref{sec:properties_and_flavors:minimality}.
 After the \phiop\ insertion phase,
 but before variable renaming, the CFG contains the minimal 
 number of inserted \phiops\ to achieve the property that exactly
@@ -476,7 +481,21 @@ The transformation that renames all $\phi$-related variables into a
 unique representative name, and then removes all \phiops\ is a correct SSA-destruction algorithm.
 \item Finally, it has the \textit{dominance} property, see Section
 \ref{sec-prop-dominance}.
-Each variable use is dominated by its unique definition. This is due to the use during the $\phi$-placement phase of iterated dominance frontier instead of join set. Whenever the iterated dominance frontier of the set of definition points of a variable differs from the join set, then at least one program point can be reached both by $r$ (the entry of the CFG) and one of the definition points. In other words, as in Figure~\ref{fig:classical_construction_algorithm:examplecfg}, one of the uses of the \phiop\ inserted in block $A$ for $x$ does not have any actual reaching definition that dominates it. This corresponds to the undef value used to initialize reachingDef in the renaming phase pseudo code. Actual implementation can use \texttt{NULL} value, create a fake undefined variable at the entry of the CFG, or create on the fly undef pseudo operations just before the concerned used. We choose to use in this book the undef value, represented with the $\undef$ sign.
+Each variable use is dominated by its unique definition. This is due
+to the use during the $\phi$-placement phase of iterated dominance
+frontier instead of join set. Whenever the iterated dominance frontier
+of the set of definition points of a variable differs from its join
+set, then at least one program point can be reached both by $r$ (the
+entry of the CFG) and one of the definition points. In other words, as
+in Figure~\ref{fig:classical_construction_algorithm:examplecfg}, one
+of the uses of the \phiop\ inserted in block $A$ for $x$ does not have
+any actual reaching definition that dominates it. This corresponds to
+the $\undef$ value used to initialize each reachingDef slot in Algorithm
+\ref{alg:classical:renaming}.
+Actual implementation code can use a \texttt{NULL} value, create a
+fake undefined variable at the entry of the CFG, or create on the fly
+undefined pseudo-operations just before the particular use.
+% We choose to use in this book the undef value, represented with the $\undef$ sign.
 \end{itemize}
 
 
@@ -501,11 +520,11 @@ Then each \phiop\ should have identical names for all its operands,
 and thus can be removed to coalesce the related live-ranges.
 
 We refer to a set of $\phi$-related variables as
-an \phiweb\index{\phiweb}. We recall from
+a \phiweb\index{\phiweb}. We recall from
 Chapter \ref{chap:properties_and_flavours}
 that conventional SSA is defined as a flavor under which each
 \phiweb is interference free. In particular if each \phiwebs constituent
-variables have non-overlapping live ranges then the SSA form is conventional.
+variables have non-overlapping live-ranges then the SSA form is conventional.
 The discovery of \phiwebs can be performed efficiently 
 using the classical \textit{union-find} algorithm 
 with a disjoint-set data structure,
@@ -603,7 +622,7 @@ If we still decide to replace parallel copies into a sequence of simple copies i
 To see that this algorithm converges, one can visualize the parallel copy as a graph where nodes represent resources and edges represent transfer of values: the number of steps is exactly the number of cycles plus the number of non-self edges of this graph. The correctness comes from the invariance of the behavior of $seq; pcopy$. An optimized implementation of this algorithm will be detailed in Chapter~\ref{chapter:alternative_ssa_destruction}.
 
 
-\section{Turning general SSA into minimal/conventional/pruned/dominance property}
+\section{SSA Property Transformations}
 \label{section:classical_construction_algorithm:turning}
 As discussed in Chapter~\ref{chap:properties_and_flavours},
 SSA comes in different flavors. 
@@ -681,7 +700,7 @@ it is generally much faster to first build semi-pruned SSA
 form, rather than minimal SSA form, and then apply
 dead code elimination.
 Semi-pruned SSA form is based on the observation that
-many variables are \emph{local}, i.e. have a single live range that is
+many variables are \emph{local}, i.e. have a single live-range that is
 within a single basic block. Consequently, pruned SSA would not 
 instantiate any $\phi$-functions for these variables.
 Such variables can be identified by a linear traversal
@@ -873,7 +892,7 @@ and trace its history in early compilers literature.
 
 Wolf (FIXME cite) discusses iterative join set calculation in his
 seminal work on efficient data flow analysis.
-Sreedhar and Gao \cite{sreedhar95linear} pioneered
+Sreedhar and Gao \cite{sreedhar95linear} pioneer
 linear-time complexity 
 \phiop\ insertion
 algorithms based on DJ-graphs.
