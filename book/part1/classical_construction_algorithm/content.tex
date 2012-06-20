@@ -697,8 +697,8 @@ can be filtered out: minimal SSA form restricted to the remaining variables give
 \subsubsection*{Pessimistic \phiop\ Insertion}
 
 Construction of minimal SSA,
-as outlined above in Section \ref{sec:classical_construction}, 
-comes with the price of a sophisticated algorithm involving 
+as outlined in Section \ref{sec:classical_construction}, 
+comes at the price of a sophisticated algorithm involving 
 the computation of iterated dominance frontiers. 
 Alternatively, \phiops\ may be inserted in a \textit{pessimistic} fashion,
 as detailed below.
@@ -706,14 +706,20 @@ as detailed below.
 In the pessimistic approach, a \phiop\ is inserted at the start of each CFG node
 (basic block) for each variable that is live at the start of that
 node.
-A less sophisticated, crude %[Appel]
+A less sophisticated, or \textit{crude}, %[Appel]
 strategy is to insert a \phiop\ for
-each variable at the head of each CFG node.
-This means the resulting SSA will not be pruned.
+each variable at the start of each CFG node;
+the resulting SSA will not be pruned.
+When a pessimistic approach is used, many inserted \phiops\ are
+redundant. The application of 
+copy propagation and rule-based \phiop\ rewriting
+removes many of these redundant \phiops.
+
 
 Code transformations such as code motion, or other CFG modifications, 
-can make a minimal SSA program become non-minimal.
-However minimality can be obtained or recovered using 
+can also introduce redundant \phiops, i.e.\
+make a minimal SSA program become non-minimal.
+Minimality can be obtained or recovered using 
 \textit{copy propagation} whenever the CFG is reducible\footnote{
 A CFG is reducible if there are no jumps into the middle of loops
 from the outside, so the only entry to a loop is through its header.
@@ -726,13 +732,13 @@ depth might be necessary for copy propagation),
 variable def-use chains should be pre-computed. 
 As already mentioned in Chapter~\ref{chap:properties_and_flavours}, 
 copy propagation can break the dominance property by propagating
-variable $a$ through \phiops\ of the form $a'=\phi(...)$ where
-all the source operands are syntactically equal to either $a$ or $\undef$. 
+variable $a_j$ through \phiops\ of the form $a_i=\phi(a_{x_1},\ldots,a_{x_k})$ where
+all the source operands are syntactically equal to either $a_j$ or $\undef$. 
 If we want to avoid breaking the dominance property we simply have to
 avoid the application of copy propagation that involves $\undef$. 
-A more interesting rule is the one that propagates $a$ through a
-\phiop\ of the form $a'=\phi(...)$ where all the source operands are
-syntactically equal to either $a$ or $a'$. 
+A more interesting rule is the one that propagates $a_j$ through a
+\phiop\ of the form $a_i=\phi(a_{x_1},\ldots,a_{x_k})$ where all the source operands are
+syntactically equal to either $a_i$ or $a_j$. 
 These \phiops\ turn out to be `identity' operations, where all the
 source operands become syntactically identical and equivalent to the 
 destination operand. As such, they can be trivially elided from the program.
@@ -743,23 +749,26 @@ in this context, a subgraph of a reducible graph:
 all nodes except those that can be reached by two different paths (from
 actual non-\phiop\ definitions) can be simplified by iterative 
 application of 
-$T1$ (removal of self edge) and 
-$T2$ (merge of a node to its unique predecessor) graph reductions.
+\emph{T1} (removal of self edge) and 
+\emph{T2} (merge of a node with its unique predecessor) graph reductions.
 %% FIXME - JS - would a diagram be useful here - to show the
 Figure \ref{fig:t1t2transforms} illustrates these graph transformations.
 %% transformations
 %% before/after ...?
 To be precise, we can simplify an SSA program as follows:
 \begin{itemize}
-\item Remove any \phiop\ $a'=\phi(a_1,...,a_n)$ where all $a_i$
-  are syntactically equal. This corresponds to $T1$ reduction.
-\item Remove \phiop\ $a'=\phi(a_1,...,a_n)$ where each $a_i$
-  is either syntactically equal to $a'$ or to $a_1$. This corresponds to $T2$ followed by $T1$ reduction.
+\item Remove any \phiop\ $a_i=\phi(a_{x_1},\ldots,a_{x_k})$ where all $x_n
+  \in \{ i \}$. This corresponds to \emph{T1} reduction.
+\item Remove \phiop\ $a_i=\phi(a_{x_1},\ldots,a_{x_k})$ where all
+ $x_n \in \{ i, j \}$. Replace all occurrences of $a_i$ by $a_j$.
+ This corresponds to \emph{T2} possibly followed by
+ \emph{T1} reduction.
 \end{itemize}
 
 \begin{figure}
-\includegraphics[width=5cm]{t1_t2_transforms.pdf}
-\caption{\label{fig:t1t2transforms}T1 and T2 rewrite rules for graph reduction}
+\includegraphics[width=5cm,trim=1cm 8cm 1cm 0cm]{t1_t2_transforms.pdf}
+\caption{\label{fig:t1t2transforms}\emph{T1} and \emph{T2} rewrite
+  rules for graph reduction, applied to def-use relations between SSA variables}
 \end{figure}
 
 This approach can be implemented using a work queue, 
@@ -835,7 +844,8 @@ early work on data flow representations by Shapiro and Saint
 There are numerous published descriptions of alternative algorithms
 for SSA construction, in particular for the \phiop\ insertion phase.
 The pessimistic approach that first inserts \phiops\ at all control
-flow merge points and then removes unnecessary ones using simple T1/T2
+flow merge points and then removes unnecessary ones using simple
+\emph{T1}/\emph{T2}
 rewrite rules was proposed by Aycock
 and Horspool \cite{aycock00simple}. 
 Brandis and M\"{o}ssenb\"{o}ck 
@@ -846,8 +856,9 @@ well structured high-level source code.
 Throughout this textbook, we consider the more
 general case of SSA construction from arbitrary CFGs.
 
-A reducible CFG is one that will collapse to a single node when 
-it is transformed using repeated application of T1/T2 transforms.
+A \textit{reducible} CFG is one that will collapse to a single node when 
+it is transformed using repeated application of \emph{T1}/\emph{T2}
+rewrite rules.
 Aho et al \cite{aho86compilers} describe the concept of reducibility
 and trace its history in early compilers literature.
 
