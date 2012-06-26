@@ -253,8 +253,10 @@ In the previous sections we sketched the foundations of a framework for dealing 
 
 GVN is normally used as a way to perform \emph{redundancy elimination} which means removing redundant expression computations from a program, typically storing the result of a computation in a temporary variable and reusing it later instead of performing the computation again.
 As the name suggests, GVN works assigning a unique number to every expression in the program with the idea that expression identified by the same number are guaranteed to give the same result.
+This value number is obtained using a hash function represented here as $\GVN{key}$.
+To identify identical expressions, each expression tree is hashed bottom up: as an example, for $p_1+1$, $p_1$ and $1$ are replaced by their respective value numbers, then the expression is put into canonical form, and finally hashed. Which ends up to $\GVN{+(\GVN{b},\GVN{1})}$, as $\GVN{p_1}=\GVN{b}$ in our example.
 If the program is in SSA form computing value numbers that satisfy the above property is straightforward: variables are defined only once, therefore two expressions that apply the same operator to the same SSA variables are guaranteed to give the same result and so can have the same value number.
-While computing global value numbers for code that manipulates scalar variables is benefical because it can be used to implement redundancy elimination, applying GVN to virtual variables has additional benefits.
+While computing global value numbers for code that manipulates scalar variables is beneficial because it can be used to implement redundancy elimination, applying GVN to virtual variables has additional benefits.
 
 \begin{figure}
 \subfloat[Initial C code]{
@@ -263,47 +265,70 @@ While computing global value numbers for code that manipulates scalar variables 
    \begin{algorithm}[H]
      $p=b$\;
      $q=b$\;
-     $*p=\dots$\;
+     $*p=3$\;
      $p=p+1$\;
      $\dots=*p$\;
      $q=q+1$\;
-     $*p=\dots$\;
+     $*p=4$\;
      $\dots=*q$\;
    \end{algorithm}
   \end{minipage}
-}
+}\hfill
 \subfloat[with one virtual variable]{
   \begin{minipage}{0.3\textwidth}
     \begin{algorithm}[H]
      $p_1=b$\;
      $q_1=b$\;
-     $*p_1=\dots \parallel\ v_1^*=\chi(v_0^*)$\;
+     $*p_1=3 \parallel\ v_1^*=\chi(v_0^*)$\;
      $p_2=p_1+1$\;
      $\dots=*p_2 \parallel\ \mu(v_1^*)$\;
      $q_2=q_1+1$\;
-     $*p_2=\dots \parallel\ v_2^*=\chi(v_1^*)$\;
+     $*p_2=4 \parallel\ v_2^*=\chi(v_1^*)$\;
      $\dots=*q_2 \parallel\ \mu(v_2^*)$\;
    \end{algorithm}
   \end{minipage}
-}
-\subfloat[with two virtual variables]{
-  \begin{minipage}{0.4\textwidth}
+}\hfill
+\subfloat[HSSA statements]{
+  \begin{minipage}{0.33\textwidth}
     \begin{algorithm}[H]
-     $p_1=b$\;
-     $q_1=b$\;
-     $*p_1=\dots \parallel\ x_1^*=\chi(x_0^*)$\;
-     $p_2=p_1+1$\;
-     $\dots=*p_2 \parallel\ \mu(y_0^*)$\;
-     $q_2=q_2+1$\;
-     $*p_2=\dots \parallel\ y_1^*=\chi(y_0^*)$\;
-     $\dots=*q_2 \parallel\ \mu(y_1^*)$\;
+     $h_1=h_0$\;
+     $h_2=h_0$\;
+     $h_5=h_3 \parallel\ h_4=\chi(\GVN{v_0^*})$\;
+     $h_8=h_7$\;
+     $\dots=h_{10} \parallel\ \mu(h_4)$\;
+     $h_{11}=h_7$\;
+     $h_{14}=h_{12} \parallel\ h_{13}=\chi(h_4)$\;
+     $\dots=h_{14} \parallel\ \mu(h_{13})$\;
    \end{algorithm}
   \end{minipage}
 }
-\caption{\label{fig:hssa:versioning}Some code after variables versioning.}
+\\
+\begin{center}
+\subfloat[Hash Table]{
+  \begin{tabular}{rc|c|l}
+    &key                   & hash       & value\\ \hline
+    &$b$                   & $h_0$   &  $b$\\
+    &$p_1$                 & $h_1$   &  $h_0$\\
+    &$q_1$                 & $h_2$   &  $h_0$\\
+    &$3$                   & $h_3$   &  $const(3)$\\
+    &$v^*_1$               & $h_4$   &  $v^*_1$\\
+    $ivar(*p_1,v^*_1)\ \leadsto$ &$ivar(*h_0,v^*_1)$  & $h_5$   & $h_3$\\
+    &$1$                   & $h_6$   & $const(1)$\\
+    $p_1+1\ \leadsto$ &$ +(h_0,h_6)$  & $h_7$   & $+(h_0,h_6)$\\
+    &$p_2$                 & $h_8$   & $h_7$\\
+    $ivar(*p_2,v^*_1)\ \leadsto$& $ivar(*h_7,v^*_1)$      & $h_{10}$ &$ivar(*h_7,v^*_1)$\\
+    &$q_2$                 & $h_{11}$ & $h_7$\\
+    &$4$                   & $h_{12}$ & $const(4)$\\
+    &$v^*_2$               & $h_{13}$   &  $v^*_2$\\
+    $ivar(*p_2,v^*_2)\ \leadsto$& $ivar(*h_7,v^*_2)$      & $h_{14}$ &$h_{12}$\\
+  \end{tabular}
+}
+\end{center}
+\caption{\label{fig:hssa:versioning}Some code after variables versioning, its corresponding HSSA form along with its hash table entries. $q_1+1$ that simplifies into $ +(h_0,h_6)$ will be hashed to $h_7$, and $ivar(*q_2,v^*_2)$ that simplifies into $ivar(*h_7,v^*_2)$ will be hashed to $h_{14}$.
+}
 \end{figure}
 
-First of all it can be used to determine when two address expressions compute to the same address: this is guaranteed if they have the same global value number. In our example, $p_2$ and $q_2$ will have the same value number $\GVN{\GVN{b}+\GVN{1}}$ while $p_1$ will not.
+First of all it can be used to determine when two address expressions compute to the same address: this is guaranteed if they have the same global value number. In our example, $p_2$ and $q_2$ will have the same value number $h_7$ while $p_1$ will not.
 This allows indirect memory operands that have same GVN for their address expressions and same virtual variable version to become a single entity in the representation. This puts them in the same rank as scalar variables and allows the transparent application of SSA based optimizations on indirect memory operations.
 For instance, in the vector modulus computation described above every occurrence of the expression "p-\textgreater x" will always have the same GVN and therefore will be guaranteed to return the same value, allowing the compiler to emit code that stores it in a temporary register instead of performing the redundant memory reads (the same holds for "p-\textgreater y").
 Similarly, consider the example of Figure~\ref{fig:hssa:versioning}. Loads of lines 5 and~8 can not be considered as redundant because the versions for $v$ ($v_1^*$ then $v_2^*$) are different. On the other hand the load of line~8 can be safely avoided using a rematerialization of the value computed in line~7 as both the version for $v$ ($v_2^*$) and the value number for the memory operands are identical. 
@@ -313,19 +338,16 @@ Another advantage of GVN in this context is that it enables uniform treatment of
 This happens naturally because each node of the expression is identified by its value number, and the fact that it is used as an address in another expression does not raise any additional complication.
 
 Having explained why HSSA uses GVN we are ready to explain how the HSSA intermediate representation is structured.
-A program in HSSA form is a sequence of statements (assignments and procedure calls), where the expressions cannot have side effects and are composed by five kinds of nodes:
-\begin{itemize}
-\item Three kinds of leaf nodes: constants, addresses and variables.
-\item Operator nodes.
-\item Indirect variables ("{\em ivar}"), which exhibit the properties of both operator nodes and variable nodes.
-\end{itemize}
+A program in HSSA keeps its CFG structure, with basic-blocks made of a sequence of statements (assignments and procedure calls), but left and right hand-side each statement are replaced by their corresponding entry in the hash table. 
+Each constant, address and variable (both scalar and virtual) finds its entry in the hash table.
+As already explained, expressions are also hashed using the operator and the global value number of its operands.
+Each operand that corresponds to an indirect memory operation gets a special treatment on two aspects.
+First of all, it is considered semantically both as an expression (that has to be computed) and as a memory location (just as other variables).
+Second, its entry in the hash table is made up of both the address expression and its corresponding virtual variables version.
+This allows, as illustrates lines~3, 7, and~8 of Example~\ref{} two entries with identical value number, will be known to ``carry'' the same value.
+Such entries are referred as \emph{ivar} node, for \emph{indirect variables} so as to recall its operational semantic and distinguish them from the original program scalar variables. 
 
-{\em Ivar} nodes correspond to indirect memory operations.
-They have a double role because as operators they are IR nodes (they are not leaf nodes), but as "variables" they represent a memory location that holds a value (identified by its value number).
-These nodes correspond to the occurrences of the "*" operator, and their memory location is the one referred to by the address expression (the argument of the "*" operator).
-We call them {\em indirect} variables to distinguish them from the original program scalar variables, which are accessed directly and are leaf nodes in the IR.
-
-It should be noted that ivar nodes, considered as code, are operations and not variables: the compiler back end, when processing them, will emit indirect memory accesses to the address passed as their operand.
+It should be noted that ivar nodes, in terms of code generation, are operations and not variables: the compiler back end, when processing them, will emit indirect memory accesses to the address passed as their operand.
 While each ivar node is \emph{related} to a virtual variable (the one corresponding to its address expression), and its GVN is determined taking into account the SSA version of its virtual variable, the virtual variable has no real counterpart in the program code.
 In this sense virtual variables are just an aid to apply aliasing effects to indirect operations, be aware of liveness and perform SSA renaming (with any of the regular SSA renaming algorithms).
 However, even thought virtual variables do not contribute to the emission of machine code, their use-def links can be examined by optimization passes to determine the program data dependency paths (just like use-def links of scalar variables).
