@@ -513,19 +513,20 @@ it is necessary to eliminate \phifuns\ since these
 are not executable machine instructions.
 This elimination phase is known as \textit{SSA destruction}. 
 
-Since a freshly constructed, untransformed SSA code is conventional, its destruction is straightforward.
+Since freshly constructed, untransformed SSA code is conventional, its destruction is straightforward.
 One simply has to rename all 
 $\phi$-related variables (source and destination operands of
 a single \phifun\ are related)
 into a unique representative variable.
-Then each \phifun\ should have identical names for all its operands,
+Then each \phifun\ should have syntactically identical
+names for all its operands,
 and thus can be removed to coalesce the related live-ranges.
 
 We refer to a set of $\phi$-related variables as
 a \phiweb\index{\phiweb}. We recall from
 Chapter \ref{chap:properties_and_flavours}
 that conventional SSA is defined as a flavor under which each
-\phiweb is interference free. In particular if each \phiwebs constituent
+\phiweb is interference free. In particular if each \phiweb's constituent
 variables have non-overlapping live-ranges then the SSA form is conventional.
 The discovery of \phiwebs can be performed efficiently 
 using the classical \textit{union-find} algorithm 
@@ -565,7 +566,7 @@ edge from $b_1$ to a freshly created basic block
 and by (ii) another edge from this fresh basic block to $b_2$. 
 Algorithm \ref{alg:ssadestruction:splitting} presents
 the corresponding pseudo-code that makes non-conventional SSA conventional. 
-As already mentioned SSA destruction of such form is straightforward. However, this algorithm can be slightly modified to directly destruct SSA by: removing line~\ref{line:api}; replacing $a'_i$ by $a_0$ in the following lines; simply add ``remove the \phifun'' in line~\ref{line:removephi}.
+As already mentioned, SSA destruction of such form is straightforward. However Algorithm \ref{alg:ssadestruction:splitting} can be slightly modified to directly destruct SSA by: removing line~\ref{line:api}; replacing $a'_i$ by $a_0$ in the following lines; adding ``remove the \phifun'' at line~\ref{line:removephi}.
 
 \begin{algorithm}
 \Begin{
@@ -597,11 +598,13 @@ As already mentioned SSA destruction of such form is straightforward. However, t
 
 
 
-We stress that the above destruction technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not permit the splitting of a given edge; second, the resulting code contains many temporary-to-temporary copy operations. In theory, reducing the frequency of these copies is the role of the coalescer during the register allocation phase. A few memory and time-consuming existing coalescing heuristics mentioned in Chapter~\ref{chap:register-allocation} can handle the removal of these copies effectively. Coalescing can also, with less effort, be performed prior to the register allocation phase. As opposed to a (so-called conservative) coalescer during register allocation, this \emph{aggressive} coalescing would not cope with the interference graph colorability. Further, the process of copy insertion itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative_ssa_destruction_algorithm} is to cope both with non-splittable edges and difficulties related with SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
+We stress that the above destruction technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not permit the splitting of a given edge; second, the resulting code contains many temporary-to-temporary copy operations. In theory, reducing the frequency of these copies is the role of the coalescer during the register allocation phase. A few memory- and time-consuming coalescing heuristics mentioned in Chapter~\ref{chap:register-allocation} can handle the removal of these copies effectively. Coalescing can also, with less effort, be performed prior to the register allocation phase. As opposed to a (so-called conservative) coalescer during register allocation, this \emph{aggressive} coalescing would not cope with the interference graph colorability. Further, the process of copy insertion itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chap:alternative_ssa_destruction_algorithm} is to cope both with non-splittable edges and difficulties related to SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
 
 Once \phifuns\ have been replaced by parallel copies, we need to sequentialize the parallel copies, i.e.\ replace them by a sequence of simple copies. This phase can be performed immediately after SSA destruction or later on, perhaps even after register allocation (see Chapter~\ref{chap:register_allocation}). It might be useful to postpone the copy sequentialization since it introduces arbitrary interference between variables. As an example, $(a_1,b_1)\gets (a_2,b_2)$ can be sequentialized into $a_1\gets a_2;\ b_1\gets b_2$ which would make $b_2$ interfere with $a_1$ while the other way round $b_1\gets b_2;\ a_1\gets a_2$ would make $a_2$ interfere with $b_1$ instead.
 
-If we still decide to replace parallel copies into a sequence of simple copies immediately after SSA destruction, this can be done as follow:
+If we still decide to replace parallel copies into a sequence of
+simple copies immediately after SSA destruction, this can be done as
+shown in Algorithm \ref{alg:ssadestruction:sequentialization}.
 
 \begin{algorithm}
 \Begin{
@@ -621,9 +624,11 @@ If we still decide to replace parallel copies into a sequence of simple copies i
       }
     }
 }
+\caption{\label{alg:ssadestruction:sequentialization}Replacement of
+  parallel copies with sequences of sequential copy operations.}
 \end{algorithm}
 
-To see that this algorithm converges, one can visualize the parallel copy as a graph where nodes represent resources and edges represent transfer of values: the number of steps is exactly the number of cycles plus the number of non-self edges of this graph. The correctness comes from the invariance of the behavior of $seq; pcopy$. An optimized implementation of this algorithm will be detailed in Chapter~\ref{chapter:alternative_ssa_destruction}.
+To see that this algorithm converges, one can visualize the parallel copy as a graph where nodes represent resources and edges represent transfer of values: the number of steps is exactly the number of cycles plus the number of non-self edges of this graph. The correctness comes from the invariance of the behavior of $seq; pcopy$. An optimized implementation of this algorithm will be presented in Chapter~\ref{chapter:alternative_ssa_destruction}.
 
 
 \section{SSA Property Transformations}
