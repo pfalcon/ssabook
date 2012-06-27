@@ -22,7 +22,7 @@ generally
 takes place in an optimizing compiler after all SSA optimizations have
 been performed, and prior to code generation. However note that there are
 specialized code generation techniques that can work directly on SSA-based
-intermediate representations such as code selection (see
+intermediate representations such as instruction selection (see
 Chapter~\ref{chapter:code_selection}), if-conversion (see
 Chapter~\ref{chap:if_conversion}),
 and register allocation (see Chapter~\ref{chap:register_allocation}).
@@ -86,7 +86,7 @@ to demonstrate various aspects of SSA construction.
 The original construction algorithm for SSA form 
 consists of two distinct phases.
 \begin{enumerate}
-\item \textbf{\phifun\ insertion} performs \textit{live-range splitting} to ensures that any use of a given variable $v$ is reached~\footnote{A program point $p$ is said to be \emph{reachable} by a definition of $v$, if there exists a path in the CFG from that definition to $p$ that does not contain any other definition of $v$.}  by exactly one definition of $v$. 
+\item \textbf{\phifun\ insertion} performs \textit{live-range splitting} to ensures that any use of a given variable $v$ is reached\footnote{A program point $p$ is said to be \emph{reachable} by a definition of $v$, if there exists a path in the CFG from that definition to $p$ that does not contain any other definition of $v$.}  by exactly one definition of $v$. 
 The resulting live-ranges exhibit the property of having a single definition, which occurs at the beginning of each live-range.
 \item \textbf{variable renaming} assigns a unique variable name to each live-range. This second phase rewrites variable names in program statements such that the program text contains only one definition of each variable, and every use refers to its corresponding unique reaching definition.
 \end{enumerate}
@@ -166,7 +166,8 @@ For a given variable $v$, we place \phifuns\ at the
 iterated dominance frontier $\iDF(D_v)$ where
 $D_v$ is the set of nodes containing definitions of $v$.
 This leads to the construction of SSA form that has 
-the dominance property, i.e.\ where each variable's definition dominates its entire live-range.
+the dominance property, i.e.\ where each 
+renamed variable's definition dominates its entire live-range.
 
 Consider again our running example from Figure 
 \ref{fig:classical_construction_algorithm:examplecfg}. The set of nodes containing definitions
@@ -175,13 +176,13 @@ $x$ is $\{ B,C,D \}$. The iterated dominance frontier of this set
 is $\{ A, D, E \}$. Hence we need to insert 
 \phifuns\ for $x$ at the beginning of nodes $A$, $D$, and $E$.
 Figure \ref{fig:classical_construction_algorithm:examplecfg_varx} shows the example CFG program
-with inserted \phifuns\ for $x$ marked in red.
+with \phifuns\ for $x$ inserted.
 
 
 
 As far as the actual algorithm for \phifuns\ insertion
 is concerned, we will assume that the dominance
-frontier of each CFG node is precomputed and that the iterated dominance frontier is computed just-in-time, as the algorithm proceeds.
+frontier of each CFG node is pre-computed and that the iterated dominance frontier is computed just-in-time, as the algorithm proceeds.
 The algorithm works by inserting \phifuns\ iteratively
 using a worklist of definition points, and flags (to avoid multiple
 insertions). The corresponding pseudo-code for
@@ -198,11 +199,11 @@ definition, it may require further \phifuns\ to be inserted.
 This is the cause of node insertions into the worklist $W$ during
 iterations of the inner loop in Algorithm 
 \ref{alg:classical_construction:phi_insertion}.
-Effectively, this is the just-in-time construction of
+Effectively, this is just-in-time calculation of
 the iterated dominance frontier.
 
 
-The flags array $I$ is used to avoid repeated insertion of \phifuns\
+The flags array $F$ is used to avoid repeated insertion of \phifuns\
 at a single node. Dominance
 frontiers
 of distinct nodes may intersect, e.g.\ in the example CFG in Figure
@@ -219,6 +220,9 @@ gives a walk-through example of Algorithm
 It shows the stages of execution for a single iteration of
 the outermost for loop, which is inserting \phifuns\
 for variable $x$.
+Each row represents a single iteration of the while loop
+that iterates over the worklist $W$. The table shows the values
+of $X$, $F$ and $W$ at the start of each while loop iteration.
 At the beginning, the CFG looks like Figure \ref{fig:classical_construction_algorithm:examplecfg}.
 At the end, when all the \phifuns\ for $x$ have
 been placed, then the CFG looks like Figure \ref{fig:classical_construction_algorithm:examplecfg_varx}.
@@ -226,7 +230,7 @@ been placed, then the CFG looks like Figure \ref{fig:classical_construction_algo
 \begin{algorithm}
 \Begin{
  $W \leftarrow \{ \}$ : set of basic blocks\;
- $I \leftarrow \{ \}$ : set of basic blocks\;
+ $F \leftarrow \{ \}$ : set of basic blocks\;
  \For{$v$ : variable names in original program}{
   \For{$d \in D_v$ }{
     \textbf{let} $B$ be the basic block containing $d$\;
@@ -235,9 +239,9 @@ been placed, then the CFG looks like Figure \ref{fig:classical_construction_algo
   \While{$W \neq \{\}$}{
    remove a basic block $X$ from $W$\;
    \For{$Y : \mbox{basic block} \in \mathrm{DF}(X)$}{
-    \If{$Y \not\in I$}{
+    \If{$Y \not\in F$}{
         add $v \leftarrow \phi(...)$ at entry of $Y$\;
-        $I \leftarrow I \cup \{ Y \}$\;
+        $F \leftarrow F \cup \{ Y \}$\;
         \If{$Y \notin D_v$}{
           $W \leftarrow W \cup \{ Y \}$\;
         }
@@ -253,7 +257,7 @@ been placed, then the CFG looks like Figure \ref{fig:classical_construction_algo
 \begin{table}
 \begin{center}
 \begin{tabular}{r|c|c|c|c}
-\textbf{while loop \#} & $X$ & $\textrm{DF}(X)$ & $I$         & $W$\\ \hline
+\textbf{while loop \#} & $X$ & $\DF(X)$ & $F$         & $W$\\ \hline
 -                      & -   & -                & $\{\}$      & $\{B,C,D\}$ \\
 0                      & $B$ & $\{D\}$          & $\{D\}$     & $\{C,D\}$ \\
 1                      & $C$ & $\{D,E\}$        & $\{D,E\}$   & $\{D,E\}$ \\
@@ -273,7 +277,7 @@ inserted \phifuns\ for variable $x$
 }
 \end{figure}
 
-Providing the dominator tree is given, the computation of the dominance frontier is quite straight-forward. As illustrated by Figure~\ref{fig:classical_construction_algorithm:iDF}, this can be understood using the DJ-graph notation. The skeleton of the DJ-graph is the dominator tree of the CFG that makes the $D$-edges. This is augmented with $J$-edges (join edges) that correspond to all edges of the CFG whose source does not strictly dominate its destination. A $DF$-edge (dominance frontier edge) is an edge whose destination is in the dominance frontier of its source. By definition, there is a $DF$-edge $(a,b)$ between every CFG nodes $a$, $b$ such that $a$ dominates a predecessor of $b$, but does not strictly dominate $b$. 
+Providing the dominator tree is given, the computation of the dominance frontier is quite straightforward. As illustrated by Figure~\ref{fig:classical_construction_algorithm:iDF}, this can be understood using the DJ-graph notation. The skeleton of the DJ-graph is the dominator tree of the CFG that makes the $D$-edges. This is augmented with $J$-edges (join edges) that correspond to all edges of the CFG whose source does not strictly dominate its destination. A $DF$-edge (dominance frontier edge) is an edge whose destination is in the dominance frontier of its source. By definition, there is a $DF$-edge $(a,b)$ between every CFG nodes $a$, $b$ such that $a$ dominates a predecessor of $b$, but does not strictly dominate $b$. 
 In other-words, for each  $J$-edge $(a,b)$, all ancestors (including
 $a$) that do not strictly dominate $b$ have $b$ in their dominance
 frontier. This leads to the pseudo-code given in
@@ -290,8 +294,8 @@ We can compute the iterated dominance frontier for each variable independently, 
 
 \begin{algorithm}
 \Begin{
- \For{$(a,b) \in cfgEdges$}{
-  \While{not a dominate b}{
+ \For{$(a,b) \in \mathrm{cfgEdges}$}{
+  \While{a does not dominate b}{
      $\DF(a) \leftarrow \DF(a) \cup b$\;
      $a \leftarrow \mathrm{iDom}(a)$\;
   }
@@ -306,23 +310,26 @@ Once \phifuns\ have been inserted using this algorithm, the program may
 still contain several definitions per variable, however now there is a
 single definition statement 
 in the CFG that reaches each use. 
-It is conventional to treat the each variable use in a \phifun\
+It is conventional to treat each variable use in a \phifun\
 as if it actually occurs on the corresponding incoming edge or at the end of the
 corresponding predecessor node.
 If we follow this convention,  
 % Moreover, with the following semantics for \phifuns\ where its
 % variable uses are considered to be on the corresponding predecessor
 % basic blocks,
-then use-def chains are aligned with the CFG dominator tree.
+then def-use chains are aligned with the CFG dominator tree.
 In other words,
 \emph{the single definition that reaches each use dominates that use}.
 
-\subsubsection*{Renaming}
+\subsubsection*{Variable Renaming}
 \newcommand\reachingDef[1]{#1.\mathrm{reachingDef}}
 To obtain the desired property of a static single assignment per variable,
 it is necessary to perform variable renaming, which
 is the second phase in the SSA construction process.
-\phifun\ insertions have the effect of splitting the live-range(s) of each original variable into pieces. The variable renaming phase associates to each individual live-range a new variable name, also called \emph{version}.
+\phifun\ insertions have the effect of splitting the live-range(s) of
+each original variable into pieces. The variable renaming phase
+associates to each individual live-range a new variable name, also
+called a \emph{version}.
 Algorithm \ref{alg:classical:renaming} presents the pseudo-code
 for this process.
 Because of the dominance property outlined above,
@@ -345,7 +352,7 @@ from Figure~\ref{fig:classical_construction_algorithm:examplecfg}
 into the SSA form of Figure
 \ref{fig:classical_construction_algorithm:renaming}.
 Table \ref{table:classical_construction_algorithm:renaming} 
-gives a walk-through example of this algorithm,
+gives a walk-through example of Algorithm \ref{alg:classical:renaming},
 only considering variable $x$. The labels $l_i$ mark
 instructions in the program that mention $x$, shown in 
 Figure \ref{fig:classical_construction_algorithm:renaming}.
@@ -472,12 +479,13 @@ may be dead, i.e.\ there is no explicit use of the variable subsequent
 to the \phifun.
 \item It is \textit{conventional}, see Section \ref{sec-prop-conventional}.
 The transformation that renames all $\phi$-related variables into a
-unique representative name, and then removes all \phifuns\ is a correct SSA-destruction algorithm.
+unique representative name and then removes all \phifuns\ is a correct SSA-destruction algorithm.
 \item Finally, it has the \textit{dominance} property, see Section
 \ref{sec-prop-dominance}.
-Each variable use is dominated by its unique definition. This is due
-to the use during the $\phi$-placement phase of iterated dominance
-frontier instead of join set. Whenever the iterated dominance frontier
+Each variable use is dominated by its unique definition. 
+This is due to the use of iterated dominance frontiers
+during the $\phi$-placement phase,
+rather than join sets. Whenever the iterated dominance frontier
 of the set of definition points of a variable differs from its join
 set, then at least one program point can be reached both by $r$ (the
 entry of the CFG) and one of the definition points. In other words, as
