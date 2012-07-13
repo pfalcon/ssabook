@@ -1,4 +1,89 @@
 \section{Speed and Memory Footprint}
+\paragraph{Sequentialization of parallel copies}
+
+                    
+During the whole algorithm, we treat the copies placed at a given program point
+as \emph{parallel copies}, which are indeed the semantics of $\phi$-functions.
+This gives several benefits: a simpler implementation, in particular for
+defining and updating liveness sets, a more symmetric implementation,
+and fewer constraints for the coalescer. However, at the end of the process, we
+need to go back to standard code, i.e., write the final copies in some
+sequential order.
+
+Algorithm~\ref{alg:alternative_ssa_destruction_algorithm:para_copies_ser} emulates a traversal of $G$ (without
+building it), allowing to overwrite a variable as soon as it is saved in some
+other variable.  When a variable $a$ is copied in a variable $b$, the algorithm
+remembers $b$ as the last location where the initial value of $a$ is available.
+This information is stored into \texttt{loc}($a$). The initial value that
+must be copied into $b$ is stored in \texttt{pred}($b$). The initialization
+consists in identifying the variables whose values are not needed (tree
+leaves), which are stored in the list \texttt{ready}.  The list
+\texttt{to\_do} contains the destination of all copies to be treated.  Copies
+are first treated by considering leaves (while loop on the list
+\texttt{ready}). Then, the \texttt{to\_do} list is considered, ignoring
+copies that have already been treated, possibly breaking a circuit with no
+duplication, thanks to an extra copy into the fresh variable $n$.
+
+\begin{algorithm}[H]
+%\Input{A parallel copy $P$}
+%\Blankline
+%value $\leftarrow$ \texttt{new} hash table \;
+%targets $\leftarrow$ \texttt{new} hash table \;
+  \KwData{Set $P$ of parallel copies of the form $a \mapsto b$, $a \neq b$, one extra fresh variable $n$}
+\KwOut{List of copies in sequential order}
+ready $\leftarrow []$ ;
+to\_do $\leftarrow []$ ; pred($n$) $\leftarrow \bot$ \;
+\ForAll{$(a \mapsto b) \in P$}{
+	loc($b$)$ \leftarrow \bot$ ; pred($a$) $\leftarrow \bot$ \tcc*{initialization}
+}
+
+\ForAll{$(a \mapsto b) \in P$}{
+	loc($a$) $\leftarrow a$ \tcc*{needed and not copied yet}
+	pred($b$) $\leftarrow a$ \tcc*{(unique) predecessor}
+        to\_do.push($b$) \tcc*{copy into $b$ to be done}
+}
+
+\ForAll{$(a \mapsto b) \in P$}{
+	\lIf{loc($b$) = $\bot$}{ready.push($b$) \tcc*{$b$ is not used and can be overwritten}
+	}
+}
+\While{to\_do $\neq []$}{
+	\While{ready $\ne []$}{
+		$b \leftarrow$ ready.pop() \tcc*{pick a free location}
+		$a \leftarrow$ pred($b$) ; $c \leftarrow$ loc($a$) \tcc*{available in $c$}
+		\texttt{emit\_copy}($c \mapsto b$) \tcc*{generate the copy}
+		loc($a$) $\leftarrow b$ \tcc*{now,
+                  available in $b$}
+                \lIf{$a=c$ and pred($a$) $\neq \bot$}{
+                   ready.push(a) \tcc*{just copied, can be overwritten}}
+%		\texttt{del}\ targets[$a$] \;
+%		\If{$b \in$ targets.keys()}{
+%			available.append($b$) \;
+%		}
+	}
+%	\If{targets.keys() $\neq []$}{
+        
+        
+        $b \leftarrow$ to\_do.pop() \tcc*{look for remaining copy}
+        \If{$b =$ loc(pred($b$))}{
+%
+%
+
+%        $a' \leftarrow$ \texttt{new\_ressource}() \;
+          \texttt{emit\_copy}($b \mapsto n$) \tcc*{break circuit with copy}
+		loc($b$) $\leftarrow n$ \tcc*{now, 
+                  available in $n$}
+                ready.push($b$) \tcc*{$b$ can be overwritten}
+%         \If{$b \in$ targets.keys()}{
+%           available.append($b$) \;
+%         }
+%         values[$b$] $\leftarrow a'$ \;
+}
+	
+}
+        \caption{Parallel copy sequentialization algorithm}
+        \label{alg:alternative_ssa_destruction_algorithm:para_copies_ser}
+\end{algorithm}
 %% +Pour l'implémenter on différentie resources et valeurs . La copie a->b%% +signifie que la valeur dans la resource a doit être copiee dans la
 %% +resource b.  On racourcit en disant que la valeur ``a'' initialement
 %% +dans la resource ``a'' doit être copiee dans la resource
