@@ -37,9 +37,9 @@ that the resulting code is more efficient in terms of execution time, code size,
 or some other metric of interest. However, in order to perform these
 optimizations, typically some form of \emph{program analysis} is
 required to determine if a given program transformation is applicable, to
-estimate its profitability, or to guarantee its correctness.
+estimate its profitability, and to guarantee its correctness.
 
-\emph{Data flow analysis}~\cite{novillo:bib:NNH99} is a simple yet powerful
+\emph{Data flow analysis} is a simple yet powerful
 approach to program analysis that is utilized by many compiler frameworks and
 program analysis tools today. We will introduce the basic concepts of
 traditional data flow analysis in this chapter and will show how the \emph{static
@@ -51,23 +51,24 @@ representation supports.
 
 Traditionally, data flow analysis is performed on a \emph{control flow graph}
 representation (CFG) of the input program. Nodes in the graph represent
-operations and edges the potential flow of program execution.
+operations and edges represent the potential flow of program execution.
 Information on certain \emph{program properties} is propagated among
 the nodes along the control flow edges until the computed information
 stabilizes, i.e., no \emph{new} information can be inferred from the program.
 
 The \emph{propagation engine} presented in the following sections is an
 extension of the well known approach by Wegman and Zadeck for \emph{sparse
-conditional constant propagation}~\cite{bib:wegman.ea-91} (also known as
+conditional constant propagation} (also known as
 SSA-CCP). Instead of using the CFG they represent the input program as an
-\emph{SSA graph}~\cite{novillo:bib:cytron.ea-91}: operations are again represented as
+\emph{SSA graph} as defined in Chapter~\ref{chap:vsdg}: operations are again
+represented as
 nodes in this graph, however, the edges represent \emph{data dependencies}
 instead of control flow. This representation allows a selective propagation of
 program properties among data dependent graph nodes only. As before, the
 processing stops when the information associated with the graph nodes stabilizes.
 The basic algorithm is not limited to constant propagation and can also be
 applied to solve a large class of other data flow problems
-efficiently~\cite{novillo:bib:N05}. However, not all data flow
+efficiently. However, not all data flow
 analyses can be modeled. In this chapter, we will also investigate the limitations
 of the SSA-based approach.
 
@@ -118,7 +119,7 @@ framework} that consists of:
 A key concept for data flow analysis is the representation of the property space
 via \emph{partially ordered sets} $(L, \sqsubseteq)$, where $L$ represents some
 interesting program property and $\sqsubseteq$ represents a reflexive, transitive, and
-anti-symmetric relation. Using the $\sqsubseteq$ relation, \emph{upper} or
+anti-symmetric relation. Using the $\sqsubseteq$ relation, \emph{upper} and
 \emph{lower bounds}, as well as \emph{least upper} and \emph{greatest lower
 bounds}, can be defined for subsets of $L$.
 
@@ -186,7 +187,7 @@ A single flow edge can be appended several times to the
 work list in the course of the analysis. It may even happen that an infinite
 feedback loop prevents the algorithm from terminating. We are thus interested in
 bounding the number of times a flow edge is processed. Recalling the definition
-of chains from before, % FERNANDO: could you cite the chapter?
+of chains from before (see Section~\ref{novillo:sec:preliminaries}),
  the \emph{height} of a
 lattice is defined by the length of its longest chain. We can ensure termination
 for lattices fulfilling the \emph{ascending chain condition}, which ensures that
@@ -218,11 +219,8 @@ complete \emph{in} and \emph{out} sets.
 \label{chapter:constant_propagation_is_easier:sec:prop-engine}
 \label{sec:prop-engine}
 
-SSA form allows to solve a large class of data flow problems more efficiently
-than the standard fixed point solution presented previously.
-% FERNANDO: SSA-based algorithms also rely on the fix-point theory. I guess
-% what you guys want to say is: "than the previous approach to data flow
-% analyses."
+SSA form allows us to solve a large class of data flow problems more efficiently
+than the iterative work list algorithm presented previously.
 The basic idea is to directly propagate information computed at the unique
 definition of a variable to all its uses. In this way, intermediate program
 points that neither define nor use the variable of interest do not have to
@@ -256,14 +254,11 @@ that the $\phi$-function defines has been properly updated to refer to the
 correct name.
 
 \begin{figure}[t]
-  \includegraphics[trim=4.3mm 0 0 0]{ssa_graph}
+  \includegraphics[trim=4.3mm 0mm 0 0mm]{ssa_graph}
   \caption{Example program and its SSA graph.}
   \label{novillo:fig:ssa_graph}
 \end{figure}
 
-% FERNANDO: I am not sure, but I think 'allow' with the meaning of permit, is
-% normally transitive, with two objects, e.g., the graph allows <the analysis>
-% <to do something>.
 Consider for example the code excerpt shown in
 Figure~\ref{novillo:fig:ssa_graph}, along with its corresponding SSA graph and
 CFG. Assume we are interested in propagating information from the assignment of
@@ -296,23 +291,28 @@ graph during data flow analysis in order to obtain the best possible results.
 
 \begin{algorithm}[t!]
   \begin{enumerate}
-    \item Initially, every edge in the CFG is marked not executable and the
-          \emph{CFGWorkList} is seeded with the outgoing edges of the control
-          flow graph's \emph{start} node.  The \emph{SSAWorkList} is empty.
-    \item \label{novillo:alg:propagation:loop} Remove the top element of either
+    \item Initialization
+          \begin{itemize}
+            \vspace{-1.2ex}
+            \item Every edge in the CFG is marked not executable.
+            \item The \emph{CFGWorkList} is seeded with the outgoing edges
+                  of the CFG's \emph{start} node.
+            \item The \emph{SSAWorkList} is empty.
+          \end{itemize}
+          \vspace{-1ex}
+    \item \label{novillo:alg:propagation:loop} Remove the top element of one
           of the two work lists.
     \item \label{novillo:alg:propagation:flowedge} If the element is a control
-          flow edge that is marked to be executable, do nothing, \\
-          otherwise proceed as follows:
+          flow edge, proceed as follows:
           \begin{itemize}
             \vspace{-1.2ex}
             \item Mark the edge as executable.
             \item Visit every $\phi$-operation associated with the edge's target
-                  node.
-            \item When the target node was reached the first time via the
-                  \emph{CFGWorkList} visit its operation using Algorithm~\ref{novillo:alg:visit}
-            \item When the target node has a single outgoing non-executable edge
-                  append that edge to the \emph{CFGWorkList}.
+                  node (Algorithm~\ref{novillo:alg:visit}).
+            \item If the target node was reached the first time via the
+                  \emph{CFGWorkList}, visit all its operations (Algorithm~\ref{novillo:alg:visit}).
+            \item If the target node has a single, non-executable outgoing
+                  edge, append that edge to the \emph{CFGWorkList}.
           \end{itemize}
           \vspace{-1ex}
     \item \label{novillo:alg:propagation:ssaedge} If the element is an edge from
@@ -321,11 +321,10 @@ graph during data flow analysis in order to obtain the best possible results.
             \vspace{-1.2ex}
             \item[a.] When the target operation is a $\phi$-operation visit that
                       $\phi$-operation.
-            \item[b.] \label{novillo:alg:propagation:ssaedge:regular} For
-                      regular target operations, examine the corresponding
-                      executable flag of the incoming edges of its corresponding
-                      control flow graph node. If any of those edges is marked
-                      executable visit the operation, otherwise do nothing.
+            \item[b.] \label{novillo:alg:propagation:ssaedge:regular} For other
+                      operations, examine the executable flag of the incoming
+                      edges of the respective CFG node. Visit the operation
+                      if any of the edges is executable.
           \end{enumerate}
           \vspace{-1ex}
     \item Continue with step \ref{novillo:alg:propagation:loop} until both work
@@ -362,7 +361,8 @@ node. The \emph{in} and \emph{out} sets used by the traditional approach---see
 Section~\ref{novillo:sec:preliminaries}---are obsolete, since
 $\phi$-operations already provide the required buffering.
 % FERNANDO: this is not clear to me: I think these sets are no longer necessary
-% because you can bind their info directly to the variables that they represent. % They would not be necessary even in a straight line program without phis.
+% because you can bind their info directly to the variables that they represent.
+% They would not be necessary even in a straight line program without phis.
 In addition, the
 control flow graph is used to track which operations are not reachable under any
 program execution and thus can be safely ignored during the computation of the
@@ -373,11 +373,11 @@ fixed point solution.
 The algorithm is shown in 
 Algorithm~\ref{alg:constant_propagation_is_easier:propagation} and
 processes two work lists, the \emph{CFGWorkList}, which containing edges
-of the control flow graph, and the \emph{SSAWorkList}, which consists of edges
+of the control flow graph, and the \emph{SSAWorkList}, which contains edges
 from the SSA graph.
 It proceeds by removing the top element of either of those lists and
 processing the respective edge.
-Throughout the algorithm, operations of
+Throughout the main algorithm, operations of
 the program are visited to update the work lists and propagate
 information using Algorithm~\ref{novillo:alg:visit}. We will highlight
 the most relevant steps of the algorithms in more detail in the following
@@ -385,37 +385,35 @@ paragraphs.
 
 \begin{algorithm}[t!]
   \begin{enumerate}
-    \item Compute the operation's data flow information:
+    \item Propagate data flow information depending on the operation's kind:
     \begin{enumerate}
       \vspace{-1.2ex}
-      \item[a.] \label{novillo:alg:visit:phi} If the operation is a
-                $\phi$-operation, combine the data flow information from all its
-                operands where the corresponding control flow edge is marked 
-                executable.
-      \item[b.] \label{novillo:alg:visit:branch} In the case of conditional
-                branches, update the operation's data flow information. Determine
-                which of the outgoing control flow edges are reachable from the
-                corresponding control flow graph node by examining the branch's
-                condition(s) and append the respective non-executable edges to
-                the \emph{CFGWorkList}.
-      \item[c.] \label{novillo:alg:visit:regular} For regular operations, update
-                the corresponding data flow information by applying its transfer
-                function.
+      \item[a.] \label{novillo:alg:visit:phi} $\phi$-operations: \\
+                Combine the data flow information from the node's operands where
+                the corresponding control flow edge is executable.
+      \item[b.] \label{novillo:alg:visit:branch} Conditional branches: \\
+                Examine the branch's condition(s) using the data flow
+                information of its operands. Determine all outgoing edges of the
+                branch's CFG node whose condition is potentially satisfied.
+                Append the CFG edges that were non-executable to the
+                \emph{CFGWorkList}.
+      \item[c.] \label{novillo:alg:visit:regular} Other operations:\\
+                Update the operation's data flow information by applying its 
+                transfer function.
     \end{enumerate}
     \vspace{-1ex}
-    \item Whenever the data flow information changes, append all outgoing edges
-          of the corresponding SSA graph node to the \emph{SSAWorkList}.
+    \item Whenever the data flow information of an operation changes, append all
+          outgoing SSA graph edges of the operation to the \emph{SSAWorkList}.
   \end{enumerate}
   \caption{Visiting an Operation}
   \label{novillo:alg:visit}
 \end{algorithm}
 
-% FERNANDO: in my opinion the description of the algorithm is hard to follow.
-% I think the main difficulty steams from the size of the sentences. They are
-% very long, with many clauses on the same sentence.
-In step~\ref{novillo:alg:propagation:flowedge} of the main algorithm, control
-flow edges set as executable for the first time are processed.
-Whenever such a control flow edge is processed, all
+The \emph{CFGWorkList} is used to track edges of the CFG that were encountered
+to be \emph{executable}, i.e., where the data flow analysis cannot rule out that
+a program execution traversing the edge exists. Once the algorithm has
+determined that a CFG edge is executable, it will be processed by
+Step~\ref{novillo:alg:propagation:flowedge} of the main algorithm. First, all
 $\phi$-operations of its target node need to be reevaluated due to the fact that
 Algorithm~\ref{novillo:alg:visit} discarded the respective operands of the
 $\phi$-operations so far---because the control flow edge was not yet marked
@@ -516,12 +514,12 @@ modeling of data flow problems that propagate information to program points that
 are not directly related by either a definition or a use of a variable, while
 the latter prohibits the modeling of general backward problems.
 
-Consider, for example, the well known problem of available
+Consider, for example, the problem of available
 expressions that often occurs in the context of
 redundancy elimination. An expression is available at a given program point when
 the expression is computed and not modified thereafter on all paths leading to
 that program point. In particular, this might include program points that are
-independent from the expression and its operands, i.e., neither defines nor uses
+independent from the expression and its operands, i.e., neither define nor use
 any of its operands. The SSA graph does not cover those points,
 as~it~propagates information directly from definitions to uses without any
 intermediate steps.
@@ -544,7 +542,7 @@ Chapter~\ref{chap:ssi} gives an overview of such representations.
 \label{novillo:sec:example}
 
 Even though data flow analysis based on SSA graphs has its limitations, it is
-still a useful and effective solution for many interesting problems, as we will
+still a useful and effective solution for interesting problems, as we will
 show in the following example.
 Copy propagation under SSA form is, in principle, very simple.  Given the
 assignment $x = y$, all we need to do is to traverse the immediate
@@ -568,7 +566,9 @@ Secondly, a rewrite phase eliminates spurious copies and renames variables.
 
 \begin{figure}[b!]
   \begin{center}
-    \includegraphics{copy_propagation_loop}
+    \includegraphics[trim=7mm 4mm 0 4mm]{copy_propagation_loop}
+    \subfloat{\label{novillo:fig:copy_propagation_loop:a}}
+    \subfloat{\label{novillo:fig:copy_propagation_loop:b}}
   \end{center}
   \vspace{-1em}
   \caption{$\phi$-operations in loops often obfuscate copy relations.}
@@ -577,7 +577,7 @@ Secondly, a rewrite phase eliminates spurious copies and renames variables.
 
 The analysis for copy propagation can be described as the problem of
 propagating the \textit{copy-of value} of variables.  Given a sequence of
-copies as shown in Figure~\ref{novillo:fig:copy_propagation:a}. We say that
+copies as shown in Figure~\ref{novillo:fig:copy_propagation:a}, we say that
 y$_1$ is a \textit{copy of} x$_1$ and z$_1$ is a \textit{copy of} y$_1$.  The
 problem with this representation is that there is no apparent link from z$_1$ to
 x$_1$.  In order to handle transitive copy relations, all transfer functions
@@ -595,8 +595,8 @@ the example of Figure~\ref{novillo:fig:copy_propagation:b}. This is
 accomplished by choosing the join operator such that a copy relation is
 propagated whenever the copy-of values of all the operands of the $\phi$-operation
 match. When visiting the $\phi$-operation for x$_3$, the analysis finds
-that x$_1$ and x$_2$ are both copies of y$_1$, which allows to propagate the
-result that x$_3$ is a copy of~y$_1$.
+that x$_1$ and x$_2$ are both copies of y$_1$ and consequently propagates that
+x$_3$ is also a copy of~y$_1$.
 
 The next example shows a more complex situation where copy relations are
 obfuscated by loops---see Figure~\ref{novillo:fig:copy_propagation_loop}.  Note
@@ -613,12 +613,12 @@ information $\top$ associated with all variables:
       and the control flow graph edge $e1$ is appended to the \emph{CFGWorkList}.
 \item \label{novillo:copy_prop:ex:x_2} Processing the control flow edge $e2$ from the
       work list causes the edge to be marked executable and the operations
-      labeled $2$ and $3$ to be visited. Since, edge $e5$ is not yet known to be
-      executable the processing of the $\phi$-operation yields a copy relation
+      labeled $2$ and $3$ to be visited. Since edge $e5$ is not yet known to be
+      executable, the processing of the $\phi$-operation yields a copy relation
       between x$_2$ and x$_1$. This information is utilized in order to
       determine which outgoing control flow graph edges are executable for the
       conditional branch. Examining the condition shows that only edge $e3$ is
-      reachable and thus needs to be added to the work list.
+      executable and thus needs to be added to the work list.
 \item Control flow edge $e3$ is processed next and marked executable for the
       first time.
       Furthermore, the $\phi$-operation labeled $5$ is visited. Due to the fact
@@ -640,7 +640,7 @@ information $\top$ associated with all variables:
 \end{enumerate}
 
 The straightforward implementation of copy propagation would have needed
-multiple passes to discover that x$_4$ is a copy of x$_1$.  But the iterative
+multiple passes to discover that x$_4$ is a copy of x$_1$.  The iterative
 nature of the propagation, along with the ability to discover non-executable
 code, allows to handle even obfuscated copy relations. Moreover, this kind of
 propagation will only reevaluate the subset of operations affected by newly
@@ -650,10 +650,6 @@ the set of executable operations has been discovered.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Further Reading}
 \label{novillo:sec:further_reading}
-
-% FERNANDO: There is a lot of redundancy between this section and the
-% equivalent section in Chapter \ref{chap:ssi}. I guess some refactoring can
-% be used to make the final text less repetitive.
 
 Traditional data flow analysis is well established and well described in
 numerous papers. The book by Nielsen, Nielsen, and
@@ -679,13 +675,16 @@ flow graph. Even though more powerful, computing the MOP solution is often
 harder or even undecidable~\cite{novillo:bib:NNH99}. Consequently,
 the MFP solution is preferred in practice.
 
-The sparse propagation engine, as presented in the chapter, is based on the
+The sparse propagation engine~\cite{novillo:bib:N05,bib:wegman.ea-91}, as
+presented in the chapter, is based on the
 underlying properties of the SSA form. Other intermediate representations offer
 similar properties. \emph{Static Single Information} form
 (SSI)~\cite{novillo:bib:S05} allows both backward and forward problems to be
 modeled by introducing $\sigma$ operations, which are placed at program points
 where data flow information for backward problems needs to be
-merged~\cite{novillo:bib:S04}. Bod\'{\i}k uses an extended SSA form, $e$-SSA,
+merged~\cite{novillo:bib:S04}. Chapter~\ref{chap:ssi} provides additional
+information on the use of SSI form for static program analysis.
+Bod\'{\i}k uses an extended SSA form, $e$-SSA,
 to eliminate array bounds checks~\cite{novillo:bib:BGV00}.
 Ruf~\cite{novillo:bib:R95} introduces the \emph{value dependence graph}, which
 captures both control and data dependencies. He derives a sparse representation
