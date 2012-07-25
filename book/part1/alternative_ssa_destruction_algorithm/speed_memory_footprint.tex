@@ -92,32 +92,139 @@ $\curidom=\undef$\;
 \end{algorithm}
 
 \paragraph{Virtualizing $\phi$-related copies}
-The last step toward a memory friendly and fast SSA-destruction algorithm consists in emulating the initial introduction of copies and only actually insert them on the fly when they appear to be required. We use \emph{exactly the same algorithms as for the solution without virtualization}, and use a special location in the code, identifies as a ``virtual'' parallel copy, where the real copies, if any, will be placed. Let us recap the different steps of the algorithm.
-\begin{enumerate}
-\item Without any virtualization, the process of isolating a $\phi$-node would lead to inserting copies for almost all operands (see Paragraph~\ref{par:alternative_ssa_destruction:strong}). The newly created variables, and the non-split operands are all pined to a common virtual resource (their color). With virtualization, the \phifun 
-\end{enumerate}
-The original arguments (resp. results) of a \phifun are then assumed, initially, to have a ``use'' (resp. ``def'') in the parallel copy
-but are not considered as live-out (resp. live-in) along the corresponding
-control flow edge. Then, the algorithm selects the copies to coalesce, following
-some order, either a real copy or a virtual copy.  If it turns out that a
-virtual copy $a_i \mapsto a'_i$ (resp. $a'_0 \mapsto a_0$) cannot be coalesced,
-it is materialized in the parallel copy and $a'_i$ (resp. $a'_0$) becomes
-explicit in its congruence class. The corresponding $\phi$-operand is replaced
-and the use of $a'_i$ (resp. def of $a'_0$) is now assumed to be on the
-corresponding control flow edge.
-This way, only copies that the first approach would finally leave uncoalesced
-are introduced. 
+The last step toward a memory friendly and fast SSA-destruction algorithm consists in emulating the initial introduction of copies and only actually insert them on the fly when they appear to be required. We use \emph{exactly the same algorithms as for the solution without virtualization}, and use a special location in the code, identifies as a ``virtual'' parallel copy, where the real copies, if any, will be placed. 
 
-The key point to make the emulation of copy insertion possible is that one
-should never have to test an interference with a variable that is not yet
-materialized or coalesced. For that reason, $\phi$-functions are treated one by one, and
-all virtual copies that imply a variable of the $\phi$-function are considered
-(either coalesced or materialized) before examining any other copy. The
-weakness of this approach is that a global coalescing algorithm cannot be used
-because only a partial view of the interference structure is available
-to the algorithm. However, the algorithm can still be guided by the weight
-of copies, i.e., the dynamic count associated to the block where it would be
-placed if not coalesced
+Because of this, any non-coalesced split operand of a \phifun is assumed to have a use (resp. definition) in the parallel copy, and are then usually (unless used further) not considered as live-out (resp. live-in) of the corresponding basic-block. 
+For any non-split operand, or when a virtual copy is coalesced, the use (resp. definition) operand is assumed (as in the multiplexing mode) to be at the exit (resp. entry) of the corresponding basic-block, so it is considered as live-out (resp. live-in). 
+When the algorithm decides that a virtual copy $a'_i \gets a_i$ (resp. $a_0 \gets a'_0$)  cannot be coalesced, it is \emph{materialized} in the parallel copy and $a'_i$ (resp. $a'_0$) becomes explicit in its merged-set. 
+The corresponding \phiop is replaced and the use of $a'_i$ (resp. def of $a'_0$) is now assumed, as in the multiplexing mode, to be on the corresponding control flow edge. 
+This way, only copies that the first approach would finally leave un-coalesced are introduced. 
+
+
+Without any virtualization, the process of transforming operand pining into live-range pining also introduces copies and new local variables pined together. This systematic copy insertion can also be avoided and managed lazily just as for $\phi$-nodes isolation\ifhab (see Chapter~\ref{chapter:tree_scan} for an illustration)\fi. We will not address this aspect of the virtualization here: to simplify we consider any operand pining to be either ignored (handled by register allocation) or expressed as live-range pining.
+
+In our scheme, every copy related (even virtual) variables are first coalesced (unless pining to physical resources forbid it), then merged-sets are traversed and interfering variables are de-coalesced.
+A key implementation aspect is related to the handling of pining. In particular, for correctness purpose coalescing have to be performed in two separated steps. First pined-$\phi$-webs have to be coalesced. Detection and fix of strong interferences is handled at this point. The so obtained merged sets (that contain local virtual variables) have to be identified as atomic i.e. they cannot be separated. After the second step of coalescing, atomic merged sets will compose larger merged sets. A variable cannot be de-coalesced from a set without de-coalescing its atomic merged-set from the set also. Non singletons atomic merged-sets have to be represented somehow. The trick is to use the \phifun itself as a placeholder for its set of local virtual variables: the pining of the virtual variables is represented through the pining of the corresponding \phifun. As a consequence, any \phifun will be pined to all it non-split operands. 
+
+Algorithm~\ref{alg:alternative_ssa_destruction:decoal} presents the process of de-coalescing with virtualization of $\phi$-related copies, using a single traversal of the whole program. Here each merged set is identified by a color. We suppose that the (interference free) atomic merged set containing a variable $v$ is available through the function $\atomic{v}$. $c.\curidom$ stores the last processed variable of color $c$. Just as for SSA renaming phase, thanks to $\cidom{u}$ link that points to the immediate dominator of variable $u$, the immediate dominator of the currently processed variable can be found. $\eanc{u}$ points to the lowest dominator of $u$ which live-range intersects $u$ and have the same value than $u$. Walking up along \textit{eanc} links allows to find the lowest dominator that intersects the current variable. 
+A correctness subtlety is related to the interferences with a variable that is not yet materialized or coalesced. Either one need to ensure that they can be ignored or one need to emulate them. We choose to emulate them, which allows to postpone the materialization of all copies along a single traversal of the program at the really end of the de-coalescing process. As the live-range of a local virtual variable is very small starting (resp. ending for a $\phi$-definition operand) at the place of the parallel copy and ending at the exit (resp. starting at the entry) of the corresponding basic-block, the cases to consider is quite limited. A local virtual variable can interfere with a ``real'' variable $\curanc$, which is detected in Algorithm~\ref{alg:alternative_ssa_destruction:virtualdecoalesce} just as in Algorithm~\ref{alg:alternative_ssa_destruction:realdecoalesce}. It can also interfere with another virtual variable, the last processed being stored thanks to $c.\curphi$.
+The materialization, is straightforward: whenever one of the two operands of a virtual copy is uncolored, or whenever the colors are different, the copy is materialized. This can be done through a single traversal of all \phifuns of the program.
+
+
+
+
+
+\begin{algorithm}[h]
+  \lForEach{$c\in \colors$}{$c.\curidom=\undef$; $c.\curphi=\undef$}\\
+  \ForEach{basic-block $L$ in CFG in DFS pre-order of the dominance tree}{
+    traverses all variables defined by an operation of L\;
+    traverses all virtual variables defined by a \phifun of a successor of $L$\;
+  }
+  \caption{\label{alg:alternative_ssa_destruction:decoal} De-coalescing with virtualization of $\phi$-related copies}
+\end{algorithm}
+
+\begin{algorithm}[h]
+    \ForEach{Operation $Op$ in $L$ in topological order (including \phifuns)}{
+      \ForEach{variable $v$ defined by $Op$}{
+        \lIf{$\neg\colored(v)$}{continue}
+        \lElse{$c\gets \col(v)$}
+        
+        \tcc{Finds and set the immediate dominator of $v$}
+        $u \gets c.\curidom$\;
+        \While{$(u \neq \undef) \bigwedge \left(\neg(u \dominates\ v) \vee \neg\colored(u)\right)$}{
+          $u \gets \cidom{u}$\;
+        }
+        $\cidom{v}\gets u$; $c.\curidom \gets v$\;
+        
+        \tcc{Walk up variables that have the same value than $u$} 
+        $\eanc{v}\gets \undef$; $\curanc \gets u$\;
+        \While{$\curanc\neq\undef$}{
+          \tcc{Find the first one that intersects $v$ with the same color than $u$}
+          \While{$\curanc\neq \undef \bigwedge 
+            \neg\left(\colored(\curanc) \wedge \intersect(\curanc,v)\right)$}{
+            $\curanc \gets \eanc{\curanc}$\;
+          }
+          \If{$\curanc \neq \undef$}{
+            \If{$V(\curanc) = V(v)$}{
+	      $\eanc{v} \gets \curanc$\;
+	      break \;
+            }
+            \Else { \tcc{$\curanc$ and $v$ interfere}
+              \If{preferable to uncolor $v$}{
+                uncolor $\atomic{v}$\;
+                break\;
+              } 
+              \Else {
+                uncolor $\atomic{\curanc}$\;
+                $\curanc \gets \eanc{\curanc}$\;
+              }
+            }
+          }
+        }      
+      }
+    }
+\caption{\label{alg:alternative_ssa_destruction:realdecoalesce}Traverses all variables defined by an operation of L}
+\end{algorithm}
+
+\begin{algorithm}[h]
+    \ForEach{basic-block $L'$ successor of $L$}{
+      \ForEach{Operation $Phi:$ ``$L':a_0=\phi(\dots, L:a',\dots)$'' in $L'$}{
+        \lIf{$\neg\colored(Phi)$}{continue}
+        \lElse{$c\gets \col(Phi)$}
+        
+        \tcc{Finds and set the previous virtual variable of color $c$}
+        $Phi'\gets c.\curphi$\;
+        \If{$Phi'\neq \undef$}{
+          \If{$L$ is a predecessor of the basic-block where $Phi'$ is defined}{
+            $\curpred \gets \textsf{operand\_comming\_from\_L}(Phi')$
+          } \Else {
+            $c.\curphi\gets \undef$\;
+            $Phi'\gets \undef$
+          }
+        }
+        \If{$Phi'\neq\undef \wedge V(\curpred)\neq V(a')$}{ \tcc{Interference}
+          uncolor $\atomic{Phi}$\;
+          continue\;
+        } \Else {
+          $c.\curphi\gets Phi$
+        }
+
+        \tcc{Finds and set the immediate dominator of the local virtual variable}
+        $u \gets c.\curidom$\;
+        \While{$(u \neq \undef) \bigwedge \left(\neg(u \dominates\ L) \vee \neg\colored(u)\right)$}{
+          $u \gets \cidom{u}$\;
+        }
+        $\cidom{v}\gets u$; 
+
+        
+        \tcc{Walk up variables that have the same value than $u$} 
+        $\eanc{v}\gets \undef$; $\curanc \gets u$\;
+        \While{$\curanc\neq\undef$}{
+          \tcc{Find the first one that intersects $v$ with the same color than $u$}
+          \While{$\curanc\neq \undef \bigwedge 
+            \neg\left(\colored(\curanc) \wedge \curanc.\textit{islive}(\textit{out}(L))\right)$}{
+            $\curanc \gets \eanc{\curanc}$\;
+          }
+          \If{$\curanc \neq \undef$}{ \tcc{$\curanc$ and $v$ interfere}
+            \If{preferable to uncolor $Phi$}{
+              uncolor $\atomic{Phi}$\;
+              break\;
+            } 
+            \Else {
+              uncolor $\atomic{\curanc}$\;
+              $\curanc \gets \eanc{\curanc}$\;
+            }
+          }
+        }
+
+      }
+    }
+\caption{\label{alg:alternative_ssa_destruction:virtualdecoalesce}Traverses all virtual variables defined by a \phifun of a successor of L}
+
+\end{algorithm}
+
+        
+
 
 \paragraph{Sequentialization of parallel copies}
 
@@ -130,9 +237,54 @@ and fewer constraints for the coalescer. However, at the end of the process, we
 need to go back to standard code, i.e., write the final copies in some
 sequential order.
 
+\ifhab
+In most cases, a simple order of copies can be found, but sometimes more copies
+are needed (more precisely, one for each cyclic permutation, with no
+duplication) into one additional variable. Conceptually, the technique is
+simple but it is more tricky to derive a fast implementation.  We designed a
+fast sequentialization algorithm that requires the minimum number of copies.
+We realized afterward that a similar algorithm has already been proposed by C.
+May~\cite{May89}.
+
+Nevertheless, for completeness, we give here a detailed description of
+the algorithm as well as the complete pseudo-code
+(Algorithm~\ref{alg:alternative_ssa_destruction_algorithm:para_copies_ser}).
+
+Consider the directed graph~$G$ whose vertices are the variables
+involved in the parallel copy and with an edge from $a$ to $b$
+whenever there is a copy from~$a$ to $b$ (we write $a \mapsto
+b$). This graph has the following key property: each vertex has a
+unique incoming edge, the copy that defines it (a parallel copy $(b
+\mapsto a, c \mapsto a)$ is possible but only if $V(b)=V(c)$ in which
+case one of the copies can be removed). Thus, $G$ has a particular
+structure: each connected component is a circuit (possibly reduced to
+one vertex) and each vertex of the circuit can be the root of a
+directed tree. The copies of the tree edges can be sequentialized
+starting from the leaves, copying a variable to its successors before
+overwriting it with its final value. Once these tree copies are
+scheduled, it remains to consider the circuit copies. If at least one
+vertex of the circuit was the root of a tree, it has already been
+copied somewhere, otherwise, we copy one of the circuit vertices into
+a new variable.  Then, the copies of the circuit can be
+sequentialized, starting with the copy into this ``saved'' vertex and
+back along the circuit edges. The last copy is done by moving the
+saved value in the right variable. Thus, we generate the same number
+of copies as expressed by the parallel copy, except possibly one
+additional copy for each circuit with no tree edge, i.e., no
+duplication of variable.  For example, for the parallel copy $(a
+\mapsto b, b \mapsto c, c \mapsto a, c \mapsto d)$, there is one
+circuit $(a,b,c)$ and an edge from $c$ to $d$, so we generate the
+copies $d=c$, $c=a$, $a=b$, and $b=d$ (and not $b=c$).
+
 Algorithm~\ref{alg:alternative_ssa_destruction_algorithm:para_copies_ser} emulates a traversal of $G$ (without
 building it), allowing to overwrite a variable as soon as it is saved in some
-other variable.  When a variable $a$ is copied in a variable $b$, the algorithm
+other variable.  
+\else
+As explained in Section~\ref{sec:classical_construction_algorithm:destruction} (Algorithm~\ref{alg:ssadestruction:sequentialization}) the sequentialization of a parallel copy can be done using a simple traversal of a windmill farm shaped graph from the tip of the blades to the wheels. Algorithm~\ref{alg:alternative_ssa_destruction_algorithm:para_copies_ser} emulates a traversal of this graph (without building it), allowing to overwrite a variable as soon as it is saved in some
+other variable.  
+\fi
+
+When a variable $a$ is copied in a variable $b$, the algorithm
 remembers $b$ as the last location where the initial value of $a$ is available.
 This information is stored into \texttt{loc}($a$). The initial value that
 must be copied into $b$ is stored in \texttt{pred}($b$). The initialization
