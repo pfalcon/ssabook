@@ -764,6 +764,7 @@ diff:
 	  $(QUIET)$(ECHO) Running latexdiff on content-old.tex and content.tex into content-diff.tex
 	  $(QUIET) latexdiff content-old.tex content.tex > content-diff.tex
 	  $(QUIET)$(ECHO) Compiling chapter-diff.tex into chapter-diff.pdf
+	  $(QUIET) ln -sf ../../templates/chapter-diff.tex
 	  $(MAKE) chapter-diff.pdf
 
 
