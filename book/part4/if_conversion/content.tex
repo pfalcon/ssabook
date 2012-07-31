@@ -12,15 +12,15 @@
 
 \section{Introduction}
 
-VLIW (Very Large Instruction Word) or EPIC (Explicitly Parallel Instruction Computing) architectures make ILP (Instruction Level Parallelism) visible within the ISA (Instruction Set Architecture), relying on a static schedulers to organize the compiler output such that multiple instructions can be issued in each cycle.
+VLIW (Very Large Instruction Word) or EPIC (Explicitly Parallel Instruction Computing) architectures make ILP (Instruction Level Parallelism) visible within the ISA (Instruction Set Architecture), relying on static schedulers to organize the compiler output such that multiple instructions can be issued in each cycle.
 
-If-conversion is the process of transforming a region of control dependent instructions, into an equivalent sequence of instructions, in which conditional branches have been removed.
+If-conversion is the process of transforming a region of control dependent instructions, into an equivalent sequence of instructions in which conditional branches have been removed.
 
 Conditional branches introduce control dependencies between instructions. An instruction is control dependent on a preceding instruction if the preceding instruction determines its execution. These conditional branches act as a bottleneck for exposing parallelism.
 
 Removing branches improves performance in several ways: by removing the misprediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of basic blocks allows earlier execution of long latency operations and the merging of multiple control flow paths into a single flow of execution, than can later be exploited by scheduling frameworks such as VLIW scheduling, hyperblock scheduling or modulo scheduling.
 
-If-conversion implies global transformations, aiming at efficient CFG region selection and reconstruction, and then local code generation techniques to best select the new conditional and predicate setting operations.
+If-conversion implies global transformations, requiring effective region selection and reconstruction, and local code generation techniques to best select the new conditional and predicate setting operations.
 
 We first propose an if-conversion algorithm under SSA, that transforms a CFG region in SSA form to produce an if-converted SSA representation using control speculation.
 We then describe how this framework is extended to use predicated instructions, using the $\psi$-SSA form presented in chapter~\ref{chap:psi_ssa}.
@@ -56,6 +56,7 @@ $L_1$ & $x = a$ & $y = 2$ & - & - \\
       & $x_1 = 2$ & $y_1 = 3$ & $x_2 = a$ & $y_2 = 2$ \\
       & $r_1 = x_1 * y_1$ & $r_2 = x_2 + y_2$ & - & - \\
       & $r = q \cond r_1 : r_2$ & - & - & - \\
+      & $r = r + 1$ & - & - & - \\
       & $return$ $r$ & - & - & - \\
       & & & & \\     
       & & & & \\     
@@ -66,7 +67,7 @@ $L_1$ & $x = a$ & $y = 2$ & - & - \\
 \label{fig:example1}
 \end{figure}
 
-After if-conversion the execution path is reduced to 5 cycles, regardless of the outcome of the test.
+After if-conversion the execution path is reduced to 6 cycles with no branches, regarless of the test outcome, and assuming a very optimistic 1 cycle branch penalty. 
 
 From this introductory example, we can observe that the transformation implies:
 
@@ -78,7 +79,7 @@ From this introductory example, we can observe that the transformation implies:
 \end{itemize}
 
 % \annotation{Reference join sets; phi-congruence already here?}
-Thanks to SSA, the merging point is already present in the original control flow as the $\phi$ pseudo operation and register renaming is a basic property of SSA. Given these similarities between SSA and the if-conversion requirements, the transformation to generate if-converted code seems natural. We describe here the framework to exploit those properties on larger scale control flow regions.
+Thanks to SSA, the merging point is already materialized in the original control flow as a $\phi$ pseudo operation and register renaming is a basic property of SSA. Given these similarities between SSA and the if-conversion requirements, the transformation to generate if-converted code seems natural. We describe here the framework to exploit those properties on larger scale control flow regions.
 
 \subsection{Architectural requirements}
 
@@ -95,37 +96,40 @@ The \textit{merge} pseudo operations needs to be mapped to a conditional form of
 \begin{minipage}[t]{3cm}
 \mbox{fully predicated} \\
 $p \cond x = a + b $ \\
-$\overline{p} \cond x = 0 $ \\
+$\overline{p} \cond x = a * b $ \\
 \end{minipage} 
 \begin{minipage}[t]{3cm}
 \mbox{select} \\
-$t = a + b $ \\
-$x= p \cond t : 0 $ \\
+$t_1 = a + b $ \\
+$t_2 = a * b $ \\
+$x= p \cond t_1 : t_2 $ \\
 \end{minipage}
 \begin{minipage}[t]{3cm}
 \mbox{cmov} \\
-$t = a + b $ \\
-$x = 0 $ \\
+$x = a + b $ \\
+$t = a * b $ \\
 $x = cmov p,t$ \\
 \end{minipage}
 \caption{Conditional execution using different models}
 \label{fig:pred}
 \end{figure}
 
-To be speculated, an instruction must not potentially create any side effects, or hazards. For instance a memory load must not trap. This prevents the conditional execution by means of speculation of memory access for which the address is valid only on the selected path. Other reasons are may-alias problems during the memory instructions layout. Memory operations are therefore a major impediment to if-conversion. This is regrettable, because as long latency operations, speculative loads can in very effective to fetching data earlier in the instruction stream, reducing stalls. Modern architectures provide architectural support to dismiss invalid address exceptions. Examples are the $ldw.d$ dismissible load operation of the $ST231$ or $multiflow$ processors or the $IA64$ speculative loads. Note that $IA64$ provides both speculative and predicated loads.
+To be speculated, an instruction must not potentially create any side effects, or hazards. For instance a memory load must not trap. This prevents the conditional execution by means of speculation of memory access for which the address is valid only on the selected path. Other reasons are may-alias problems during the memory instructions layout. Memory operations are therefore a major impediment to if-conversion. This is regrettable, because as long latency operations, speculative loads can be very effective to fetching data earlier in the instruction stream, reducing stalls. Modern architectures provide architectural support to dismiss invalid address exceptions. Examples are the $ldw.d$ dismissible load operation of the $ST231$ or $multiflow$ processors or the $IA64$ speculative loads. Note that $IA64$ provides both speculative and predicated loads.
 
 \begin{figure}
 \begin{minipage}[t]{4cm}
 \mbox{IA64 speculative load} \\
-$t = ldw.s(addr) $ \\
-$jump$ $l_1:$ \\
-$check.s\:t$ \\
-$x = t$ \\
+$x = ldw.s(addr) $ \\
+$chk.s\:t$,lab \\
+$lab:$ \\
+$use\: x$ \\
+
 \end{minipage}
 \begin{minipage}[t]{4cm}
 \mbox{Multiflow dismissible load} \\
 $t = ldw.d(addr) $ \\
-$x = select\: \cond t : x $ \\
+$x = select\:p \cond t : x $ \\
+$use\:x$ \\
 \end{minipage}
 
 \begin{minipage}[t]{4cm}
@@ -138,11 +142,11 @@ $stw (x, value) $ \\
 $index=select\:p \cond i : j $ \\
 $stw (x[index], value) $ \\
 \end{minipage}
-\caption{Example of speculated memory operations}
+\caption{Examples of speculated memory operations}
 \label{fig:spec}
 \end{figure}
 
-Stores can be performed by speculating the address value, and forcing it to be a dummy valid address in the case of the not taken path. Naturally store hoisting can only be done if there is no aliasing conflict between different memory operations merged into the single execution path. Figure \ref{fig:spec} shows examples of various form of speculative memory operations.
+Stores can also be executed conditionally by speculating part of their address value, with additional constraints on the ordering on the memory operations due to possible alias between the two paths. Figure \ref{fig:spec} shows examples of various form of speculative memory operations.
 
 We first start to describe the structural selection of a set of CFG regions. We then describe the operations necessary to assign the instructions with their defining predicate. Finally we propose a global framework to pull toghether those techniques, incrementally enlarging the scope of the if-converted region to its maximum beneficial size.
 
