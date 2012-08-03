@@ -123,24 +123,20 @@ $x = cmov p,t$ \\
 \label{fig:pred}
 \end{figure}
 
-To be speculated, an instruction must not potentially create any side effects, or hazards. For instance a memory load must not trap. This prevents the conditional execution by means of speculation of memory access for which the address is valid only on the selected path. Other reasons are may-alias problems during the memory instructions layout. Memory operations are therefore a major impediment to if-conversion. This is regrettable, because as long latency operations, speculative loads can be very effective to fetching data earlier in the instruction stream, reducing stalls. Modern architectures provide architectural support to dismiss invalid address exceptions. Examples are the $ldw.d$ dismissible load operation of the $ST231$ or $multiflow$ processors or the $IA64$ speculative loads. Note that $IA64$ provides both speculative and predicated loads.
+To be speculated, an instruction must not potentially create any side effects, or hazards. For instance a memory load must not trap. This prevents the conditional execution by means of speculation of memory access for which the address is valid only on the selected path. Other reasons are may-alias problems during the memory instructions layout. Memory operations are therefore a major impediment to if-conversion. This is regrettable, because as long latency operations, speculative loads can be very effective to fetching data earlier in the instruction stream, reducing stalls. Modern architectures provide architectural support to dismiss invalid address exceptions. Examples are the $ldw.d$ dismissible load operation of the $ST231$ or $multiflow$ processors or the $IA64$ speculative loads. The main difference is that in a dismissible model, invalid memory access exceptions are never delivered, which can be problematic in kernel environment that relies on memory exception for correct behavior (for instance dynamic stack grow) on the True path. A speculative model can catch the exception thanks to the token bit check instruction. Note that $IA64$ provides both speculative and predicated loads.
 
 \begin{figure}
 \begin{minipage}[t]{4cm}
 \mbox{IA64 speculative load} \\
-$x = ldw.s(addr) $ \\
-$chk.s\:t$,lab \\
-$use\: x$ \\
-$lab:$ \\
-
+$t = ld.s(addr) $ \\
+$chk.s $\\
+$p \cond x = t$ \\
 \end{minipage}
 \begin{minipage}[t]{4cm}
 \mbox{Multiflow dismissible load} \\
 $t = ldw.d(addr) $ \\
 $x = select\:p \cond t : x $ \\
-$use\:x$ \\
 \end{minipage}
-
 \begin{minipage}[t]{4cm}
 \mbox{base store hoisting} \\
 $x=select\:p \cond addr : dummy $ \\
@@ -248,21 +244,21 @@ The basic alternative behind the SSA transformations is to either replace the in
 
 \subsection{Predicate assignment in SSA}
 
-In SSA form, we distinguish two kinds of speculative execution. Unconditional speculation is the speculation of an instruction where the result operand does not appear as a $\phi$ operand, it can be emitted as such. Conditional speculation is the execution of an instruction where the result merge into a $\phi$ operand inside the hammock. Such result will need to be conditionalized and a data dependency with the predicate created.
+In SSA form, we distinguish two kinds of speculative execution. Unconditional speculation is the speculation of an instruction where the result operand does not appear as a $\phi$ operand. Conditional speculation is the execution of an instruction where the result merge into a $\phi$ operand inside the hammock. The instructions can be predicated or speculated but in addition the result need to be realized into the merging operation.
 
 \begin{figure}[h]
 \centering
   \subfloat[minimal if-conversion] {
-   \includegraphics[scale=0.6]{phi_min}
+   \includegraphics[scale=0.7]{phi_min}
    \label{fig:phi_minimal}}
   \subfloat[pruned if-conversion] {
-  \includegraphics[scale=0.6]{phi_pru}
+  \includegraphics[scale=0.7]{phi_pru}
   \label{fig:phi_pruned}}
 \caption{SSA predicate minimality}
 \label{fig:minimality}
 \end{figure}
 
-The minimality of the SSA region determines the ability to assign a minimal predicate to the instructions. In Minimal SSA-see chapter~\ref{chap:properties_and_flavours}-, $\phi$ functions might be inserted for variables that have a live range limited to the if-converted region, and might be temporaries. As pictured in figure \ref{fig:phi_minimal} the number of $\phi$ instructions will determine the number of instructions that will be assigned a predicate, and thus the minimality of the if-converted region in term of number of predicated instructions. In pruned SSA \ref{fig:phi_pruned}, the variables are not $\phi$ related, so they do not need to be connected through a predicate. In this respect; pruned SSA exposes the smallest number of predicate dependencies, giving more freedom for scheduling and register allocation. Note that those predicates could be optimized later by predicate promotion, but this would locally introduce deficiency in the local schedule estimations and cost functions.
+The minimality of the SSA region determines the ability to assign a minimal predicate to the instructions. In Minimal SSA-see chapter~\ref{chap:properties_and_flavours}-, $\phi$ functions might be inserted for variables that have a live range limited to the if-converted region, and might be temporaries. As pictured in figure \ref{fig:phi_minimal} the number of $\phi$ instructions will determine the number of instructions that will be assigned a predicate, and thus the minimality of the if-converted region in term of number of predicated instructions. In pruned SSA \ref{fig:phi_pruned}, the variables are not $\phi$ related, so they do not need to be connected through a predicate. In this respect; pruned SSA exposes the smallest number of predicate dependencies, giving more freedom for scheduling and register allocation. Note that those predicates could be optimized later by predicate promotion, but this would locally introduce deficiency in the cost functions.
 
 To identify the operation's results that need to be conditionally defined, we only need to look at the defining instructions of the $\phi$ instructions. All temporaries that do not have a join point within the considered region and that don't have a side effect can be unconditionally speculated during the SSA transformation processes. Only instructions with a side effect need to be guarded. This is a considerable advantage over traditional if-conversion algorithms which mark all instructions in a conditional basic block as dependent on the predicate.
 Instruction predicates from the taken path are merged (using a logical and) with the branch parameter. Predicates in instructions from the fall trough path are merged with the complement of the branch parameter.
