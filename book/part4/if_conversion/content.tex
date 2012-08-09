@@ -14,7 +14,6 @@ TODO:
 \begin{itemize}
 \item  - 1.2.1.4 Insert example of non-convergent conjunctive iterative if-conversion
 % \item  - 1.3.2   Insert example of a case where iteration on the algorithm is needed.
-\item  - 1.3     Traditional approach in SSA. Rephrase, Cite \cite{Stoutchinin_Gao_2004}. Sync with additional reading chapter
 \item  - 1.3.2   Finish running example 
 \item  - 1.3.5   Reduce, done with local factors
  \end{itemize}
@@ -258,7 +257,7 @@ In SSA form, we distinguish two kinds of speculative execution. Unconditional sp
 
 The minimality of the SSA region determines the ability to assign a minimal predicate to the instructions. In Minimal SSA-see chapter~\ref{chap:properties_and_flavours}-, $\phi$ functions might be inserted for variables that have a live range limited to the if-converted region, and might be temporaries. As pictured in figure \ref{fig:phi_minimal} the number of $\phi$ instructions will determine the number of instructions that will be assigned a predicate, and thus the minimality of the if-converted region in term of number of predicated instructions. In pruned SSA \ref{fig:phi_pruned}, the variables are not $\phi$ related, so they do not need to be connected through a predicate. In this respect; pruned SSA exposes the smallest number of predicate dependencies, giving more freedom for scheduling and register allocation. Note that those predicates could be optimized later by predicate promotion, but this would locally introduce deficiency in the cost functions.
 
-To identify the operation's results that need to be conditionally defined, we only need to look at the defining instructions of the $\phi$ instructions. All temporaries that do not have a join point within the considered region and that don't have a side effect can be unconditionally speculated during the SSA transformation processes. Only instructions with a side effect need to be guarded. This is a considerable advantage over traditional if-conversion algorithms which mark all instructions in a conditional basic block as dependent on the predicate.
+To identify the operation's results that need to be conditionally defined, we only need to look at the defining instructions of the $\phi$ instructions. All temporaries that do not have a join point within the considered region and that don't have a side effect can be unconditionally speculated during the SSA transformation processes. Only instructions with a side effect need to be guarded. 
 Instruction predicates from the taken path are merged (using a logical and) with the branch parameter. Predicates in instructions from the fall trough path are merged with the complement of the branch parameter.
 
 The process is applied iteratively on the CFG in SSA form until no more reductions are possible. The quality of the SSA taken as input does not affect the correctness of the algorithm: if the control flow is in pruned SSA, i.e two paths $x->+z$ and $y->+z$ converge at node z, then a $\phi$ node is inserted at z only if z is alive in or after z. in which case x and y can be promoted and no merging operation is needed. 
@@ -345,8 +344,29 @@ $ d = \psi(c \cond d_1, \overline{c} \cond d_2) $ \\
 
 \section{Global Analysis and Transformations}
 
-The traditional approach to perform if-conversion in SSA is to apply a classical if-conversion algorithm, such as Fang \cite{Fang:1996:CAI:645674.663446} or RK \cite{Schlansker-predicated}, on a conventional SSA representation. Assuming that all instructions are predicated, an additional pass is required during instruction selection to emit speculative instructions when a predicated variant is not available. Another pass is needed for predicate promotion, based on the predicate dependence graph.
-During the if-conversion process, instructions that are merged into the deleted $\phi$ operations are expressed as $\psi$ operations, merging different values from their $\psi-congruence$ class. 
+Critical regions are rarely just composed of simple if-then-else control flow regions and processors have limited resources. The number of registers will determine the acceptable level of data dependencies to minimize register pressure. The number of predicate registers will determine the depth of the if-conversion so that the number of conditions does not exceed the number of available predicates and the number of processing units will determine the number of instructions that can be executed simultaneously. 
+
+For this reason, standard techniques are either limited to a single conditional branch using peephole-style pattern matching or intrinsic functions (conditional code is inlined by the compiler in the internal representation). A more sophisticated approach is to scope larger regions such as hyperblocks. 
+
+\subsection{Hyperblock formation}
+
+A Hyperblock is a region of straight code with a single entry and possibly multiple exits where inner branches have been removed by if-conversion.
+Hyperblocks enlarge the scope for scheduling in two ways. First, since basic blocks swell as the scope of the predicated region grows, static scheduling can now be unconstrained. Second, instructions can be freely speculated without the need for compensation code. Conditional code to exit the hyperblock does not impact the execution flow, using a proper code basic block reordering to favor fall through execution.
+
+Tail duplication is used to exclude from the Hyperblock basic blocks that cannot be if-converted, either because they contain hazardous instructions, or because of heuristic decisions. 
+
+Standard approach to Hyperblock construction is to apply the following steps:
+
+\begin{itemize}
+\item Create a trace and select the blocks. A trace is a sequence of basic blocks that can be scheduled together. 
+\item Remove the side entries with tail duplication. This step removes the scheduling constraints imposed by side entries.
+\item Perform if-conversion while still in SSA.
+\end{itemize}
+
+\subsection{CLassical approach}
+
+One way to perform if-conversion in SSA is to apply a classical if-conversion algorithm, such as Fang \cite{Fang:1996:CAI:645674.663446} or RK \cite{Schlansker-predicated}, on a conventional SSA representation. 
+During the if-conversion process, instructions that are merged into the deleted $\phi$ operations are now expressed as $\psi$ operations, merging different values from their $\psi-congruence$ class. Assuming that all instructions are predicated, an additional pass is required during instruction selection to emit speculative instructions when a predicated variant is not available. Another pass is needed for predicate promotion, based on the predicate dependence graph.
 
 To illustrate the differences between a traditional framework and a native SSA framework, we first start by describing the RK algorithm proposed by Park and Schlansker on the nested tests in figure \ref{fig:nested1}. We will then describe in detail the SSA based approach.
 
@@ -393,33 +413,13 @@ The RK algorithm starts by computing the Control Dependence Graph. It is necessa
 
 By the end, the algorithm merges the basic blocks, using the predicates and the conditionalized instructions, and removes the instruction branches. \ref{fig:nested}. 
 
-This approach assumes that all instructions can be predicated, and in particular the predicate setting operations which need to be conditionalized. Without predicate support for comparison instructions, logical operations must be used to merge condition setting operations. For instance, in the given example, the initialization sequence $p_1 ? p_3=test$ needs to be rewritten as $t=test; p_1=p_3 \& t$. An algorithm based on speculative transformations, necessary to handle efficiently partially predicated architectures, is then penalized by this approach, since an additional pass is needed to convert a conditional instruction into a temporary register and a conditional move.
+This approach assumes that the region to if-convert is defined and that all instructions can be predicated, Without predicate support for comparison instructions, logical operations must be used to merge condition setting operations. For instance, in the given example, the initialization sequence $p_1 ? p_3=test$ needs to be rewritten as $t=test; p_1=p_3 \& t$. An algorithm based on speculative transformations, necessary to support partially predicated architectures, is then penalized by this approach, since an additional pass is needed to convert a conditional instruction into a temporary register and a conditional move.
 
-\subsection{Hyperblock formation in SSA}
-
-Unfortunately, critical regions are rarely composed of simple if-then-else control flow and processors have limited resources. The number of registers will determine the acceptable level of data dependencies to minimize register pressure. The number of predicate registers will determine the depth of the if-conversion so that the number of conditions does not exceed the number of available predicates and the number of processing units will determine the number of instructions that can be executed simultaneously. 
-
-For this reason, standard techniques are either limited to a single conditional branch using peephole-style pattern matching or intrinsic functions (conditional code is inlined by the compiler in the internal representation). A more sophisticated approach is to scope larger regions such as hyperblocks. 
-
-A hyperblock is a region of straight code with a single entry and possibly multiple exits where inner branches have been removed by if-conversion.
-Hyperblocks enlarge the scope for scheduling in two ways. First, since basic blocks swell as the scope of the predicated region grows, static scheduling can now be unconstrained. Second, instructions can be freely speculated without the need for compensation code. Conditional code to exit the hyperblock does not impact the execution flow, using a proper code basic block reordering to favor fall through execution.
-
-Tail duplication is used to exclude from the Hyperblock basic blocks that cannot be if-converted, either because they contain hazardous instructions, or because of heuristic decisions. 
-
-Generally, hyperblocks are created in the following steps:
-\begin{itemize}
-\item Create a trace and block selection. A trace is a sequence of basic blocks that can be scheduled together. 
-\item Remove side entries with tail duplication. This step removes scheduling constraints imposed by side entries.
-\item Perform if-conversion.
-\end{itemize}
-
-We describe next how hyperblocks are built under SSA, in which the if-conversion process is inherently part of a single comprehensible framework, rather than a separate step.
+We describe next how hyperblocks are now built under SSA, in which the if-conversion process is inherently part of a single comprehensible framework.
 
 \subsection{SSA Iterative if-conversion algorithm}
 
-The region to if-convert must be carefully constructed. Because of resource consumption issues, merging different paths together can over commit the architectural ability to execute in parallel the multiple instructions: Data dependencies and register renaming introduce new register constraints. Moving operations earlier in the instruction stream increases live-ranges. 
-Another pitfall is to increase the critical path by merging long latency operations from a less frequently executed path, thus moving to the critical paths more instructions than the parallelism can absorb.
-Finally, for each basic block considered within the region, a predicate must be computed and assigned to the corresponding instructions. Those predicate computations introduce new instructions and new data dependencies.
+For each basic block considered within the region, a predicate must be computed and assigned to the corresponding instructions. Those predicate computations introduce new instructions and new data dependencies, that need to be controlled while the region that is been if-converted.
 
 The native If-conversion in SSA form is based on an iterative, incremental if-conversion construction, unifying region selection and region transformation. 
 
@@ -429,7 +429,7 @@ To perform translation from a structured control flow region, we iterate through
 
 During this incremental process, since nested regions are already predicated when evaluating the if-conversion of a branch, all side effects introduced by the if-conversion, such as new predicate merging instructions, new conditional moves merging flow or new data dependencies, will be accounted for locally. Furthermore, the predicate assignment is simplified, since new predicates are mechanically inserted when merging inner regions containing conditional code. The prevalent idea is that the inner region once predicated will be viewed as a single basic region by the outer scopes evaluation engines.
 
-Since the algorithm processes the control flow in post-order traversal, the dominator tree does not change, and it is possible to maintain the SSA locally to the inner region. By recurrence the if-converted region can in turn be optimized out if its head belongs to the dominance frontier of an outer region.
+As the algorithm processes the control flow in post-order traversal, the dominator tree does not change, and it is possible to maintain the SSA locally to the inner region. By recurrence the if-converted region can in turn be optimized out if its head belongs to the dominance frontier of an outer region.
 
 Consider for example the control flow transformations for the $wc$ program (figure \ref{fig:wc1}). The exit node is BB7. Nodes BB7 and BB3 contains XXX TODO finish this XXX
 
@@ -505,6 +505,9 @@ The algorithm to perform SSA basic block duplication is decomposed into:
 \end{figure}
 
 \subsection{Profitability}
+
+The region to if-convert must be carefully constructed. Because of resource consumption issues, merging different paths together can over commit the architectural ability to execute in parallel the multiple instructions: Data dependencies and register renaming introduce new register constraints. Moving operations earlier in the instruction stream increases live-ranges. 
+Another pitfall is to increase the critical path by merging long latency operations from a less frequently executed path, thus moving to the critical paths more instructions than the parallelism can absorb.
 
 Merging multiple control flow paths together can easily exceed the processor resources, leading to excessive register pressure or moving infrequently used long latencies instructions into the critical path. In this incremental approach, the decision to if-convert or not the inner region will propagate recurrently to the outer regions.
 
