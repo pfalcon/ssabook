@@ -15,7 +15,6 @@ TODO:
 \item  - 1.2.1.4 Insert example of non-convergent conjunctive iterative if-conversion
 % \item  - 1.3.2   Insert example of a case where iteration on the algorithm is needed.
 \item  - 1.3.2   Finish running example 
-\item  - 1.3.5   Reduce, done with local factors
  \end{itemize}
 
 \section{Introduction}
@@ -506,38 +505,35 @@ The algorithm to perform SSA basic block duplication is decomposed into:
 
 \subsection{Profitability}
 
-The region to if-convert must be carefully constructed. Because of resource consumption issues, merging different paths together can over commit the architectural ability to execute in parallel the multiple instructions: Data dependencies and register renaming introduce new register constraints. Moving operations earlier in the instruction stream increases live-ranges. 
-Another pitfall is to increase the critical path by merging long latency operations from a less frequently executed path, thus moving to the critical paths more instructions than the parallelism can absorb.
+Fusing execution paths can over commit the architectural ability to execute in parallel the multiple instructions: Data dependencies and register renaming introduce new register constraints. Moving operations earlier in the instruction stream increases live-ranges. 
+Aggressive if-conversion can easily exceed the processor resources, leading to excessive register pressure or moving infrequently used long latencies instructions into the critical path. In a SSA incremental approach, the decision to if-convert or not the inner region will propagate recurrently to the outer regions.
 
-Merging multiple control flow paths together can easily exceed the processor resources, leading to excessive register pressure or moving infrequently used long latencies instructions into the critical path. In this incremental approach, the decision to if-convert or not the inner region will propagate recurrently to the outer regions.
+The local decision function to if-convert, or not a inner region in order to enlarge the hyperblock is based on machine model, instructions constraints, execution frequencies. All those form the objective function parameters than will be re-applied locally at each neew transformation.
 
-The local decision function to if-convert, or not a inner region in order to enlarge the hyperblock is based on instructions constraints and on heuristics.
-A constraint based if-conversion selection algorithm will consider predicative instructions, that cannot be executed unconditionally, speculative instructions, that merge into conditional moves and finally trapping instructions that will prevent the region to be if-converted. 
+Since the SSA iterative restructuring framework described earlier reduces the scope for the decision function to a localized part of the control flow graph, the predicate instructions or temporary register to hold the speculated instructions are already in the code that we are considering because the constraints have been resolved. 
 
-Since the SSA iterative restructuring framework described earlier reduces the scope for the decision function to a localized part of the control flow graph, the predicate instructions or temporary register to hold the speculated instructions are already in the code that we are considering because the constraints have been resolved. Consequently, SSA iterative if-conversion construction is precise. The following factors are considered locally: XXX TODO complete XXX
+Although if-conversion removes branches, it also adds overhead (new instructions to merge predicates, register pressure for speculative conditional, higher dependence height because of the presence of new data dependencies on the predicates).
 
-The first consequence is that all registers are now alive simultaneously, (live range), so the benefits of branch removal and better scheduling is balanced by the increased live range and register pressure: If-conversion must rely on an efficient decision model, fast to compute, since the decision must be reconsidered at each step.
-
-The prevalent idea is that a region can be if-converted if the cost of the resulting if-converted basic block is smaller than the cost of each region taken separately weighted by the branch frequencies. The objective function takes three parameters: resource usage, schedule length and execution frequency, which can come either from static heuristics or profiling. Naturally a precise machine model is required to describe the instructions latencies.
-
-Although if-conversion removes branches, it also adds overhead (new instructions to merge predicates, register pressure for speculative conditional, higher dependence height because of the presence of new data dependencies on the predicates). The newly formed basic block should not have a higher schedule than the one that would have been taken if the code was not if-converted.
+The prevalent idea is that a region can be if-converted if the cost of the resulting if-converted basic block is smaller than the cost of each region taken separately weighted by the branch frequencies.
 
 We compare the cost of the region before if-conversion. So the cost of a path is the schedule estimation of all the blocks in the path pondered by the execution profile:
-\begin{align}
+\begin{align*}
 Cost(path)=Freq(path)*\sum_{k=1}^n(Cost(bb_{k}))
-\end{align}
+\end{align*}
 The cost of the region starting at basic block $head$ before if-conversion is therefore the cost of all the basic blocks in the considered region, on each path.
-\begin{align}
-Cost(head)=Cost(bb_{head})+branch\:lat+Cost(taken\:path)+Cost(fall-though\:path)
-\end{align}
+\begin{align*}
+Cost(BBs_{before:\ ifc})=Cost(bb_{head}) + branchlat + Cost(bbs_{taken:\ path}) + Cost(bbs_{fall-though:\ path})
+\end{align*}
 The Cost after if-conversion is estimated with:
-\begin{align}
-Cost(head)=Cost(bb_{head} o bb_{taken path} o bb_{fall-though path})
-\end{align}
+\begin{align*}
+Cost(BB_{after:\ ifc})=Cost(bb_{head} \circ bb_{taken:\ path} \circ bb_{fall-though:\ path})
+\end{align*}
+Where $\circ$ is the composition function that merges basic blocks together, removes associated branches and creates the predicate operations. The resulting $Cost$ applied to the new basic block represents the estimated schedule after if-conversion, that will be effective only if
+\begin{align*}
+Cost(BBs_{before:\ ifc}) > Cost(BB_{after:\ ifc})
+\end{align*}
 
-Where $o$ is the composition function that merges basic blocks together, removes associated branches and creates the predicate operations. The resulting $Cost$ applied to the new basic block represents the estimated schedule after if-conversion, that will be effective only if $Cost(head_{before\,ifc}) > Cost(head_{after\,ifc})$. 
- 
-The cost function needs the target machine description to derive the instruction latencies, resource usage and scheduling constraints to estimate the local scheduling. The local dependencies computed between instructions are used to compute the dependence height. The branch frequency is obtained either from static branch prediction heuristics, profile information or user inserted directives.
+The cost function needs the target machine description to derive the instruction latencies, resource usage and scheduling constraints. The local dependencies computed between instructions are used to compute the dependence height. The branch frequency is obtained either from static branch prediction heuristics, profile information or user inserted directives.
 
 The estimated cost of the if-converted region is the schedule height estimation of the instructions without the branches. When the schedule height of the if-converted region is smaller than the profiled estimation, then it is profitable.
 
