@@ -10,12 +10,9 @@
 %\setcounter{tocdepth}{3} 
 %\tableofcontents
 
-TODO:
-\begin{itemize}
-\item  - 1.2.1.4 Insert example of non-convergent conjunctive iterative if-conversion
-% \item  - 1.3.2   Insert example of a case where iteration on the algorithm is needed.
-\item  - 1.3.2   Finish running example 
- \end{itemize}
+% TODO:
+%   - 1.2.1.4 Insert example of non-convergent conjunctive iterative if-conversion
+%   - 1.3.2   Insert example of a case where iteration on the algorithm is needed.
 
 \section{Introduction}
 
@@ -156,6 +153,7 @@ Note that the $select$ operation is a real instruction that does not need to be 
 In the remaining of this chapter, We use the notation $r = c \cond :r_1:r_2$, to represent a $select$ like operation resulting of the merge of the result of the speculative execution of the instructions defining $r_1$ and $r_2$. $r$ takes the value of $r_1$ if $c$ is True, else $r_2$. We use the notation $r = c \cond op$ to represent the predicated execution of $op$ if the predicate $c$ is True. $r = \overline{p} \cond op$ if the predicate $c$ is False.
 
 \section{Basic Transformations}
+\label{sec:basic}
 
 \subsection{SSA operations on Basic Blocks}
 
@@ -410,34 +408,35 @@ The RK algorithm starts by computing the Control Dependence Graph. It is necessa
 \label{fig:RK}
 \end{figure}
 
-By the end, the algorithm merges the basic blocks, using the predicates and the conditionalized instructions, and removes the instruction branches. \ref{fig:nested}. 
+By the end, the algorithm merges and reorder the basic blocks, emitting the predicated instructions and predicate setting operations, and removing the instruction branches. \ref{fig:nested}. 
 
-This approach assumes that the region to if-convert is defined and that all instructions can be predicated, Without predicate support for comparison instructions, logical operations must be used to merge condition setting operations. For instance, in the given example, the initialization sequence $p_1 ? p_3=test$ needs to be rewritten as $t=test; p_1=p_3 \& t$. An algorithm based on speculative transformations, necessary to support partially predicated architectures, is then penalized by this approach, since an additional pass is needed to convert a conditional instruction into a temporary register and a conditional move.
+This approach assumes that the region to if-convert is defined and that all instructions can be predicated, Without predicate support for comparison instructions, logical operations must be used to merge condition setting operations. For instance, An algorithm based on speculative transformations, necessary to support partially predicated architectures, is then penalized by this approach, since an additional pass is needed to convert a conditional instruction into a temporary register and a conditional move.
 
-We describe next how hyperblocks are now built under SSA, in which the if-conversion process is inherently part of a single comprehensible framework.
+We describe next a native approach to build hyperblocks under SSA, in which the if-conversion process is inherently part of a single comprehensible framework.
 
 \subsection{SSA Iterative if-conversion algorithm}
 
-For each basic block considered within the region, a predicate must be computed and assigned to the corresponding instructions. Those predicate computations introduce new instructions and new data dependencies, that need to be controlled while the region that is been if-converted.
+For each basic block considered within the region, a predicate must be computed and assigned to the corresponding instructions. Those predicate computations introduce new instructions and new data dependencies, that need to be controlled while the region is been if-converted.
 
 The native If-conversion in SSA form is based on an iterative, incremental if-conversion construction, unifying region selection and region transformation. 
 
-The algorithm takes as input a structured region in SSA form and produces a valid SSA representation using conditional move instructions to realize join points, Incrementally building-up the if-converted region during a control flow traversal using a native SSA framework.
+The algorithm takes as input a structured region in SSA form and produces a valid SSA representation using conditional move instructions to realize join points, Incrementally building-up the if-converted region during a control flow traversal maintaining the SSA representation.
 
-To perform translation from a structured control flow region, we iterate through the basic blocks in post-order traversal to create the list of candidate conditional blocks of the control flow. Post-order traversal guarantees that each inner region will be processed before regions of larger scope. No sub-graph needs to be selected at this point, because the decision to if-convert will be retaken incrementally from inner to outer regions as the hyperblock grows. When the region cannot grow anymore because of resources, or because a basic block cannot be if-converted, then another region is considered in the post-order list. When all the control flow is explored, the process is restarted until no more reduction is possible.
+We create the list of candidate conditional blocks of the control flow sorted in post-order. Each one designates the head of a sub-graph that can be if-converted using the techniques described in chapter-\ref{sec:basic}. Post-order traversal guarantees that each inner region will be processed before regions of larger scope. No sub-graph needs to be selected at this point, because the decision to if-convert will be retaken incrementally from inner to outer regions as the hyperblock grows. When the region cannot grow anymore because of resources, or because a basic block cannot be if-converted, then another region is considered in the post-order list until all the CFG is explored
 
-During this incremental process, since nested regions are already predicated when evaluating the if-conversion of a branch, all side effects introduced by the if-conversion, such as new predicate merging instructions, new conditional moves merging flow or new data dependencies, will be accounted for locally. Furthermore, the predicate assignment is simplified, since new predicates are mechanically inserted when merging inner regions containing conditional code. The prevalent idea is that the inner region once predicated will be viewed as a single basic region by the outer scopes evaluation engines.
+During this incremental process, since nested regions are already predicated when evaluating the if-conversion of a branch, all the side effects, such as new predicate merging instructions, new conditional moves merging flow or new data dependencies, will be accounted for locally. Furthermore, the predicate assignment is simplified, since new predicates are mechanically inserted when merging inner regions containing conditional code. The prevalent idea is that the inner region once predicated will be viewed as a single basic region by the outer scopes evaluation engines.
 
 As the algorithm processes the control flow in post-order traversal, the dominator tree does not change, and it is possible to maintain the SSA locally to the inner region. By recurrence the if-converted region can in turn be optimized out if its head belongs to the dominance frontier of an outer region.
 
-Consider for example the control flow transformations for the $wc$ program (figure \ref{fig:wc1}). The exit node is BB7. Nodes BB7 and BB3 contains XXX TODO finish this XXX
+Consider for example the CFG from the $wc$ program (figure \ref{fig:wc1}). The exit node is $BB7$, and $BB3$ contains a function call, so will be excluded from the hyperblock. This control-flow contains three back edges and form a good example how a cyclic graph can be if-converted.
 
- The post-order list of the basic nested regions is {BB11, BB17, BB16, BB14, BB10, BB9, BB6, BB2}. The head of nested hammocks is represented by circle nodes. The nodes BB3 and BB7 contains calls, so they need to be excluded from the if-conversion algorithm.
-The first hammock region starting at BB11 to BB2 contains BB12, promoted such that BB2 becomes the single successor of BB11. 
-For the region starting at BB17, BB19 cannot yet be promoted because of the side entry, so it is duplicated into BB15, such that BB15 has now BB2 as successor.
-BB16 is the start of a region containing BB17 and BB19. The former can be merged from the 2 conditions coming from BB16 and BB17. BB17 can be promoted into BB16 under BB16's conditions and BB19 under BB16 and BB17 conditions. Note that at this stage BB16's successors are BB19 and BB2.
-BB14 is the head of the newly created region where BB15, BB16 and BB17 can be promoted. From BB9 a merging predicate is computed with predicate in BB10. Instructions in BB14 are conditionalized on this new predicate and BB10 promoted, forming a new hammock at BB9 with BB14 and BB11 that can be promoted. The last candidate, BB2 is the start of a region that cannot be promoted, because of the call in BB3.
-The region is now if-converted, leaving a single back-edge, removing 7 branches inside the body loop. At this stage, a local decision can be made to decide if tail-call must be performed to form an hyperblock containing only BB2,BB5,BB6 and BB9, excluding BB3. 
+ The post-order list of the basic nested regions is ($BB11$, $BB17$, $BB16$, $BB14$, $BB10$, $BB9$, $BB6$, $BB2$). The head of nested hammocks is represented by the circle nodes.
+The first hammock region starting at $BB11$ to $BB2$ contains only $BB12$. The fact that $BB2$ dominates the region to if-convert is not a problem, since what matters is the merging SSA $\phi$ operations. The instructions in $BB12$ are then predicated and $BB2$ becomes the single successor of $BB11$. 
+Considering next the region pointed by $BB17$, $BB19$ cannot yet be promoted because of the side entries coming from $BB15$ and $BB16$, so it is duplicated into a $BB19'$ with $BB2$ as successor. $BB19$ can then be predicated into $BB17$
+$BB16$ is the start of a region containing $BB17$ and $BB19'$. $BB17$ can be promoted into $BB16$. $BB19'$ already contains predicated operations from the previous transformation, So a new merging predicate is introduced at this point. $BB16$ unique successor is now a back edge to $BB2$.
+$BB14$ is the head of the newly created region where $BB15$, $BB16$ can be promoted. Again since $BB16$ contains predicated and predicate setting operations, a newly predicate must be created to hold the merged conditions.
+$BB10$ points to a cyclic hammock consisting from $BB10$-$BB14$-$BB11$-$BB2$. $BB14$ needs to be duplicated to $BB14'$ and $BB11$ to $BB11'$. The process finished with the hammock formed by $BB9$-$BB10$-$BB14'$.
+The region is now if-converted, leaving a single back-edge, removing 7 branches inside the body loop.
 
 \begin{figure}
   \subfloat[Before if-conversion] {
@@ -475,7 +474,7 @@ Consider in contrast how tail-duplication can be performed lazily using the SSA 
 \subsection{Basic Block duplication}
 
 Basic Block duplication is used to remove side entries and to obviate the constraints on control dependencies. Unless applied carefully, basic block duplication could be the cause of code bloating without performance improvement. However experience has shown that when applied carefully it can be efficient, enabling further scalar optimizations.
-Consider figure \ref{fig:bbdup}. Since we are if-converting from the inner most regions, the algorithm first considers the region {BB3,BB4,BB5,BB6 and BB7}, and discards the edge coming from BB2 by duplicating BB6 into BB8. The $\phi$ becomes a move in the duplicated block with a renamed definition. The new $\phi$ operands are updated from the new edge. Note that in the implementation the block does not need to be created during this intermediate step because it will next be promoted into BB3. We have two nested hammocks and the process can be applied iteratively. The dependency that has been removed in the control flow is now expressed as a data dependency between the two $select$ instructions.
+Consider figure \ref{fig:bbdup}. Since we are if-converting from the inner most regions, the algorithm first considers the region $BB3$, $BB4$, $BB5$, $BB6$ and $BB7$, and discards the edge coming from BB2 by duplicating BB6 into BB8. The $\phi$ becomes a move in the duplicated block with a renamed definition. The new $\phi$ operands are updated from the new edge. Note that in the implementation the block does not need to be created during this intermediate step because it will next be promoted into $BB3$. We have two nested hammocks and the process can be applied iteratively. The dependency that has been removed in the control flow is now expressed as a data dependency between the two $select$ instructions.
 Naturally, any number of incoming edges into the duplicated basic block are allowed.
 
 The algorithm to perform SSA basic block duplication is decomposed into:
