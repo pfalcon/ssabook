@@ -18,17 +18,13 @@
 
 VLIW (Very Large Instruction Word) or EPIC (Explicitly Parallel Instruction Computing) architectures make ILP (Instruction Level Parallelism) visible within the ISA (Instruction Set Architecture), relying on static schedulers to organize the compiler output such that multiple instructions can be issued in each cycle.
 
-If-conversion is the process of transforming a region of control dependent instructions, into an equivalent sequence of instructions in which conditional branches have been removed.
-
 Conditional branches introduce control dependencies between instructions. An instruction is control dependent on a preceding instruction if the preceding instruction determines its execution. These conditional branches act as a bottleneck for exposing parallelism.
+
+If-conversion is the process of transforming a region of control dependent instructions, into an equivalent sequence of instructions in which conditional branches have been removed in order to expose ILP.
 
 Removing branches improves performance in several ways: by removing the misprediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of basic blocks allows earlier execution of long latency operations and the merging of multiple control flow paths into a single flow of execution, than can later be exploited by scheduling frameworks such as VLIW scheduling, hyperblock scheduling or modulo scheduling.
 
-We first propose an if-conversion algorithm under SSA, that transforms a CFG region in SSA form to produce an if-converted SSA representation using control speculation.
-We then describe how this framework is extended to use predicated instructions, using the $\psi$-SSA form presented in chapter~\ref{chap:psi_ssa}.
-
 Consider the simple example given in figure \ref{fig:example1}, that represents the execution of an if-then-else statement on a 4-issue processor. Branches are highly biased, so the basic blocks can be reordered to favor the critical path. Even with this optimistic case, the schedule height is still 6 cycles (assuming that all instructions have a one cycle latency), with a maximal schedule height of 7 instructions. 
-
 \begin{figure}
 \footnotesize
   \subfloat[Control Flow] {
@@ -41,7 +37,7 @@ Consider the simple example given in figure \ref{fig:example1}, that represents 
 \hline
       & $q = test$         &   -     &   -   & - \\
       & $q \cond br$ $L_1$ & -       & - & - \\
-      & $x = 2$            & $y = 3$ & - & - \\
+      & $x = b$            & $y = 3$ & - & - \\
       & $r = x * y$ & - & - & - \\
 $L_2$ & $r = r + 1$ & - & - & - \\
       & $return$ $r$ & - & - & - \\
@@ -55,12 +51,11 @@ $L_1$ & $x = a$ & $y = 2$ & - & - \\
       & ALU1 & ALU2 & ALU3 & ALU 4 \\
 \hline
       & $q = test$ & - & - & - \\
-      & $x_1 = 2$ & $y_1 = 3$ & $x_2 = a$ & $y_2 = 2$ \\
+      & $x_1 = b$ & $y_1 = 3$ & $x_2 = a$ & $y_2 = 2$ \\
       & $r_1 = x_1 * y_1$ & $r_2 = x_2 + y_2$ & - & - \\
       & $r = q \cond r_1 : r_2$ & - & - & - \\
       & $r = r + 1$ & - & - & - \\
       & $return$ $r$ & - & - & - \\
-      & & & & \\     
       & & & & \\     
       & & & & \\     
       & & & & \\     
@@ -69,19 +64,19 @@ $L_1$ & $x = a$ & $y = 2$ & - & - \\
 \label{fig:example1}
 \end{figure}
 
-After if-conversion the execution path is reduced to 6 cycles with no branches, regardless of the test outcome, and assuming a very optimistic 1 cycle branch penalty. 
+After if-conversion the execution path is reduced to 6 cycles with no branches, regardless of the test outcome, and assuming a very optimistic 1 cycle branch penalty. But the main benefit is that it can be executed without branch disruption. 
 
 From this introductory example, we can observe that the transformation implies:
 
 \begin{itemize}
-\item The merge of execution paths into a single execution path, implying a  better exploitation of available resources.  
+\item The merge of execution paths into a single execution path, implying a  better exploitation of the available resources.  
 \item The reduction of the schedule height, because instructions can be speculated before the branch.
 \item That the variables need to be renamed, producing new data dependencies.
 \item The introduction of a \textit{merge} pseudo operation.
 \end{itemize}
 
 % \annotation{Reference join sets; phi-congruence already here?}
-Thanks to SSA, the merging point is already materialized in the original control flow as a $\phi$ pseudo operation and register renaming is a basic property of SSA. Given these similarities between SSA and the if-conversion requirements, the transformation to generate if-converted code seems natural. We describe here the framework to exploit those properties on larger scale control flow regions.
+Thanks to SSA, the merging point is already materialized in the original control flow as a $\phi$ pseudo operation, and register renaming was performed by SSA construction. Given this, the transformation to generate if-converted code seems natural locally, but we need a framework to exploit those properties on larger scale control flow regions.
 
 \subsection{Architectural requirements}
 
@@ -116,7 +111,8 @@ $x = cmov p,t$ \\
 \label{fig:pred}
 \end{figure}
 
-To be speculated, an instruction must not potentially create any side effects, or hazards. For instance a memory load must not trap. This prevents the conditional execution by means of speculation of memory access for which the address is valid only on the selected path. Other reasons are may-alias problems during the memory instructions layout. Memory operations are therefore a major impediment to if-conversion. This is regrettable, because as long latency operations, speculative loads can be very effective to fetching data earlier in the instruction stream, reducing stalls. Modern architectures provide architectural support to dismiss invalid address exceptions. Examples are the $ldw.d$ dismissible load operation of the $ST231$ or $multiflow$ processors or the $IA64$ speculative loads. The main difference is that with a dismissible model, invalid memory access exceptions are not delivered, which can be problematic in embedded or kernel environment that relies on memory exception for correct behavior. A speculative model allows catch the exception thanks to the token bit check instruction. Some architectures, like the $IA64$ offer both speculative and predicated memory operations.
+To be speculated, an instruction must not potentially create any side effects, or hazards. For instance a memory load must not trap. This prevents the conditional execution by means of speculation of memory access for which the address is valid only on the selected path. 
+Memory operations are therefore a major impediment to if-conversion. This is regrettable, because as long latency operations, speculative loads can be very effective to fetching data earlier in the instruction stream, reducing stalls. Modern architectures provide architectural support to dismiss invalid address exceptions. Examples are the $ldw.d$ dismissible load operation of the $ST231$ or $multiflow$ processors or the $IA64$ speculative loads. The main difference is that with a dismissible model, invalid memory access exceptions are not delivered, which can be problematic in embedded or kernel environment that relies on memory exception for correct behavior. A speculative model allows to catch the exception thanks to the token bit check instruction. Some architectures, like the $IA64$ offer both speculative and predicated memory operations.
 
 \begin{figure}
 \begin{minipage}[t]{4cm}
@@ -146,11 +142,11 @@ $stw (x[index], value) $ \\
 
 Stores can also be executed conditionally by speculating part of their address value, with additional constraints on the ordering on the memory operations due to possible alias between the two paths. Figure \ref{fig:spec} shows examples of various form of speculative memory operations.
 
-We first start to describe the structural selection of a set of CFG regions. We then describe the operations necessary to assign the instructions with their defining predicate. Finally we propose a global framework to pull together those techniques, incrementally enlarging the scope of the if-converted region to its maximum beneficial size.
-
 Note that the $select$ operation is a real instruction that does not need to be replaced during the out-of-SSA phase. If the target architecture does not provide such an instruction to switch between two speculated instructions, it can be emulated using two conditional moves. One advantage to generate $select$ instruction at this stage is that the program stays in full SSA form and that it make all the data dependencies explicit, and can be feed to all SSA optimizers. 
 
-In the remaining of this chapter, We use the notation $r = c \cond :r_1:r_2$, to represent a $select$ like operation resulting of the merge of the result of the speculative execution of the instructions defining $r_1$ and $r_2$. $r$ takes the value of $r_1$ if $c$ is True, else $r_2$. We use the notation $r = c \cond op$ to represent the predicated execution of $op$ if the predicate $c$ is True. $r = \overline{p} \cond op$ if the predicate $c$ is False.
+We use the notation $r = c \cond :r_1:r_2$, to represent a $select$ like operation resulting of the merge of the result of the speculative execution of the instructions defining $r_1$ and $r_2$. $r$ takes the value of $r_1$ if $c$ is True, else $r_2$. We use the notation $r = c \cond op$ to represent the predicated execution of $op$ if the predicate $c$ is True. $r = \overline{p} \cond op$ if the predicate $c$ is False.
+
+We start to descrine the SSA techniques to transform a CFG region in SSA form to produce an if-converted SSA representation using control speculation. We then describe how this framework is extended to use predicated instructions, using the $\psi$-SSA form presented in chapter~\ref{chap:psi_ssa}. Finally we propose a global framework to pull together those techniques, incrementally enlarging the scope of the if-converted region to its maximum beneficial size.
 
 \section{Basic Transformations}
 \label{sec:basic}
@@ -507,12 +503,6 @@ The algorithm to perform SSA basic block duplication is decomposed into:
 Fusing execution paths can over commit the architectural ability to execute in parallel the multiple instructions: Data dependencies and register renaming introduce new register constraints. Moving operations earlier in the instruction stream increases live-ranges. 
 Aggressive if-conversion can easily exceed the processor resources, leading to excessive register pressure or moving infrequently used long latencies instructions into the critical path. In a SSA incremental approach, the decision to if-convert or not the inner region will propagate recurrently to the outer regions.
 
-The local decision function to if-convert, or not a inner region in order to enlarge the hyperblock is based on machine model, instructions constraints, execution frequencies. All those form the objective function parameters than will be re-applied locally at each neew transformation.
-
-Since the SSA iterative restructuring framework described earlier reduces the scope for the decision function to a localized part of the control flow graph, the predicate instructions or temporary register to hold the speculated instructions are already in the code that we are considering because the constraints have been resolved. 
-
-Although if-conversion removes branches, it also adds overhead (new instructions to merge predicates, register pressure for speculative conditional, higher dependence height because of the presence of new data dependencies on the predicates).
-
 The prevalent idea is that a region can be if-converted if the cost of the resulting if-converted basic block is smaller than the cost of each region taken separately weighted by the branch frequencies.
 
 We compare the cost of the region before if-conversion. So the cost of a path is the schedule estimation of all the blocks in the path pondered by the execution profile:
@@ -532,11 +522,9 @@ Where $\circ$ is the composition function that merges basic blocks together, rem
 Cost(BBs_{before:\ ifc}) > Cost(BB_{after:\ ifc})
 \end{align*}
 
-The cost function needs the target machine description to derive the instruction latencies, resource usage and scheduling constraints. The local dependencies computed between instructions are used to compute the dependence height. The branch frequency is obtained either from static branch prediction heuristics, profile information or user inserted directives.
-
 The estimated cost of the if-converted region is the schedule height estimation of the instructions without the branches. When the schedule height of the if-converted region is smaller than the profiled estimation, then it is profitable.
 
-Register pressure increases due to speculation, because the variables interfere. And the model is restricted to an evaluation of the pseudo register local allocation. Computing the interference graph and simulating a register coalescing process would only take into account local effects, and would lack precision. Consequently this conservative approach might be compensated with aggressiveness factors. The size of the inner region under consideration makes the profitability a sizeable process.
+The objective function needs the target machine description to derive the instruction latencies, resource usage and scheduling constraints. The local dependencies computed between instructions are used to compute the dependence height. The branch frequency is obtained either from static branch prediction heuristics, profile information or user inserted directives. Naturally, this heuristic can be either pessimistic, because it does not take into account new optimization opportunities introduced by the branch removals or explicit new dependencies, or optimistic because of bad register pressure estimation leading to register spilling on the critical path, or uncertainty in the branch prediction. But since the SSA iterative restructuring framework reduces the scope for the decision function to a localized part of the CFG, the size and complexity of the inner region under consideration makes the profitability a comprehensive process. Consequently, this cost function must be fast enough to be reapplied to each hammock during the iterative processing, with the advantage that all the instructions introduced by the if-conversion process in the inner regions, such as new predicate merging instructions or new temporary pseudo registers, will be accounted for in the decision to if-convert the regions encompassing them.
 
 \section{Conclusion} 
 
