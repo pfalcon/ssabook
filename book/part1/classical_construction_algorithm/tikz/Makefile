@@ -1,0 +1,32 @@
+TEMPLATE=template-ktikz.pgs
+TEMP=temp.tex
+
+# source files
+TIKZ=$(wildcard *.tikz)
+PDF=$(TIKZ:.tikz=.pdf)
+
+# files to update
+UPDF=$(wildcard *.pdf)
+
+.PHONY:all pdf update updf 
+
+all: updf
+
+updf: $(UPDF)
+
+update: updf ueps
+
+pdf: $(PDF)
+
+eps: $(EPS)
+
+%.pdf: %.tikz 
+	pdflatex --jobname=$* tikz2figure
+	pdfcrop --verbose $*.pdf /tmp/t.pdf
+	mv /tmp/t.pdf $*.pdf
+
+clean:
+	rm -f *.aux *.log *.nav *.out *.snm *.toc *~
+
+clean-all: clean
+	rm -f *.pdf *.eps
