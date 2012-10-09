@@ -10,7 +10,7 @@ UPDF=$(wildcard *.pdf)
 
 .PHONY:all pdf update updf 
 
-all: du-1.pdf du-2.pdf double-diamond-1.pdf double-diamond-2.pdf pruned.pdf
+all: du-1.pdf du-2.pdf double-diamond-1.pdf double-diamond-2.pdf pruned-1.pdf pruned-2.pdf
 
 #all: updf
 
@@ -31,18 +31,18 @@ eps: $(EPS)
 ### simpler rules for the book for figure and subfigure generation
 # for figures
 %.pdf: %.tikz
-	cd ../ && pdflatex --jobname=tikz/$* chapter
+	cd ../ && pdflatex --jobname=tikz/$* '\def\dousetikz{} \input{chapter}'
 
 
 # for subfigures
 %-1.pdf: %.stikz
-	cd ../ && pdflatex --jobname=tikz/$*-1 chapter
+	cd ../ && pdflatex --jobname=tikz/$*-1 '\def\dousetikz{} \input{chapter}'
 
 %-2.pdf: %.stikz
-	cd ../ && pdflatex --jobname=tikz/$*-2 chapter
+	cd ../ && pdflatex --jobname=tikz/$*-2 '\def\dousetikz{} \input{chapter}'
 
 %-3.pdf: %.stikz
-	cd ../ && pdflatex --jobname=tikz/$*-3 chapter
+	cd ../ && pdflatex --jobname=tikz/$*-3 '\def\dousetikz{} \input{chapter}'
 
 
 clean:
