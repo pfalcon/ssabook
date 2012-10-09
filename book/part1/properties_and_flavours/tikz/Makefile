@@ -12,6 +12,17 @@ UPDF=$(wildcard *.pdf)
 
 all: du-1.pdf du-2.pdf double-diamond-1.pdf double-diamond-2.pdf pruned-1.pdf pruned-2.pdf
 
+# WARNING!!
+#
+# For the 'du-*.pdf' figures, we use 'remember picture' so it does work
+# directly. We need to 
+# 1- generate the whole chapter (with \dousetikz) to get coordinates right
+# 2- generate only the figure as done below
+#
+# => this must be done for each du-[12].pdf figure (do not skip 1-!)
+#
+
+
 #all: updf
 
 updf: $(UPDF)
