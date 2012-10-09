@@ -10,7 +10,9 @@ UPDF=$(wildcard *.pdf)
 
 .PHONY:all pdf update updf 
 
-all: du-1.pdf du-2.pdf double-diamond-1.pdf double-diamond-2.pdf pruned-1.pdf pruned-2.pdf
+all: du-1.pdf du-2.pdf double-diamond-1.pdf double-diamond-2.pdf pruned-1.pdf pruned-2.pdf web-1.pdf web-2.pdf web-3.pdf
+
+force: clean-all chapter all
 
 # WARNING!!
 #
@@ -21,7 +23,10 @@ all: du-1.pdf du-2.pdf double-diamond-1.pdf double-diamond-2.pdf pruned-1.pdf pr
 #
 # => this must be done for each du-[12].pdf figure (do not skip 1-!)
 #
+# use force to do it automatically
 
+chapter:
+	cd ../ && pdflatex '\def\dousetikz{} \input{chapter}'
 
 #all: updf
 
