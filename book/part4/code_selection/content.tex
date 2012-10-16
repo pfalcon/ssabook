@@ -1,4 +1,6 @@
 \chapter{Instruction Code Selection \Author{D. Ebner \andAuthor A. Krall \andAuthor B. Scholz} \label{chapter:code_selection}}
+\label{chapter:code_selection}
+\index{code selection}
 \inputprogress
 \graphicspath{{fig/}{code_selection/fig/}{part4/code_selection/fig/}}
 % some frequently used macros
@@ -89,18 +91,19 @@ the machine description of the target architecture.
 \end{figure}
 
 One of the widely used techniques in code generation is tree pattern
-matching. The unit of translation for tree pattern matching is 
+matching\index{pattern matching}. The unit of translation for tree pattern matching is 
 expressed as a tree structure
-that is called a data flow tree (DFT). The basic idea is
+that is called a data flow tree\index{data flow tree, DFT} (DFT). 
+The basic idea is
 to describe the target instruction set using an \emph{ambiguous}
-cost-annotated graph grammar. The instruction code selector seeks for a
+cost-annotated graph grammar\index{grammar}. The instruction code selector seeks for a
 cost-minimal \emph{cover} of the DFT. Each of the selected rules have
 an associated semantic action that is used to emit the corresponding
 machine instructions, either by constructing a new intermediate
 representation or by rewriting the DFT bottom-up.
 \begin{figure}[ht]
   \begin{center}
-    \includegraphics{pgf-fig002}
+    \includegraphics[scale=0.9]{pgf-fig002}
   \end{center}
   \caption{Example of a data flow tree and a rule fragment with
     associated costs.}\label{fig:tpm}
@@ -109,44 +112,34 @@ representation or by rewriting the DFT bottom-up.
 
 An example of a DFT along with a set of rules representing valid ARM
 instructions is shown in Figure~\ref{fig:tpm}. Each rule consists of
-non-terminals (shown in lower-case), and terminal symbols (shown in
+non-terminals\index{symbol, non-terminal} (shown in lower-case), and terminal symbols\index{symbol, terminal} (shown in
 upper-case). Non-terminals are used to chain individual rules together.
 Non-terminal \texttt{s} denotes a distinguished start symbol for the
 root node of the DFT. Terminal symbols match the corresponding labels
 of nodes in the dataflow trees. The terminals of the grammar are
 \texttt{VAR}, \texttt{CST}, \texttt{SHL}, \texttt{ADD}, and
 \texttt{LD}.  Rules that translate from one non-terminal to another are
-called \emph{chain rules}, e.g., \texttt{reg <- imm} that translates
+called \emph{chain rules}\index{rule, chain}, e.g., \texttt{reg $\gets$ imm} that translates
 an immediate value to a register. Note that there are multiple
 possibilities to obtain a cover of the data-flow tree for the example
 shown in Figure~\ref{fig:tpm}.  Each rule has associated costs. The
 cost of a tree cover is the sum of the costs of the selected
-rules. For example, the DFT could be covered by rules (3), (4), and
-(11) which would give a total cost for the cover of one cost
-unit. Alternatively, the DFT could be covered by rule (2), (6), (8),
-and (9) which yields 4 cost units for the cover for issuing 4 assembly
+rules. For example, the DFT could be covered by rules $R_3$, $R_4$, and~$R_{10}$ which would give a total cost for the cover of one cost
+unit. Alternatively, the DFT could be covered by rule $R_2$, $R_3$, $R_5$, $R_7$, and~$R_8$ which yields four cost units for the cover for issuing four assembly
 instructions. A dynamic programming algorithm selects a cost optimal
 cover for the DFT.
 
-\begin{figure}[ht]
-  \begin{center}
-%TODO: if we remove the colors, change the text accordingly below
-   \includegraphics[width=\linewidth]{pgf-fig003}
-  \end{center}
-  \caption{Instruction code selection SSA Graph for a vector dot-product in
-    fixed-point arithmetic.}\label{fig:ssa_graph}
-\end{figure}
 
 Tree pattern matching on a DFT is limited to the scope of tree
 structures.  To overcome this limitation, we can extend the scope of
 the matching algorithm to the computational flow of a whole procedure.
-The use of the Static Single Assignment (SSA) form as an intermediate
-representation improves the code generation by making def-use
+The use of the SSA form as an intermediate
+representation improves the code generation by making def-use\index{def-use chain}
 relationships explicit. Hence, SSA exposes the data flow of a
 translation unit and utilizes the code generation process.  Instead of
 using a textual SSA representations, we employ a graph representation
 of SSA called the \emph{SSA graph}~\footnote{We consider its
-  data-based representation here. See Chapter~\ref{chapter:vsdg}} that
+  data-based representation here.\index{SSA graph, data-based} See Chapter~\ref{chapter:vsdg}} that
 is an extension of DFTs and represents the data-flow for scalar
 variables of a procedure in SSA form.  SSA graphs are a suitable
 representation for code generation: First, SSA graphs capture acyclic
@@ -159,36 +152,47 @@ As even acyclic SSA graphs are in the general case not restricted to a tree, no 
 can be employed for instruction code selection.  To get a handle on instruction code
 selection for SSA graphs, we will discuss in the following an approach
 based on a reduction to a quadratic mathematical programming problem
-(PBQP) that has been adopted by at least two major embedded system
-compiler vendors.  Consider the code fragment of a dot-product routine
+(PBQP).  Consider the code fragment of a dot-product routine
 and the corresponding SSA graph shown in Figure~\ref{fig:ssa_graph}.
-The code implements a simple vector dot-product using fixed-point
-arithmetic in Embedded~C.  Nodes in the SSA graph represent a single
+The code implements a simple vector dot-product using fixed-point\index{fixed-point arithmetic}
+arithmetic.  Nodes in the SSA graph represent a single
 operation while edges describe the flow of data that is produced at the
 source node and consumed at the target node. Incoming edges
 have an order which reflects the argument order of the operation. In
 the figure the color of the nodes indicates to which basic block the
 operations belong to.
 
+\begin{figure}[bh]
+  \begin{center}
+%TODO: if we remove the colors, change the text accordingly below
+   \includegraphics[width=1.03\textwidth]{pgf-fig003}
+  \end{center}
+  \caption{Instruction code selection SSA Graph for a vector dot-product in
+    fixed-point arithmetic.  \texttt{fp\_} stands for unsigned short fixed point type. }\label{fig:ssa_graph}
+\end{figure}
+
 The example in Figure~\ref{fig:ssa_graph} has fixed-point computations
 that need to be modeled in the grammar. For fixed-point values most
 arithmetic and bit-wise operations are identical to their integer
 equivalents. However, some operations have different semantics, \eg
 multiplying two fixed-point values in format $m.i$ results in a value
-with $2*i$ fractional digits. The result of the multiplication has to
+with $2i$ fractional digits. The result of the multiplication has to
 be adjusted by a shift operation to the right (\texttt{LSR}). To accommodate for
 fixed-point values, we add the following rules to the grammar
 introduced in Figure~\ref{fig:tpm}:
-\begin{alltt}
-   reg <- VAR : is\_fixed_point() ? \(\infty\) : 0
-   fp  <- VAR : is\_fixed_point() ? 0 : \(\infty\)
-   fp2 <- MUL(fp, fp)   : 1   \{ MUL Rd, Rm, Rs \}
-   fp  <- fp2           : 1   \{ LSR Rd, Rm, i  \}
-   fp  <- ADD(fp, fp)   : 1   \{ ADD Rd, Rm, Rs \}
-   fp2 <- ADD(fp2, fp2) : 1   \{ ADD Rd, Rm, Rs \}
-   fp  <- PHI(fp, ...) : 0 
-   fp2 <- PHI(fp2, ...) : 0 
-\end{alltt}
+\begin{center}
+\begin{tabular}{l|l|l}
+  rule & cost & instruction\\ \hline
+   \tt reg $\gets$ VAR & is\_fixed\_point ? \(\infty\) otherwise 0\\
+   \tt fp \ $\gets$ VAR & is\_fixed\_point ? 0 \ otherwise  \(\infty\)  \\
+  \tt  fp2 $\gets$ MUL(fp, fp)   & 1 & \tt   MUL Rd, Rm, Rs \\
+  \tt  fp \ $\gets$ fp2           & 1 &\tt   LSR Rd, Rm, i  \\
+  \tt  fp \ $\gets$ ADD(fp, fp)   & 1 & \tt   ADD Rd, Rm, Rs \\
+  \tt  fp2 $\gets$ ADD(fp2, fp2) & 1 & \tt   ADD Rd, Rm, Rs \\
+  \tt  fp \ $\gets$ PHI(fp, ...) & 0 \\
+  \tt  fp2 $\gets$ PHI(fp2, ...) & 0 \\
+\end{tabular}
+\end{center}
 
 In the example the accumulation for double-precision fixed
 point values (\texttt{fp2}) can be performed at the same cost as for the single-precision format (\texttt{fp}). Thus, it would be
@@ -217,7 +221,7 @@ we will introduce the PBQP problem and then we will describe the
 mapping of the instruction code selection problem to PBQP.
 
 \subsection{Partitioned Boolean Quadratic Problem}
-\label{sec:pbqp}
+\label{sec:pbqp}\index{Partitioned Boolean Quadratic Programming, PBQP}
 % \emph{2 pages}; introduction into PBQP, algorithms, and applications
 Partitioned Boolean Quadratic Programming (PBQP) is a generalized
 quadratic assignment problem that has proven to be effective for a
@@ -305,14 +309,13 @@ complete cost minimal cover of the SSA graph.
 As in traditional tree pattern matching, an ambiguous graph grammar
 consisting of tree patterns with associated costs and semantic actions
 is used. Input grammars have to be \emph{normalized}. This means that
-each rule is either a so-called \emph{base rule} or a \emph{chain
-  rule}. A base rule is a production of the form $\texttt{nt}_0
+each rule is either a so-called \emph{base rule} or a \emph{chain  rule}. A base rule\index{rule, base} is a production of the form $\texttt{nt}_0
 \leftarrow \textit{OP} ( \texttt{nt}_1, \dots, \texttt{nt}_{k_p} )$
 where $\texttt{nt}_i$ are non-terminals and $\textit{OP}$ is a
 terminal symbol, \ie an operation represented by a node in the SSA
 graph. A chain-rule is a production of the form $\texttt{nt}_0
 \leftarrow \texttt{nt}_1$, where $\texttt{nt}_0$ and $\texttt{nt}_1$
-are non-terminals.  A production rule $\texttt{nt} \leftarrow
+are non-terminals.  A production rule\index{rule, production} $\texttt{nt} \leftarrow
 \textit{OP}_1 ( \alpha, \textit{OP}_2 (\beta), \gamma))$ can be
 normalized by rewriting the rule into two production rules
 $\texttt{nt} \leftarrow \textit{OP}_1 ( \alpha, \texttt{nt}' ,
@@ -369,7 +372,7 @@ corresponds to the costs of selecting a specific base rule $r_u \in
 R_u$ of the result and a specific base rule $r_v \in R_v$ of the
 operand node. Assume that $r_u $ is $\texttt{nt} \leftarrow
 \textit{OP} (\dots)$ and $r_v$ is $\dots \leftarrow \textit{OP}
-(\alpha, \texttt{nt}', \beta)$ where $\texttt{nt'}$ is the
+(\alpha, \texttt{nt}', \beta)$ where $\texttt{nt}'$ is the
 non-terminal of operand $v$ whose value is obtained from the result of
 node $u$. There are three possible cases:
 \begin{enumerate}
@@ -378,7 +381,7 @@ node $u$. There are three possible cases:
   since the result of $u$ is compatible with the operand of node $v$.
 \item If the non-terminals \texttt{nt} and $\texttt{nt}'$ differ and
   there exists a rule $r: \texttt{nt}' \leftarrow \texttt{nt}$ in the
-  transitive closure of all chain-rules, the corresponding element in
+  transitive closure of all chain rules, the corresponding element in
   $\matrixfont C_{uv}$ has the costs of the chain rule, \ie $w_v \cdot
   c(r)$.
 \item Otherwise, the corresponding element in $\matrixfont C_{uv}$ has
@@ -443,7 +446,7 @@ automatically derived from generic architecture descriptions.
 
 \begin{figure}[t]
   \centering
-  \includegraphics{pgf-fig008}
+  \includegraphics[scale=0.9]{pgf-fig008}
   \caption{DAG patterns may introduce cyclic data dependencies.}\label{fig:topology}
 \end{figure}
 
@@ -453,7 +456,7 @@ generalized patterns in the PBQP framework discussed so far.
 The code fragment contains three feasible instances of a post-increment
 store pattern. Assuming that $p$, $q$, and $r$ point to mutually
 distinct memory locations, there are no further dependencies apart
-from the edges shown in the SSA graph. If we select \emph{all} three
+from the edges shown in the SSA graph. If we select \emph{all } three
 instances of the post-increment store pattern concurrently, the graph induced by SSA edges becomes acyclic, and the code cannot be emitted. To overcome this difficulty, the idea is to express in the modeling of the problem, a numbering of chosen nodes, that reflects the existence of a topological order. 
 
 
@@ -468,20 +471,20 @@ As for tree patterns, DAG patterns are decomposed into simple base
 rules for the purpose of modeling, \eg the post-increment store
 pattern
 \begin{alltt}
-  P1: tmt <- ST(\textit{x}:reg, reg), reg <- INC(\textit{x}) : 3
+  \(P\sb{1}\): tmt \(\gets\) ST(\(x\):reg, reg), reg \(\gets\) INC(\(x\)) : 3
 \end{alltt}
 is decomposed into the individual pattern fragments
 \begin{alltt}
-  P1.1: stmt <- ST(reg, reg)
-  P1.2: reg  <- INC(reg)
+  \(P\sb{1,1}\): stmt \(\gets\) ST(reg, reg)
+  \(P\sb{1,2}\): reg  \(\gets\) INC(reg)
 \end{alltt}
 
 For our modeling, new variables are created for each enumerated
 instance of a complex production. They encode whether a particular
 instance is chosen or not, \ie the domain basically consists of the
-elements \textit{on} and \textit{off}. The local costs are set to the
-combined costs for the particular pattern for the \textit{on} state
-and to 0 for the \textit{off} state. Furthermore, the domain of
+elements \texttt{on} and \texttt{off}. The local costs are set to the
+combined costs for the particular pattern for the \texttt{on} state
+and to 0 for the \texttt{off} state. Furthermore, the domain of
 existing nodes is augmented with the base rule fragments obtained from
 the decomposition of complex patterns.  We can safely squash all
 identical base rules obtained from this process into a single
@@ -491,7 +494,7 @@ including the node. The local costs for these proxy states are set to 0.
 
 \begin{figure}
   \centering
-    \includegraphics[width=\linewidth]{pgf-fig009}
+    ~\hspace{-2cm}\includegraphics[width=1.33\textwidth]{pgf-fig009}
   \caption{PBQP Graph for the Example shown in
     Figure~\ref{fig:topology}. $M$ is a large integer value. We use $k$ as a shorthand for the term
     $3-2M$.}\label{fig:pbqpinst}
@@ -499,31 +502,31 @@ including the node. The local costs for these proxy states are set to 0.
 
 Continuing our example, the PBQP for the SSA graph introduced in
 Figure~\ref{fig:topology} is shown in Figure~\ref{fig:pbqpinst}. In
-addition to the post-increment store pattern with costs 3, we assume
+addition to the post-increment store pattern with costs three, we assume
 regular tree patterns for the store and the increment nodes with costs
-2 denoted by \texttt{P2} and \texttt{P3} respectively. Rules for the
+two denoted by $P_2$ and $P_3$ respectively. Rules for the
 \texttt{VAR} nodes are omitted for simplicity.
 
 Nodes 1 to 6 correspond to the nodes in the SSA graph. Their
-domain is defined by the simple base rule with costs 2 and the proxy
+domain is defined by the simple base rule with costs two and the proxy
 state obtained from the decomposition of the post-increment store
-pattern. Nodes 7, 8, and 9 correspond to the three instances
+pattern. Nodes~7, 8, and~9 correspond to the three instances
 identified for the post-increment store pattern. As noted before, we
 have to guarantee the existence of a topological order among the
-chosen nodes. To this end, we refine the state \textit{on} such that it
+chosen nodes. To this end, we refine the state \texttt{on} such that it
 reflects a particular index in a concrete topological order. Matrices
 among these nodes account for data dependencies, \eg consider the
-matrix established among nodes 7 and 8. Assuming instance 7 is
-\textit{on} at index 2 (i.e. mapped to $on_2$), the only remaining choices for instance 8 are
-not to use the pattern (i.e. mapped to \textit{off}) or to enable it at index 3 (i.e. mapped to $on_3$), as node 7 has
-to precede node 8.
+matrix established among nodes~7 and~8. Assuming instance~7 is
+\texttt{on} at index~2 (i.e. mapped to $\texttt{on}_2$), the only remaining choices for instance~8 are
+not to use the pattern (i.e. mapped to \texttt{off}) or to enable it at index~3 (i.e. mapped to $\texttt{on}_3$), as node~7 has
+to precede node~8.
 
 Additional cost matrices are required to ensure that the corresponding
 proxy state is selected on all the variables forming a particular
 pattern instance (which can be modeled with combined costs of 0 or
 $\infty$ respectively). However, this formulation allows for the
 trivial solution where all of the related variables encoding the
-selection of a complex pattern are set to \textit{off} (accounting for
+selection of a complex pattern are set to \texttt{off} (accounting for
 0 costs) even though the artificial proxy state has been selected. We
 can overcome this problem by adding a large integer value $M$ to the
 costs for all proxy states. In exchange, we subtract these costs from
