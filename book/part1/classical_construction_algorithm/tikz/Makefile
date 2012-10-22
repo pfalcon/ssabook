@@ -10,7 +10,7 @@ UPDF=$(wildcard *.pdf)
 
 .PHONY:all pdf update updf 
 
-all: updf
+all: pdf
 
 updf: $(UPDF)
 
