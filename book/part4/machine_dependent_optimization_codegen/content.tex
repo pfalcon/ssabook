@@ -28,10 +28,10 @@ by Muchnich extends code generation with the following: \begin{itemize}
 \item Instruction scheduling and software pipelining.
 \item Branch optimizations and basic block alignment.
 \end{itemize}
-In recent releases of compilers such as the Open64 or GCC, code generation
+In current releases of compilers such as the Open64 or GCC, code generation
 techniques have significantly evolved, as they are mainly responsible for
 exploiting the performance-oriented features of processor architectures and
-micro-architectures. Code generation techniques implement in these compilers
+micro-architectures. In these compilers, code generator optimizations
 include: \begin{itemize}
 \item If-conversion using SELECT, conditional move, or predicated, instructions.
 \item Use of specialized addressing modes such as auto-modified and modulo.
@@ -53,15 +53,15 @@ are presented in Section~\ref{sec:ssa-codegen-engineering}.  The suitability of
 the SSA form for main code generation phases is discussed in
 Section~\ref{sec:ssa-codegen-suitability}.
 
-In the remainder of this chapter, we adopt the following terminology. An
-\emph{instruction} is a member of the processor Instruction Set Architecture
-(ISA). Instructions access values and modify the processor state through
-\emph{operand}s. We distinguish \emph{explicit operands}, which are associated
-with a specific bit-field in the instruction encoding, from \emph{implicit
-operands}, without any encoding bits. Explicit operands correspond to
-allocatable architectural registers or to immediate values. Implicit operands
-correspond to single instance architectural resources, such as a hardware loop
-counter, a procedure link register, or a processor status register.
+In this chapter, we adopt the following terminology. An \emph{instruction} is a
+member of the processor Instruction Set Architecture (ISA). Instructions access
+values and modify the processor state through \emph{operand}s. We distinguish
+\emph{explicit operands}, which are associated with a specific bit-field in the
+instruction encoding, from \emph{implicit operands}, without any encoding bits.
+Explicit operands correspond to allocatable architectural registers or to
+immediate values. Implicit operands correspond to single instance architectural
+resources, such as a hardware loop counter, a procedure link register, or a
+processor status register.
 
 An \emph{operator} is the compiler view of an instruction, where its
 side-effects including clobbered registers, implicit operands, and ISA operand
@@ -69,10 +69,10 @@ naming constraints, are exposed. An \emph{operation} is an instance of and
 instruction and its operands that compose a program. The compiler view of
 operations also includes \emph{indirect operands}. These are not apparent in the
 instruction behavior, but are required to connect the flow of values between
-operations. Implicit operands typically include the list of registers used for
-passing arguments and returning results at function boundaries, and also allow
-to make explicit the list of registers which are encoded in register mask
-immediates for instructions such as PUSH/POP on the ARM.
+operations. Implicit operands include the registers used for passing arguments
+and returning results at function boundaries, and may also include the registers
+which are encoded in register mask immediates for instructions such as PUSH/POP
+on the ARM.
 
 \section{SSA form on machine code issues}
 \label{sec:ssa-codegen-issues}
@@ -337,6 +337,110 @@ value analysis may enable to relax this order.
 \item Parallel copy sequentialization
 
 \item Pseudo-kill insertion if no regalloc under SSA
+
+\end{itemize}
+
+\begin{itemize}
+
+\item Cytron et al. ``Efficiently Computing Static Single Assignment Form and
+the Control Dependence Graph'' [TOPLAS 13(4) 1991]
+\begin{itemize}
+\item insert COPY for the arguments of $\Phi$-functions in the predecessors,
+then rely on the register allocator coalescing
+\end{itemize}
+
+\item Briggs et al. ``Practical Improvements to the Construction and Destruction
+of Static Single Assignment Form'' [SPE 28(8) 1998]
+
+\begin{itemize}
+\item identifies 'Lost Copy' and 'Swap' problems
+\item fix incorrect behavior of Cytron et al. [TOPLAS 13(4) 1991]
+when critical edges are not split
+\end{itemize}
+
+\item Budimli\'c et al. ``Fast Copy Coalescing and Live-Range Identification''
+[PLDI'02]
+
+\begin{itemize}
+\item lightweight SSA destruction motivated by JIT compilation
+\item use the SSA form dominance of definitions over uses to avoid explicit
+interference graph
+\item construct SSA-webs with early pruning of interfering variables, then
+partition into non-interfering classes
+\item introduce the ``dominance forest'' data-structure to avoid quadratic
+number of interference tests
+\item critical edge splitting is required
+\end{itemize}
+
+\item Sreedhar et al. ``Translating Out of Static Single Assignment Form''
+[SAS'99] (US patent 6182284):
+
+\begin{itemize}
+\item Method~1 inserts COPY for the arguments of $\Phi$-functions in the
+predecessors \emph{and} for the $\Phi$-functions targets in the current block,
+then applies a new SSA-based coalescing algorithm
+\item Method~3 maintains liveness and interference graph to insert COPY that will not
+be removed by the new SSA-based coalescing algorithm
+\item the new SSA-based coalescing algorithm is more effective than register allocation
+coalescing
+%\item Both methods yield significantly better code than Briggs et al. [SPE 28(8) 1998]
+%or Budimli\'c et al. [PLDI'02]
+\end{itemize}
+
+\item Leung \& George ``Static Single Assignment Form for Machine Code'' [PLDI'99]
+
+\begin{itemize}
+\item handles the operand constraints of machine-level SSA form
+\item builds on the algorithm by Briggs et al. [SPE 28(8) 1998]
+\end{itemize}
+
+\item Rastello et al. ``Optimizing Translation Out of SSA using Renaming
+Constraints'' [CGO'04] (STMicroelectronics)
+\begin{itemize}
+\item fix bugs and generalize Leung \& George [PLDI'99]
+\item generalize Sreedhar et al. [SAS'99] (and avoid patent)
+\end{itemize}
+
+\end{itemize}
+
+
+\begin{center} \underline{Sreedhar et al. [SAS~1999] Liveness and Congruence Example}
+\end{center}
+
+\input{ssa-live.latex}
+
+\begin{itemize}
+
+\item variables ${x_1, x_3, x_3, y_1, y_2, y_3}$ are in the same congruence class
+
+\item in this example, several interferences inside the congruence class
+
+\end{itemize}
+
+
+\begin{center} \underline{Insights of Sreedhar et al. [SAS~1999]}
+\end{center}
+
+\begin{itemize}
+
+\item a $\Phi$-congruence class is the closure of the $\Phi$-connected relation
+
+\item liveness under SSA form: $\Phi$ arguments are live-out of predecessor
+blocks and $\Phi$ targets are live-in of $\Phi$ block
+
+\item SSA form is \emph{conventional} if no two members of a $\Phi$-congruence
+class interfere under this liveness
+
+\item correct SSA destruction is the removal of $\Phi$-functions from
+a conventional SSA form
+
+\item after SSA construction (without COPY propagation), the SSA form is
+conventional
+
+\item Methods 1 -- 3 restore a conventional SSA form
+
+\item the new SSA-based coalescing is able to coalesce interfering variables, as long
+as the SSA form remains conventional
 
 \end{itemize}
 
