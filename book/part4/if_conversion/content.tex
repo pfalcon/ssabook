@@ -19,7 +19,7 @@ Very Large Instruction Word (VLIW) or Explicitly Parallel Instruction Computing 
 The imperative control flow representation of the program, inherently imposes an order of execution between instructions of different basic blocks. Yet, two different instructions, even ``connected'' by some control flow edges, could be executed in parallel. As explained in Chapter~\ref{chapter:vsdg}, this is the case whenever they are connected neither by a data nor a control dependence. 
 
 If-conversion is the process of transforming a control flow region with conditional branches, into an equivalent predicated sequence of instructions (in a single basic-block). As for gated-SSA form (see Chapter~\ref{chapter:vsdg}), if-converted code replaces control dependencies by data dependencies, and thus exposes parallelism very naturally within the new merging basic-block. 
-Removing branches improves performance in several ways: by removing the misprediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of basic blocks allows earlier execution of long latency operations and the merging of multiple control flow paths into a single flow of execution, than can later be exploited by scheduling frameworks such as VLIW scheduling, hyperblock scheduling or modulo scheduling.
+Removing branches improves performance in several ways: By removing the misprediction penalty, the instruction fetch throughput is increased and the instruction cache miss penalty reduced. Enlarging the size of basic blocks allows earlier execution of long latency operations and the merging of multiple control flow paths into a single flow of execution, than can later be exploited by scheduling frameworks such as VLIW scheduling, hyperblock scheduling or modulo scheduling.
 
 Consider the simple example given in figure \ref{fig:example1}, that represents the execution of an \texttt{if-then-else-end} statement on a 4-issue processor. In this figure, $r=q\cond r_1:r_2$ stands for a select instruction where $r$ is assigned $r_1$ if $q$ is true, and $r_2$ otherwise. With standard basic-block ordering, assuming that all instructions have a one cycle latency, the schedule height goes from six cycles in the most optimistic case, to seven cycles. After if-conversion the execution path is reduced to six cycles with no branches, regardless of the test outcome, and assuming a very optimistic one cycle branch penalty. But the main benefit here is that it can be executed without branch disruption. 
 
@@ -54,9 +54,9 @@ Thanks to SSA, the merging point is already materialized in the original control
 
 The \textit{merge} pseudo operations needs to be mapped to a conditional form of execution in the target's architecture. As illustrated by Figure~\ref{fig:pred} we differentiate the three following models of conditional execution:
 \begin{itemize}
-\item \emph{Fully predicated execution}: any instruction can be executed conditional on the value of a predicate operand.
-\item \emph{(Control) speculative execution}: the instruction is executed unconditionally, and then committed using conditional moves (\texttt{cmov}) or \texttt{select} instructions. 
-\item \emph{partially predicated execution}: only a subset of the ISA is predicated, usually memory operations that are not easily speculated; other instructions are speculated.
+\item \emph{Fully predicated execution}: Any instruction can be executed conditional on the value of a predicate operand.
+\item \emph{(Control) speculative execution}: The instruction is executed unconditionally, and then committed using conditional moves (\texttt{cmov}) or \texttt{select} instructions. 
+\item \emph{partially predicated execution}: Only a subset of the ISA is predicated, usually memory operations that are not easily speculated; other instructions are speculated.
 \end{itemize}
 In this figure, we use the notation $r = c \cond :r_1:r_2$, to represent a \texttt{select} like operation. Its semantic is identical to the gated $\phiif$-function presented in Chapter~\ref{chapter:vsdg}: $r$ takes the value of $r_1$ if $c$ is true, $r_2$ otherwise. Similarly, we also use the notation $r = c \cond op$ to represent the predicated execution of $op$ if the predicate $c$ is true; $r = \overline{p} \cond op$ if the predicate $c$ is false.
 
@@ -134,13 +134,11 @@ This chapter is organized as follow: we start to describe the SSA techniques to 
 \section{Basic Transformations}
 \label{sec:basic}
 
+Global if-conversion approaches, identify a control-flow region and if-convert it in one shot. As opposed to global approaches, the technique described in this chapter is based on incremental reductions. To this end, we consider basic SSA transformations which goal is to isolate a simple diamond-DAG structure (informally an \texttt{if-then-else-end}) that can be easily if-convert. The complete framework, that identifies and incrementally performs the transformation will be described in Section~\ref{sec:if_conversion:hyperblock}. 
+
 \subsection{SSA operations on Basic Blocks}
 
 
-Global if-conversion approaches, identify a control-flow region and if-convert it in one shot. As opposed to global approaches, the technique described in this chapter is based on incremental reductions. To this end, we consider three types of basic SSA transformations, namely the \emph{$\phi$~reduction}, the \emph{path duplication}, and the \emph{conjunctive predicate merging}. The goal is to isolate a simple diamond-DAG structure (informally an \texttt{if-then-else-end}) and if-convert it through a fourth transformation, the \emph{$\phi$~removal}. The complete framework, that identifies and incrementally performs the transformation will be described in Section~\ref{sec:if_conversion:hyperblock}. 
-%% based on hammock graphs. A hammock, is a single block entry single block exit control flow region $H$ with a distinguished entry node $e$ in $H$ and a distinguished exit node \emph{not} in $H$. We only need to consider atomic hammock graphs, i.e. hammock graphs that does not contain any smaller non-trivial hammock sub-graph. Any other nested depth level of hammocks will be optimized by construction.
-
-%% They both consider a conditional branch depending on a predicate $p$ and a region starting at $BBhead$. Let $BBp$ be the set of single exit basic blocks $(BBi,\dots,BB_n)$ that are on the taken path if $p$ is true and $BBq$ be the set of single exit basic blocks $(BBj,\dots,BB_m)$ that are executed if $p$ is false. The merge point of the if-converted region is at $BBjoin$. We distinguish four types of basic SSA transformations:
 
 The basic transformation that actually if-converts the code is the \emph{$\phi$~removal} that takes a simple diamond-DAG  as an input, i.e. a single-entry-node/single-exit-node (SESE) DAG with only two distinct forward paths from its entry-node to its exit-node. The $\phi$-removal consists in (1) speculating the code of both branches in the entry basic-block; (2) then replacing the \phifun by a select; (3) finally simplifying the control-flow to a single basic-block. This transformation is illustrated by the example of Figure~\ref{fig:phi_rem}. 
 \begin{figure}[h]
@@ -183,92 +181,81 @@ The last transformation, namely the \emph{Conjunctive predicate merging}, concer
   \caption{\label{fig:phi_merge}convergent conjunctive merge} 
 \end{figure}
 
-\subsection{SSA representation of conditional instructions}
-
-One problem of the described SSA-speculative framework is that it does not fit very well with a predicated model of conditional execution. Since $\phi$ instructions are transformed to turn joint points into conditional moves, we should backtrack to transform conditional moves into predicated instructions. This process of transforming speculation into predication introduces a renaming problem: A single register name can have two different assignments (under different predicates), which breaks the SSA property of single static assignment. The solution is express the predicate dependency without speculation and conditional moves, using the $\psi$-SSA representation that converts join points into an extended SSA representation.
-
-In the $\psi$-SSA representation, the edge dependency from the basic block within which the $\phi$ argument defined in the original CFG is replaced by a new data dependency holding the condition. This dependency needs to be materialized as a $select$ or $\psi$ operation.
-
-\begin{figure}
-\begin{minipage}[t]{3.5cm}
-\mbox{SSA:} \\
-$ if (p) $ \\
-$   x_1 = a+b $ \\
-$ else $ \\
-$   x_2 = 0 $ \\
-$ x = \phi (x_1, x_2) $ \\
-\end{minipage}
-\begin{minipage}[t]{3.5cm}
-\mbox{SSA-speculative form:} \\
-$x_1 = a + b $ \\
-$x_2 = 0 $ \\
-$x = p \cond  x_1 : x_2$ \\
-\end{minipage}
-\begin{minipage}[t]{3.5cm}
-\mbox{$\psi$-SSA form:} \\
-$x_1 = a + b $ \\
-$x_2 = 0 $\\
-$x = \psi (p \cond x_1, \overline{p} x_2) $ \\
-\end{minipage}
-\end{figure}
-
-Note that unlike $\phi$ arguments that are considered simultaneously (they do not depend upon each other), $\psi$ arguments are executed sequentially and ordered from their definition predicate set. This property is necessary because of the new data dependencies introduced into the straight line of the predicated code stream.
-
-The basic alternative behind the SSA transformations is to either replace the instructions defining the $\phi$ pseudo instructions by equivalent predicated instructions merging into $\psi$ pseudo instruction, or speculate the instructions then merging into a $select$ equivalent instruction, removing the $\phi$, while maintaining the SSA properties.
-
-\subsection{Predicate assignment in SSA}
-
-In SSA form, we distinguish two kinds of speculative execution. Unconditional speculation is the speculation of an instruction where the result operand does not appear as a $\phi$ operand. Conditional speculation is the execution of an instruction where the result merge into a $\phi$ operand inside the hammock. The instructions can be predicated or speculated but in addition the result need to be realized into the merging operation.
+Implementing the same framework on a non-SSA form program, would require more efforts: The $\phi$~reduction would require variable renaming, involving either a global data-flow analysis or the insertion of copies at the \textit{exit} node of the diamond-DAG; inferring the minimum amount of {select} operations would require having and updating liveness information. SSA form solves the renaming issue for free, and as illustrated by Figure~\ref{fig:pred_min} the minimality and the pruned flavor of the SSA form allows to avoid inserting useless {select} operations.  
 
 \begin{figure}[h]
 \centering
-  \subfloat[minimal if-conversion] {
-   \includegraphics[scale=0.7]{phi_min}
-   \label{fig:phi_minimal}}
-  \subfloat[pruned if-conversion] {
-  \includegraphics[scale=0.7]{phi_pru}
+  \subfloat[if-conversion on minimal SSA] {
+   \includegraphics[scale=0.9]{phi_min}
+   \label{fig:phi_minimal}}\hfill
+  \subfloat[if-conversion on pruned SSA] {
+  \includegraphics[scale=0.9]{phi_pru}
   \label{fig:phi_pruned}}
-\caption{SSA predicate minimality}
+\caption{\label{fig:pred_min} SSA predicate minimality}
 \label{fig:minimality}
 \end{figure}
 
-The minimality of the SSA region determines the ability to assign a minimal predicate to the instructions. In Minimal SSA-see chapter~\ref{chapter:properties_and_flavours}-, $\phi$ functions might be inserted for variables that have a live range limited to the if-converted region, and might be temporaries. As pictured in figure \ref{fig:phi_minimal} the number of $\phi$ instructions will determine the number of instructions that will be assigned a predicate, and thus the minimality of the if-converted region in term of number of predicated instructions. In pruned SSA \ref{fig:phi_pruned}, the variables are not $\phi$ related, so they do not need to be connected through a predicate. In this respect; pruned SSA exposes the smallest number of predicate dependencies, giving more freedom for scheduling and register allocation. Note that those predicates could be optimized later by predicate promotion, but this would locally introduce deficiency in the cost functions.
+\subsection{Handling of predicated execution model}
 
-To identify the operation's results that need to be conditionally defined, we only need to look at the defining instructions of the $\phi$ instructions. All temporaries that do not have a join point within the considered region and that don't have a side effect can be unconditionally speculated during the SSA transformation processes. Only instructions with a side effect need to be guarded. 
-Instruction predicates from the taken path are merged (using a logical and) with the branch parameter. Predicates in instructions from the fall trough path are merged with the complement of the branch parameter.
+The $\phi$ removal transformation described above considered a speculative execution model. As we will illustrate hereafter, in the context of a predicated execution model, the choice of speculation versus predication is an optimization decision that should not be imposed by the intermediate representation. Also, transforming speculated code into predicated code can be viewed as a coalescing problem. The use of $\psi$-SSA (see Chapter~\ref{chapter:psi_ssa}), as the intermediate form of if-conversion, allows to postpone the decision of speculating some code, while the coalescing problem is naturally handled by the $\psi$-SSA destruction phase. 
 
-The process is applied incrementally on the CFG in SSA form until no more reductions are possible. The quality of the SSA taken as input does not affect the correctness of the algorithm: if the control flow is in pruned SSA, i.e two paths $x->+z$ and $y->+z$ converge at node z, then a $\phi$ node is inserted at z only if z is alive in or after z. in which case x and y can be promoted and no merging operation is needed. 
+Just as (control) speculating an operation on a control flow graph corresponds to ignore the control dependence with the conditional branch, speculating an operation on an if-converted code corresponds to remove the data dependence with the corresponding predicate. On the other-hand on register allocated code, speculation adds anti-dependencies. This trade-off can be illustrated through the example of Figure~\ref{fig:pred_versus_spec}: For the fully predicated version of the code, the computation of $p$ has to be done before the computations of $x_1$ and $x_2$; speculating the computation of $x_1$ removes the dependence with $p$ and allows to execute it in parallel with the test $(a<\hspace{-.6em}?\ b)$; if both the computation of $x_1$ and $x_2$ are speculated, they cannot be coalesced and when destruction $\psi$-SSA, the $\psi$-function will give rise to some select instruction; if only the computation of $x_1$ is speculated, then $x_1$ and $x_2$ can be coalesced to $x$, but then an anti-dependence from $x=a+b$ and $p\cond x = c $ appears that forbid its  execution in parallel.
 
-\subsubsection{Partial redefinition}
-
-A $\psi$ operation exposes new data dependencies, by expressing the merge of two definitions. Note that the order of the partial definition is important, because a definition partially redefines the preceding ones. We use this property to speculate the first definitions, so it becomes speculated instead of disjoint. This local optimization allows the removal of predicate dependencies but also creates a new partial dependency when predicates are not disjoint. 
-
-\begin{figure}
+\begin{figure}[h]
+\subfloat[predicated code]{
+\hspace{0.5cm}\begin{minipage}[b]{2.4cm}\label{subfig:pred_versus_spec:a}
 \footnotesize
-\begin{minipage}[t]{4cm}
-\mbox{disjoint predicates} \\
-$ p = test $ \\
+$ p = (a<\hspace{-.6em}?\ b) $ \\
 $ p \cond x_1 = a + b $ \\
 $ \overline{p} \cond x_2 = c $ \\
-$ x = \psi(p \cond x_1, \overline{p} \cond x_2) $ \\
+$ x = \psi(p \cond x_1, \overline{p} \cond x_2) $
 \end{minipage}
-\begin{minipage}[t]{4cm}
-\mbox{optimized order predicates} \\
+}\hfill
+\subfloat[fully speculated]{
+\begin{minipage}[b]{2.4cm}\label{subfig:pred_versus_spec:b}
+\footnotesize
+$ p = (a<\hspace{-0.6em}?\ b) $ \\
 $ x_1 = a + b $ \\
-$ p = test $ \\
-$ \overline{p} \cond x_2 = c $ \\
-$ x = \psi(T \cond x_1, \overline{p} \cond x_2) $ \\
+$ x_2 = c $ \\
+$ x = \psi(p \cond x_1, \overline{p} \cond x_2) $ 
 \end{minipage}
+}\hfill
+\subfloat[partially speculated]{
+\begin{minipage}[b]{2.7cm}\label{subfig:pred_versus_spec:b}
+\footnotesize
+$ p = (a<\hspace{-0.6em}?\ b) $ \\
+$ x_1 = a + b $ \\
+$ \overline{p} \cond x_2 = c $ \\
+$ x = \psi(x_1, \overline{p} \cond x_2) $ 
+\end{minipage}
+}\hfill
+\subfloat[after coalescing]{
+\begin{minipage}[b]{2.3cm}\label{subfig:pred_versus_spec:c}
+\footnotesize
+$ p = (a<\hspace{-0.6em}?\ b) $ \\
+$ x = a + b $ \\
+$ \overline{p} \cond x = c $ \\
+~
+\end{minipage}
+}
+\caption{\label{fig:pred_versus_spec}Speculation removes the dependency with the predicate but adds anti-dependencies between concurrent computations.}
 \end{figure}
 
-$T$ represents the $True$ predicate. This optimization is useful to save one predicate register and to remove a data dependency between a predicate definition and its use. 
-The $\psi$ definition is defined on the $T$ predicate set, therefore it is speculable, as shown in next paragraph.
+In practice, whenever it is considered as beneficial, speculation is performed during the $\phi$~removal transformation. Obviously only operations that do not have a side effect are speculated. 
+If-conversion using fully speculated code is actually simpler than when dealing with predicated code: The code of each conditional basic-blocks of the diamond-DAG is moved to the merging basic-block, and the \phifun replaced by a $\psi$-function with the branching predicates (and its complement) as gates. When predicating an operation that is already predicated predicates are simply merged using logical \textrm{and}.
+
+%% To identify the operation's results that need to be conditionally defined, we only need to look at the defining instructions of the $\phi$ instructions. All temporaries that do not have a join point within the considered region and that don't have a side effect can be unconditionally speculated during the SSA transformation processes. Only instructions with a side effect need to be guarded. 
+%% Instruction predicates from the taken path are merged (using a logical and) with the branch parameter. Predicates in instructions from the fall trough path are merged with the complement of the branch parameter.
+
+
+%% A $\psi$ operation exposes new data dependencies, by expressing the merge of two definitions. Note that the order of the partial definition is important, because a definition partially redefines the preceding ones. We use this property to speculate the first definitions, so it becomes speculated instead of disjoint. This local optimization allows the removal of predicate dependencies but also creates a new partial dependency when predicates are not disjoint. 
+
 
 \subsubsection{$\psi$ speculation properties}
 
 Since $\psi$ operations are part of the intermediate representation, they can be considered for inclusion in a candidate region for if-conversion. The conditional operations that they refer can in turn be speculated or predicated incrementally. We define here the promotion rules for $\psi$ operands, whereas the instructions defining the $\psi$ operands will be speculated.
 
-Consider the instructions \ref{nested_psi} containing a sub region already processed. The $\psi$ operation can be safely speculated if all the instructions defining its operands can be speculated: they don't produce hazardous execution, they don't produce any side effects and there exists a conditional move instruction to merge the operands. Then the block can be executed regardless of the value of $c$. The use of the $\psi$ result is also unconditionally executed.
+Consider the instructions \ref{nested_psi} containing a sub region already processed. The $\psi$ operation can be safely speculated if all the instructions defining its operands can be speculated: They don't produce hazardous execution, they don't produce any side effects and there exists a conditional move instruction to merge the operands. Then the block can be executed regardless of the value of $c$. The use of the $\psi$ result is also unconditionally executed.
 
 \subsubsection{$\psi$ predication properties}
 
@@ -347,7 +334,7 @@ During the if-conversion process, instructions that are merged into the deleted 
 
 To illustrate the differences between a traditional framework and a native SSA framework, we first start by describing the RK algorithm proposed by Park and Schlansker on the nested tests in figure \ref{fig:nested1}. We will then describe in detail the SSA based approach.
 
-Standard if-conversion techniques address the problem in the following order: first, identify the region to be if-converted. An execution trace is selected based on profiling information to isolate the region. Then allocate boolean variables to the basic blocks, in the identified region. Then perform predicate initialization placement, instruction emissions and CFG restructuring into the final if-converted regions.
+Standard if-conversion techniques address the problem in the following order: First, identify the region to be if-converted. An execution trace is selected based on profiling information to isolate the region. Then allocate boolean variables to the basic blocks, in the identified region. Then perform predicate initialization placement, instruction emissions and CFG restructuring into the final if-converted regions.
 
 The RK algorithm starts by computing the Control Dependence Graph. It is necessary to associate each basic block with a guard condition, and to associate each guard width the set of basic blocks that need to set it. The algorithm creates a new guard, eventually initialized to false, for each condition. \ref{fig:nested2} shows the inner basic blocks with the new conditions initialized, and \ref{fig:RK} the RK mappings.
 
