@@ -17,11 +17,11 @@ Finally we will apply global value numbering (GVN) to all of the above, obtainin
 
 \section{SSA and aliasing: $\mu$ and \chifuns}
 \index{\mufun}\index{\chifun}
-Aliasing is the situation when, inside a compilation unit, one single storage location (that contains a value) can be potentially accessed through different program "variables".
+Aliasing occurs inside a compilation unit when a single one single storage location (that contains a value) can be potentially accessed through different program "variables".
 This can happen in one of the four following ways:
 \begin{itemize}
 \item First, when two or more storage locations partially overlap. This, for instance, happens with the C "union" construct, where different parts of a program can access the same storage location under different names.
-\item Second, when a local variable is referred by a pointer used in an indirect memory operation. In this case the two ways in which the variable can be accessed are {\em directly}, through the variable name, and {\em indirectly}, through its address used in the memory operation (read or write).
+\item Second, when a local variable is referred by a pointer used in an indirect memory operation. In this case the variable can be accessed in two ways: {\em directly}, through the variable name, and {\em indirectly}, through the pointer that holds its address.
 \item Third, when the address of a local variable is passed to a function, which in turn can then access the variable indirectly.
 \item Finally, storage locations with global scope can obviously be accessed by different functions. In this case every function call can potentially access every global location, unless the compiler uses global optimizations techniques where every function is analyzed before the actual compilation takes place.
 \end{itemize}
@@ -29,7 +29,7 @@ This can happen in one of the four following ways:
 The real problem with aliasing is that these different accesses to the same program variable are difficult to predict. Only in the first case (explicitly overlapping locations) the compiler has full knowledge of when each access takes place. In all the other cases (indirect accesses through the address of the variable) the situation becomes more complex, because the access depends on the address that is effectively stored in the variable used in the indirect memory operation.
 This is a problem because every optimization pass is concerned with the actual value that is stored in every variable, and when those values are used. If variables can be accessed in unpredictable program points, the only safe option for the compiler is to handle them as "volatile" and avoid performing optimizations on them, which is not desirable.
 
-Intuitively, in presence of aliasing the compiler could try to track the values of variable addresses inside other variables (and this is exactly what HSSA does), but the formalization of this process is not trivial.
+Intuitively, in the presence of aliasing the compiler could try to track the values of variable addresses inside other variables (and this is exactly what HSSA does), but the formalization of this process is not trivial.
 The first thing that is needed is a way to model the {\em effects} of aliasing on a program in SSA form.
 To do this, assuming that we have already performed alias analysis, we must formally define the effects of indirect definitions and uses of variables.
 Particularly, each definition can be a {\em "MustDef"} operand in the direct case, or a {\em "MayDef"} operand in the indirect case. We will represent MayDef through the use of \chifuns.
@@ -38,9 +38,9 @@ The semantic of $\mu$ and $\chi$ operators can be illustrated through the C like
 Obviously the argument of the \muop is the potentially used variable.
 Less obviously, the argument to the \chiop is the assigned variable itself. This expresses the fact that the \chiop only {\em potentially} modifies the variable, so the original value could "flow through" it. 
 
-The use of $\mu$ and \chiops does not alter the complexity of transforming a program in SSA form. All that is necessary is a pre-pass that inserts them in the program. Ideally, a $\mu$ and a $\chi$ should be placed \emph{in parallel}\index{parallel instruction} to the instruction that lead to its insertion. Parallel instructions are represented in Figure~\ref{fig:hssa:muchi} using the notation introduced in Section~\ref{sub:ssi:split}. Still, practical implementation may choose to insert $\mu$ and $\chi$s before or after the instructions that involve aliasing. Particularly, \mufuns could be inserted immediately {\em before} the involved statement or expression, and \chiops immediately {\em after} it. This distinction allows us to model call effects correctly: the called function appears to potentially use the values of variables before the call, and the potentially modified values appear after the call.
+The use of $\mu$ and \chiops does not alter the complexity of transforming a program in SSA form. All that is necessary is a pre-pass that inserts them in the program. Ideally, a $\mu$ and a $\chi$ should be placed \emph{in parallel}\index{parallel instruction} to the instruction that led to its insertion. Parallel instructions are represented in Figure~\ref{fig:hssa:muchi} using the notation introduced in Section~\ref{sub:ssi:split}. Still, practical implementations may choose to insert $\mu$ and $\chi$s before or after the instructions that involve aliasing. Particularly, \mufuns could be inserted immediately {\em before} the involved statement or expression, and \chiops immediately {\em after} it. This distinction allows us to model call effects correctly: the called function appears to potentially use the values of variables before the call, and the potentially modified values appear after the call.
 
-Thanks to the systematic insertion of \mufuns and \chifuns, an assignment of any scalar variable can be safely considered dead if it is not marked live by a standard SSA based dead-code elimination. In our running example of Figure~\ref{fig:hssa:muchi}(c), the potential side effect of any assignment to $i$, represented through the \mufun at the return, allows to detect that the assignment to $i_4$ is not dead. The assignment of value 2 to $i$ would have been considered as dead in the absence of the function call to $f()$ within which it is potentially used (detected through its corresponding \mufun). 
+Thanks to the systematic insertion of \mufuns and \chifuns, an assignment of any scalar variable can be safely considered dead if it is not marked live by a standard SSA based dead-code elimination. In our running example of Figure~\ref{fig:hssa:muchi}(c), the potential side effect of any assignment to $i$, represented through the \mufun at the return, allows detecting that the assignment to $i_4$ is not dead. The assignment of value 2 to $i$ would have been considered as dead in the absence of the function call to $f()$, which potentially uses it (detected through its corresponding \mufun). 
 
 
 
@@ -106,13 +106,13 @@ Thanks to the systematic insertion of \mufuns and \chifuns, an assignment of any
 \index{zero version}
 While it is true that $\mu$ and $\chi$ insertion does not alter the complexity of SSA construction, applying it to a production compiler as described in the previous section would make working with code in SSA form terribly inefficient.
 This is because \chiops cause an explosion in the number of variable values, inducing the insertion of new \phifuns which in turn create new variable versions.
-In practice the resulting IR, and especially the number of distinct variable versions, would be needlessly large. The biggest issue is that the SSA versions introduced by \chiops are useless for most optimization that deals with variable values. $\chi$ definitions adds uncertainty to the analysis of variables values: the actual value of a variable after a $\chi$ definition could be its original value, or it could be the one indirectly assigned by the $\chi$.
+In practice the resulting IR, and especially the number of distinct variable versions, would be needlessly large. The biggest issue is that the SSA versions introduced by \chiops are useless for most optimizations that deal with variable values. $\chi$ definitions adds uncertainty to the analysis of variables values: the actual value of a variable after a $\chi$ definition could be its original value, or it could be the one indirectly assigned by the $\chi$.
 
 Intuitively, the solution to this problem is to factor all variable versions\index{variable version} that are considered \emph{useless} together, so that no space is wasted to distinguish among them. We assign number 0 to this special variable version, and call it "{\em zero version}".
 
-Our notion of useless versions relies on the concept of "{\em real occurrence of a variable}", which is an actual definition or use of a variable in the original program. Therefore, in SSA form variable occurrences in $\mu$, $\chi$ and \phifuns are not "real occurrences". In our example of Figure~\ref{fig:hssa:muchi}, $i_2$ have no real occurrence while $i_1$ and $i_3$ have. The idea is that variable versions that have no real occurrence do not influence the program output. Once the program is converted back from SSA form these variables are removed from the code.
+Our notion of useless versions relies on the concept of "{\em real occurrence of a variable}", which is an actual definition or use of a variable in the original program. Therefore, in SSA form, variable occurrences in $\mu$, $\chi$ and \phifuns are not "real occurrences". In our example of Figure~\ref{fig:hssa:muchi}, $i_2$ have no real occurrence while $i_1$ and $i_3$ have. The idea is that variable versions that have no real occurrence do not influence the program output. Once the program is converted back from SSA form these variables are removed from the code.
 Since they do not directly appear in the code, and their value is usually unknown, distinguishing among them is almost pointless.
-For those reasons, will be considered zero versions, versions of variables that have no real occurrence, and whose value  comes from at least one \chifun (optionally through \phifuns). An equivalent, recursive definition is the following:
+For those reasons, we consider zero versions, versions of variables that have no real occurrence, and whose value comes from at least one \chifun (optionally through \phifuns). An equivalent, recursive definition is the following:
 \begin{itemize}
 \item The result of a $\chi$ has zero version if it has no real occurrence.
 \item If the operand of a $\phi$ has zero version, the $\phi$ result has zero version if it has no real occurrence.
@@ -159,7 +159,7 @@ Algorithm~\ref{alg:hssa:zero-versioning}\index{data-flow} performs zero-version 
 \end{algorithm}
 
 The time spent in the first iteration grows linearly with the number of variable versions, which in turn is proportional to the number of definitions and therefore to the code size.
-On the other hand, the while loop may in the worst case iterate as many times as the longest chain of contiguous $\phi$ assignments in the program. This bound can easily be reduced to the largest loop depth of the program by traversing the versions using a topological order of the forward control flow graph\index{forward control flow graph}.
+On the other hand, the while loop may, in the worst case, iterate as many times as the longest chain of contiguous $\phi$ assignments in the program. This bound can easily be reduced to the largest loop depth of the program by traversing the versions using a topological order of the forward control flow graph\index{forward control flow graph}.
 All in all, zero version detection in the presence of $\mu$ and \chifuns does not change the complexity of SSA construction in a significant way, while the corresponding reduction in the number of variable versions is definitely desirable.
 
 This loss of information has almost no consequences on the effectiveness of subsequent optimization passes.
@@ -240,16 +240,16 @@ What HSSA does is to represent the "target" locations of indirect memory operati
 \caption{\label{fig:hssa:virtual_vars}Some virtual variables and their insertion depending on how they alias with operands.}
 \end{figure}
 
-To summaries, alias analysis, considered as a given, drives the choice of virtual variables. 
-Then \mufun and \chifun insertion of virtual variables is performed in the same pass than for scalar variables.
+To summarise, alias analysis, considered as a given, drives the choice of virtual variables\footnote{I'm not sure what this means.  Rephrase? (dnovillo)}.
+The insertion of \mufun and \chifun for virtual variables is performed in the same pass than for scalar variables.
 Also, when the program is converted into SSA form, virtual variables can be renamed just like scalar variables.
 Use-def relationships of virtual variables now represent use-def relationships of the memory locations accessed indirectly.
 Note that the zero versioning technique can be applied unaltered to virtual variables.
-At this point, it remains to apply global value numbering to complete the construction of HSSA form.
+At this point, we can complete the construction of HSSA form by applying global value numbering.
 
 \section{GVN and indirect memory operations: HSSA}
 
-In the previous sections we sketched the foundations of a framework for dealing with aliasing and indirect memory operations in SSA form: we identified the effects of aliasing on local variables, introduced $\mu$ and \chiops to handle them, applied zero versioning to keep the number of SSA versions acceptable, and defined virtual variables as a way to apply SSA also to memory locations accessed indirectly. However, HSSA is complete only once {\em Global Value Numbering} (GVN. See Chapter~\ref{chapter:pre_not_helped})\index{Global Value Numbering} is applied to scalar and virtual variables, handling all of them uniformly.
+In the previous sections we sketched the foundations of a framework for dealing with aliasing and indirect memory operations in SSA form: we identified the effects of aliasing on local variables, introduced $\mu$ and \chiops to handle them, applied zero versioning to keep the number of SSA versions acceptable, and defined virtual variables as a way to apply SSA also to memory locations accessed indirectly. However, HSSA is complete only once {\em Global Value Numbering}\index{Global Value Numbering} is applied to scalar and virtual variables, handling all of them uniformly (GVN. See Chapter~\ref{chapter:pre_not_helped}).
 
 GVN is normally used as a way to perform \emph{redundancy elimination} which means removing redundant expression computations from a program, typically storing the result of a computation in a temporary variable and reusing it later instead of performing the computation again.
 As the name suggests, GVN works assigning a unique number to every expression in the program with the idea that expression identified by the same number are guaranteed to give the same result.
@@ -328,27 +328,27 @@ While computing global value numbers for code that manipulates scalar variables 
 }
 \end{figure}
 
-First of all it can be used to determine when two address expressions compute to the same address: this is guaranteed if they have the same global value number. In our example, $p_2$ and $q_2$ will have the same value number $h_7$ while $p_1$ will not.
-This allows indirect memory operands that have same GVN for their address expressions and same virtual variable version to become a single entity in the representation. This puts them in the same rank as scalar variables and allows the transparent application of SSA based optimizations on indirect memory operations.
-For instance, in the vector modulus computation described above every occurrence of the expression "p-\textgreater x" will always have the same GVN and therefore will be guaranteed to return the same value, allowing the compiler to emit code that stores it in a temporary register instead of performing the redundant memory reads (the same holds for "p-\textgreater y").
+First of all, it can be used to determine when two address expressions compute the same address: this is guaranteed if they have the same global value number. In our example, $p_2$ and $q_2$ will have the same value number $h_7$ while $p_1$ will not.
+This allows indirect memory operands that have the same GVN for their address expressions and the same virtual variable version to become a single entity in the representation. This puts them in the same rank as scalar variables and allows the transparent application of SSA based optimizations on indirect memory operations.
+For instance, in the vector modulus computation described above, every occurrence of the expression "p-\textgreater x" will always have the same GVN and therefore will be guaranteed to return the same value, allowing the compiler to emit code that stores it in a temporary register instead of performing the redundant memory reads (the same holds for "p-\textgreater y").
 Similarly, consider the example of Figure~\ref{fig:hssa:versioning}. Loads of lines 5 and~8 can not be considered as redundant because the versions for $v$ ($v_1^*$ then $v_2^*$) are different. On the other hand the load of line~8 can be safely avoided using a rematerialization of the value computed in line~7 as both the version for $v$ ($v_2^*$) and the value number for the memory operands are identical. 
-As a last example, if for an indirect memory store, all its associated virtual variable versions (defined in parallel by \chifuns) are found to be dead, then it can be safely eliminated~\footnote{Note that any virtual variable that aliases with a memory region live-out of the compiled procedure is considered to alias with the return instruction of the procedure, and as a consequence will lead to a live \mufun}. In other words HSSA transparently extends DEADCE to work also on indirect memory stores.
+As a last example, if all the associated virtual variable versions for an indirect memory store (defined in parallel by \chifuns) are found to be dead, then it can be safely eliminated~\footnote{Note that any virtual variable that aliases with a memory region live-out of the compiled procedure is considered to alias with the return instruction of the procedure, and as a consequence will lead to a live \mufun}. In other words HSSA transparently extends DEADCE to work also on indirect memory stores.
 
-Another advantage of GVN in this context is that it enables uniform treatment of indirect memory operations regardless of the levels of indirections (like in the "**p" expression which presents a double indirection).
+Another advantage of GVN in this context is that it enables uniform treatment of indirect memory operations regardless of the levels of indirections (like in the "**p" expression which represents a double indirection).
 This happens naturally because each node of the expression is identified by its value number, and the fact that it is used as an address in another expression does not raise any additional complication.
 
 Having explained why HSSA uses GVN we are ready to explain how the HSSA intermediate representation is structured.
-A program in HSSA keeps its CFG structure, with basic-blocks made of a sequence of statements (assignments and procedure calls), but left and right hand-side each statement are replaced by their corresponding entry in the hash table. 
+A program in HSSA keeps its CFG structure, with basic-blocks made of a sequence of statements (assignments and procedure calls), but the left and right hand-side of each statement are replaced by their corresponding entry in the hash table. 
 Each constant, address and variable (both scalar and virtual) finds its entry in the hash table.
 As already explained, expressions are also hashed using the operator and the global value number of its operands.
 Each operand that corresponds to an indirect memory operation gets a special treatment on two aspects.
 First of all, it is considered semantically both as an expression (that has to be computed) and as a memory location (just as other variables).
 Second, its entry in the hash table is made up of both the address expression and its corresponding virtual variables version.
-This allows, as illustrates lines~3, 7, and~8 of Example~\ref{fig:hssa:versioning} two entries with identical value number, will be known to ``carry'' the same value.
+This allows two entries with identical value numbers to ``carry'' the same value.  This is illustrated in lines~3, 7, and~8 of Example~\ref{fig:hssa:versioning}.
 Such entries are referred as \emph{ivar} node, for \emph{indirect variables} so as to recall its operational semantic and distinguish them from the original program scalar variables. 
 
 It should be noted that ivar nodes, in terms of code generation, are operations and not variables: the compiler back end, when processing them, will emit indirect memory accesses to the address passed as their operand.
-While each ivar node is \emph{related} to a virtual variable (the one corresponding to its address expression), and its GVN is determined taking into account the SSA version of its virtual variable, the virtual variable has no real counterpart in the program code.
+While each ivar node is \emph{related} to a virtual variable (the one corresponding to its address expression), and its GVN is determined taking into account the SSA version of its virtual variable; the virtual variable has no real counterpart in the program code.
 In this sense virtual variables are just an aid to apply aliasing effects to indirect memory operations, be aware of liveness and perform SSA renaming (with any of the regular SSA renaming algorithms).
 However, even thought virtual variables do not contribute to the emission of machine code, their use-def links can be examined by optimization passes to determine the program data dependency paths (just like use-def links of scalar variables).
 
@@ -409,7 +409,7 @@ The application of global value numbering is straightforward. Some basics about 
 
 
 As a result of this, each node in the code representation has a proper value number, and nodes with the same number are guaranteed to produce the same value (or hold it in the case of variables).
-The crucial issue is that the code must be traversed following the dominator tree in pre-order. This is important because when generating value numbers we must be sure that all the involved definitions already have a value number. Since the SSA form is a freshly created one, it is strict i.e. all definitions dominate their use. As a consequence, a dominator tree pre-order traversal satisfies this requirement.
+The crucial issue is that the code must be traversed following the dominator tree in pre-order. This is important because when generating value numbers we must be sure that all the involved definitions already have a value number. Since the SSA form is a freshly created one, it is strict (i.e., all definitions dominate their use). As a consequence, a dominator tree pre-order traversal satisfies this requirement.
 
 Note that after this step virtual variables are not needed anymore, and can be discarded from the code representation: the information they convey about aliasing of indirect variables has already been used to generate correct value numbers for ivar nodes.
 
@@ -444,6 +444,8 @@ On the other hand, for all indirect memory operations where the alias analyzer d
 %FAB: you can merge the last two sections and call it Further readings and discussions or something similar
 Cite the original paper from Zhou et al. \cite{ZhouCC11}
 Cite the original paper from Chow.
+Cite work done in the GCC compiler (which was later scrapped due to compile time and memory consumption problems. but the experience is valuable): http://www.airs.com/dnovillo/Papers/mem-ssa.pdf
+Memory SSA - A Unified Approach for Sparsely Representing Memory Operations, D. Novillo, 2007 GCC Developers' Summit, Ottawa, Canada, July 2007.
 Talk about the possible differences (in terms of notations) that might exist between this chapter and the paper.
 Cite Alpern, Wegman, Zadech paper for GVN.
 Discuss the differences with Array SSA.
