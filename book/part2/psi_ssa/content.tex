@@ -101,9 +101,7 @@ presented in chapter~\ref{chapter:vsdg}. In such a representation, the
 which value between ${a_1}$ and ${a_2}$ is to be
 considered. However, Gated-SSA is a completely different intermediate
 representation where the control-flow is no longer represented. This
-representation is more suited for program interpretation or hardware
-synthesis, SSA algorithms for optimizations and code generation cannot
-be directly applied.
+representation is more suited for program interpretation than for optimizations at code generation level as addressed in this chapter.
 %
 Another possible representation would be to add a reference to ${a_1}$
  on the definition of ${a_2}$. $p\cond a_2=\texttt{op2} {\color{gray}~|~a_1}$ 
@@ -112,9 +110,7 @@ the value of ${a_1}$ if \textit{p} is {false}. The use of \textit{a} on the last
 would now refer to the variable ${a_2}$, which holds the correct
 value. The drawback of this representation is that it adds
 dependencies between operations (here a flow dependence from \texttt{op1} to \texttt{op2}), which would prevent code reordering
-for scheduling. It would also create useless dependencies when there
-are definitions on disjoints predicates that would be difficult to
-ignore or remove.
+for scheduling. 
 
 Our solution is presented in figure~\ref{fig:op_ssa}(d). The $\phi$-function of the SSA code with control-flow
  is ``replaced'' by a $\psi$-function on the corresponding predicated code, with information on the
@@ -154,16 +150,51 @@ ${p}_i \subseteq {q}$ (or $p_i \Rightarrow q$).
 
 \end{itemize}
 
+\begin{figure}[h]
+\begin{center}
+\footnotesize
+\hfill
+\subfloat[Control-flow code]{
+\begin{tabular}{p{3cm}}
+\iftt ${(p)}$\\
+\thentt   \\
+${\ \ \ \ \ a_1 = 1;}$\\
+\elsett \\
+${\ \ \ \ \     a_2 = -1;}$\\
+${x_1 = \phi(a_1, a_2)}$\\
+\iftt ${(q)}$\\
+\thentt\\
+${\ \ \ \ \ a_3 = 0;}$\\
+${x_2 = \phi(x_1, a_3)}$\\
+\end{tabular}
+} \hfill
+\subfloat[Predicated code]{
+\begin{tabular}{lp{3cm}}
+&\\
+& \\
+ ${p?}$ & ${a_1 = 1;}$ \\
+\\
+ ${\overline{p}?}$ & ${a_2 = -1;}$ \\
+& ${x_1 = \psi(p?a_1, \overline{p}?a_2)}$ \\
+\\
+\\
+ ${q?}$ & ${a_3 = 0;}$ \\
+& ${x_2 = \psi(p?a_1, \overline{p}?a_2, q?a_3)}$ \\
+\end{tabular}
+}
+\hfill
+\caption{$\psi$-SSA with non-disjoint predicates}
+\label{fig:non_disjoint_pred}
+\end{center}
+\end{figure}
 
-A \psifun can represent cases where variables are defined on
-predicates that are computed from independent conditions. This is
-illustrated in figure~\ref{fig:non_disjoint_pred}, where the
-predicates \textit{p} and \textit{q} are independent. During the SSA
+A \psifun can represent cases where variables are defined on arbitrary independent
+predicates such as $p$ and $q$ in the example of Figure~\ref{fig:non_disjoint_pred}~: For this example, during the SSA
 construction a unique variable \textit{a} was renamed into the variables
 ${a_1}$, ${a_2}$ and ${a_3}$ and the variables ${x_1}$
 and ${x_2}$ were introduced to merge values coming from different
-control-flow paths. In the non-predicated code, there is a
-control-dependency between ${x_1}$ and ${a_3}$, which means
+control-flow paths. In the control-flow version of the code, there is a
+control-dependency between the basic-block that defines ${x_1}$ and the operation that defines ${a_3}$, which means
 the definition of ${a_3}$ must be executed after the value for
 ${x_1}$ has been computed. In the predicated form of this example,
 there is no longer any control dependencies between the definitions of
@@ -182,94 +213,76 @@ the correct semantics of the code during transformations of the
 $\psi$-SSA representation and to revert the code back to a non
 $\psi$-SSA representation.
 
-%An important property of the SSA, and $\psi$-SSA, representation is
-%that every use of a variable is dominated by the unique definition for
-%this variable.
-
-\begin{figure}
-\begin{center}
-\footnotesize
-\begin{tabular}{llll}
-\iftt ${(p)}$        & & & \\
-\thentt         & & & \\
-${\ \ \ \ \ a_1 = 1;}$ & \ \ \ \ \  & ${p?}$ & ${a_1 = 1;}$ \\
-\elsett \\
-${\ \ \ \ \     a_2 = -1;}$ & \ \ \ \ \  & ${\overline{p}?}$ & ${a_2 = -1;}$ \\
-${x_1 = \phi(a_1, a_2)}$ & & & ${x_1 = \psi(p?a_1, \overline{p}?a_2)}$ \\
-\iftt ${(q)}$        & & & \\
-\thentt         & & & \\
-${\ \ \ \ \ a_3 = 0;}$ & \ \ \ \ \  & ${q?}$ & ${a_3 = 0;}$ \\
-${x_2 = \phi(x_1, a_3)}$ & & & ${x_2 = \psi(p?a_1, \overline{p}?a_2, q?a_3)}$ \\
-\end{tabular}
-\caption{$\psi$-SSA with non-disjoint predicates}
-\label{fig:non_disjoint_pred}
-\end{center}
-\end{figure}
-
-
-% Explain how PSI instructions are built, either during the SSA
-% construction on predicated instructions, or during if-conversion
-% under SSA by converting PHI functions into PSI functions.
 
 The construction of the $\psi$-SSA representation is a small
-modification on the standard algorithm to built an SSA representation.
-
-The insertion of \psifuns is performed in the SSA renaming
-phase of a classical SSA construction algorithm, as described in
-chapter~\ref{chapter:classical_construction_algorithm}.
-
+modification on the standard algorithm to built an SSA representation (see Section~\ref{sec:classical_construction}).
+%
+The insertion of \psifuns is performed during the SSA renaming
+phase.
+%
 During the SSA renaming phase, basic blocks are processed in their
 dominance order, and operations in each basic block are scanned from
 top to bottom. On an operation, for each predicated definition of a
 variable, a new \psifun will be inserted just after the
-operation. For the definition of a variable \textit{x} under predicate
-${p_2}$, the \psifun will take the form ${x = \psi(p_1?x_1,
-  p_2?x)}$, where ${x_1}$ is the current renaming of \textit{x} before
-the definition, and ${p_1}$ is the predicate used on the definition of
-${x_1}$. Once this instruction is inserted, the normal renaming of
-the operation proceeds, renaming \textit{x} into a new name ${x_2}$.
-When the renaming of the operation is completed, the
-algorithm continues on the next instruction, which will be a $\psi$
-function if there was a predicated definition. The first argument of
+operation~: Consider the definition of a variable \textit{x} under predicate
+${p_2}$ ($p_2\cond x= \texttt{op}$); suppose ${x_1}$ is the current version of $x$ before
+to proceeding \texttt{op}, and that $x_1$ is defined through predicate $p_1$ (possibly true); after renaming $x$ into a freshly created version, say $x_2$, a \psifun of the form ${x = \psi(p_1?x_1,
+  p_2?x)}$, is inserted right after \texttt{op}. 
+Then renaming of this new operation proceeds. The first argument of
 the \psifun is already renamed and thus is not modified. The
-second argument is renamed into the current renaming for \textit{x}
+second argument is renamed into the current version of \textit{x}
 which is ${x_2}$. On the definition of the \psifun, the
 variable \textit{x} is given a new name, ${x_3}$, which becomes the
-renaming for further references to the \textit{x} variable. This
+current version for further references to the \textit{x} variable. This
 insertion and renaming of a \psifun is shown on
-figure~\ref{fig:psi_ssa_construct}
+Figure~\ref{fig:psi_ssa_construct}.
 
-\psifuns can also be introduced in an SSA representation by
-applying an if-conversion transformation, such as the one that is
-described in chapter~\ref{chapter:if_conversion}. Local transformations
-on control-flow patterns can also require to replace \phifuns
-by \psifuns.
-
-\begin{figure}
-\begin{center}
+\begin{figure}[h]
 \footnotesize
-\begin{tabular}{lllllllllll}
-${p_2?}$ & ${x = op}$ & \ \ \ \  & ${p_2?}$ & ${x = op}$                  & \ \ \ \  & ${p_2?}$ & ${x_2 = op}$               & \ \ \ \  & ${p_2?}$ & ${x_2 = op}$ \\
-             &                &          &              & ${x = \psi(p_1?x_1, p_2?x)}$ &           &           & ${x = \psi(p_1?x_1, p_2?x_2)}$ &          &           & ${x_3 = \psi(p_1?x_1, p_2?x_2)}$ \\
+\subfloat[Initial]{
+\begin{tabular}{ll}
+${p_2?}$ & ${x = \texttt{op}}$\\
+\\
 \end{tabular}
+}\hfill
+\subfloat[$\psi$-insertion]{
+\begin{tabular}{ll}
+ ${p_2?}$ & ${x = \texttt{op}}$ \\
+           & ${x = \psi(p_1?x_1, p_2?x)}$ \\
+\end{tabular}
+} \hfill
+\subfloat[\texttt{op}-renaming]{
+\begin{tabular}{ll}
+ ${p_2?}$ & ${x_2 = \texttt{op}}$ \\
+           & ${x = \psi(p_1?x_1, p_2?x_2)}$ \\
+\end{tabular}
+} \hfill
+\subfloat[$\psi$-renaming]{
+\begin{tabular}{ll}
+ ${p_2?}$ & ${x_2 = \texttt{op}}$\\
+           & ${x_3 = \psi(p_1?x_1, p_2?x_2)}$ \\
+\end{tabular}
+}
 \caption{Construction and renaming of $\psi$-SSA}
 \label{fig:psi_ssa_construct}
-\end{center}
 \end{figure}
 
 
+\psifuns can also be introduced in an SSA representation by
+applying an if-conversion transformation, such as the one that is
+described in Chapter~\ref{chapter:if_conversion}. Local transformations
+on control-flow patterns can also require to replace \phifuns
+by \psifuns.
+
 \section{SSA algorithms}
 
-\textbf{1 page}
 
 % Explain how standard SSA algorithm can be adapted to the Psi-SSA
 % form: Predicated definitions are now seen as non-predicated ones,
 % and a semantics, similar to the similar of PHI functions, must be
 % defined for PSI functions.
 
-With this definition of the $\psi$-SSA representation, conditional
-definitions on predicated code are now replaced by unconditional
-definitions on \psifuns. Usual algorithms that perform
+With this definition of the $\psi$-SSA representation, implicit data-flow links to predicated operations are now explicitly expressed through \psifuns. Usual algorithms that perform
 optimizations or transformations on the SSA representation can now be
 easily adapted to the $\psi$-SSA representation, without compromising
 the efficiency of the transformations performed. Actually, within the
@@ -279,182 +292,148 @@ representation. Only the \psifuns have to be treated in a
 specific way. As an example, the classical constant propagation
 algorithm under SSA can be easily adapted to the $\psi$-SSA
 representation. In this algorithm, the only modification is that
-\psifuns have to be handled with the same rules as the $\phi$
-functions. Other algorithms such as dead code elimination, global
+\psifuns have to be handled with the same rules as the \phifuns. Other algorithms such as dead code elimination, global
 value numbering, partial redundancy elimination, and induction
 variable analysis are examples of algorithm that can easily be adapted
-to this representation.
+to this representation with minor efforts.
 
 \section{Psi-SSA algorithms}
 
-\textbf{3 page}
 
 % Special transformations can be applied on Psi-SSA, which allows to
 % optimize predicated code. Explain on an example what are the uses of
 % inlining, reduction, projection and predicate promotion.
 
-In addition to standard algorithms that can be applied to $\psi$
-functions and predicated code, a number of specific transformations
-can be performed on the \psifuns : $\psi$-inlining,
+In addition to standard algorithms that can be applied to \psifuns and predicated code, a number of specific transformations
+can be performed on the \psifuns, namely $\psi$-inlining,
 $\psi$-reduction, $\psi$-projection, $\psi$-permutation and
-$\psi$-promotion. For a $psi$ function ${a_0 = \psi(p_1?a_1, ...,
-  p_i?a_i, ..., p_n?a_n)}$, these transformations are defined as
+$\psi$-promotion. For a \psifun ${a_0 = \psi(p_1?a_1, ...,
+  p_i?a_i, ..., p_n?a_n)}$, those transformations are defined as
 follows:
 
-\begin{itemize}
-
-\item{\emph{$\psi$-inlining}} will recursively replace in a $\psi$
+~\\
+{\bf $\psi$-inlining} recursively replaces in a $\psi$
   function an argument ${a_i}$ that is defined on another $\psi$
   function by the arguments of this other \psifun. The
   predicate ${p_i}$ associated with argument ${a_i}$ will be distributed
   with an \texttt{and} operation over the predicates associated with the
   inlined arguments. This is shown in figure~\ref{fig:psi_inlining}.
-
-\begin{figure}
+\begin{figure}[h]
 \begin{center}
-\footnotesize
-\begin{tabular}{lllll}
-             & ${a_1 = op_1}$             & \ \ \ \  &             & ${a_1 = op_1}$ \\
-${p_2?}$ & ${a_2 = op_2}$             & \ \ \ \  & ${p_2?}$ & ${a_2 = op_2}$ \\
-             & ${x_1 = \psi(a_1, p_2?a_2)}$ & \ \ \ \  &             & ${x_1 = \psi(a_1, p_2?a_2) // dead}$ \\
-${p_3?}$ & ${a_3 = op_3}$              & \ \ \ \  & ${p_3?}$ & ${a_3 = op_3}$ \\
-             & ${x_2 = \psi(p_1?x_1, p_3?a_3)}$ & \ \ \ \  &           &${x_2 = \psi(p_1?a_1, p_1\&p_2?a_2, p_3?a_3)}$ \
+\footnotesize\hfill
+{
+\begin{tabular}{ll}
+             & ${a_1 = \texttt{op}1}$  \\
+${p_2?}$ & ${a_2 = \texttt{op}2}$        \\
+             & ${x_1 = \psi(a_1,\ p_2?a_2)}$\\
+${p_3?}$ & ${a_3 = \texttt{op}3}$             \\
+             & ${x_2 = \psi(p_1?x_1,\ p_3?a_3)}$ \\
 \end{tabular}
-\caption{$\psi$-inlining}
+} \hfill
+{
+\begin{tabular}{ll}
+                & ${a_1 = \texttt{op}1}$ \\
+ ${p_2?}$ & ${a_2 = \texttt{op}2}$ \\
+           & \color{gray} $x_1 = \psi(a_1,\ p_2?a_2)$ // dead \\
+ ${p_3?}$ & ${a_3 = \texttt{op}3}$ \\
+         & ${x_2 = \psi(p_1?a_1,\ p_1\wedge p_2?a_2,\ p_3?a_3)}$ \\
+\end{tabular}
+}
+\caption{$\psi$-inlining of the definition of $x_1$}
 \label{fig:psi_inlining}
 \end{center}
 \end{figure}
 
-
-\item{\emph{$\psi$-reduction}} will remove from a \psifun an
+~\\
+{\bf $\psi$-reduction} removes from a \psifun an
   argument ${a_i}$ whose value will always be overridden by arguments on
   its right in the argument list. An argument ${a_i}$ associated
   with predicate ${p_i}$ can be removed if ${p_i \subseteq
-    \bigcup_{k=i+1}^n p_k}$. This is shown in
-  figure~\ref{fig:psi_reduction}.
+    \bigcup_{k=i+1}^n p_k}$. This can be illustrated by the example of
+  Figure~\ref{fig:psi_reduction}.
 
-\begin{figure}
+
+
+\begin{figure}[h]
 \begin{center}
 \footnotesize
-\begin{tabular}{lllll}
-             & ${a_1 = op_1}$             & \ \ \ \  &             & ${a_1 = op_1}$ \\
-${p_2?}$ & ${a_2 = op_2}$             & \ \ \ \  & ${p_2?}$ & ${a_2 = op_2}$ \\
-${\overline{p_2}?}$ & ${a_3 = op_3}$              & \ \ \ \  & ${\overline{p_2}?}$ & ${a_3 = op_3}$ \\
-             & ${x_2 = \psi(a_1, p_2?a_2, \overline{p_2}?a_3)}$ & \ \ \ \  &              &${x_2 = \psi(p_2?a_2, \overline{p_2}?a_3)}$ \\
+\hfill
+\begin{tabular}{ll}
+             & ${a_1 = \texttt{op}1}$  \\
+${p_2?}$ & ${a_2 = \texttt{op}2}$        \\
+${\overline{p_2}?}$ & ${a_3 = \texttt{op}3}$ \\
+             & ${x_2 = \psi(a_1, p_2?a_2, \overline{p_2}?a_3)}$\\
+\end{tabular}\hfill
+\begin{tabular}{ll}
+      & ${a_1 = \texttt{op}1}$ \\
+ ${p_2?}$ & ${a_2 = \texttt{op}2}$ \\
+ ${\overline{p_2}?}$ & ${a_3 = \texttt{op}3}$ \\
+        &${x_2 = \psi(p_2?a_2, \overline{p_2}?a_3)}$ \\
 \end{tabular}
-\caption{$\psi$-reduction}
+\caption{$\psi$-reduction. The first argument  $a_1$ of the \psifun can safely be removed}
 \label{fig:psi_reduction}
 \end{center}
 \end{figure}
 
-\item{\emph{$\psi$-projection}} will create from a \psifun a
-  new \psifun for use in an operation predicated under a given
-  predicate. In this new \psifun, an argument ${a_i}$
-  whose associated predicate ${p_i}$ is disjoint with the domain
-  of the predicate on which the projection is performed actually
-  contribute no value to the \psifun and thus can be
-  removed. This is shown in figure~\ref{fig:psi_projection}.
+\textbf{$\psi$-projection} creates from a \psifun a
+  new \psifun on a restricted predicate say $p$.  In this new \psifun, an argument ${a_i}$ initially guarded by $p_i$ shall be guarded by the conjunction $p_i\wedge p$. If $p_i$ is known to be disjoint with $p$, $a_i$ actually
+  contributes no value to the \psifun and thus can be
+  removed. $\psi$-projection on predicate $p$ is usually performed when the result of a \psifun is used in an operation predicated by $p$. This is illustrated in Figure~\ref{fig:psi_projection}.
 
-\begin{figure}
-\begin{center}
+\begin{figure}[h]
 \footnotesize
-\begin{tabular}{lllll}
-${p_2?}$ & ${a_2 = op_2}$             & \ \ \ \  & ${p_2?}$ & ${a_2 = op_2}$ \\
-${\overline{p_2}?}$ & ${a_3 = op_3}$              & \ \ \ \  & ${\overline{p_2}?}$ & ${a_3 = op_3}$ \\
+\hfill
+\begin{tabular}{llp{3cm}ll}
+${p_2?}$ & ${a_2 = \texttt{op}2}$             & \ \ \ \ \ \ \ \  & ${p_2?}$ & ${a_2 = \texttt{op}2}$ \\
+${\overline{p_2}?}$ & ${a_3 = \texttt{op}3}$              & \ \ \ \  & ${\overline{p_2}?}$ & ${a_3 = \texttt{op}3}$ \\
              & ${x_2 = \psi(p_2?a_2, \overline{p_2}?a_3)}$ & \ \ \ \  &              &${x_2 = \psi(p_2?a_2, \overline{p_2}?a_3)}$ \\
              &                               & \ \ \ \  &              & ${x_3 = \psi(p_2?a_2)}$ \\
 ${p_2?}$ & ${y_1 = x_2}$              & \ \ \ \  & ${p_2?}$ & ${y_1 = x_3}$ \\
 \end{tabular}
-\caption{$\psi$-projection}
+\caption{$\psi$-projection of $x_2$ on $p_2$. Second argument $a_3$ can be removed.}
 \label{fig:psi_projection}
-\end{center}
 \end{figure}
 
-\item{\emph{$\psi$-permutation}} will change the order of the
+~\\
+\textbf{$\psi$-permutation} changes the order of the
   arguments in a \psifun. In a \psifun the order of
   the arguments is significant. Two arguments in a \psifun can
   be permuted if the intersection of their associated predicate in the
   \psifun is empty. An example of such a permutation is shown
-  on figure~\ref{fig:psi_permutation}.
+  on Figure~\ref{fig:psi_permutation}.
 
-\begin{figure}
-\begin{center}
+\begin{figure}[h]
 \footnotesize
-\begin{tabular}{lllll}
-${\overline{p_2}?}$ & ${a_3 = op_3}$              & \ \ \ \  & ${\overline{p_2}?}$ & ${a_3 = op_3}$ \\
-${p_2?}$ & ${a_2 = op_2}$             & \ \ \ \  & ${p_2?}$ & ${a_2 = op_2}$ \\
+\hfill
+\begin{tabular}{llp{3cm}ll}
+${\overline{p_2}?}$ & ${a_3 = \texttt{op}3}$              & \ \ \ \  & ${\overline{p_2}?}$ & ${a_3 = \texttt{op}3}$ \\
+${p_2?}$ & ${a_2 = \texttt{op}2}$             & \ \ \ \  & ${p_2?}$ & ${a_2 = \texttt{op}2}$ \\
              & ${x_2 = \psi(p_2?a_2, \overline{p_2}?a_3)}$ & \ \ \ \  &              &${x_2 = \psi(\overline{p_2}?a_3, p_2?a_2)}$ \\
 \end{tabular}
-\caption{$\psi$-permutation}
+\caption{$\psi$-permutation of arguments $a_2$ and $a_3$}
 \label{fig:psi_permutation}
-\end{center}
 \end{figure}
 
-%% In this case, as a result of speculation performed
-%% during an if-conversion algorithm, the guard used on the definition of
-%% a variable may be larger than the guard associated with this variable
-%% in a $\psi$ operation. Speculation may be performed because some
-%% operations cannot be predicated. Speculation may also be performed as
-%% an optimization to reduce the number of guards on predicated code and
-%% to reduce the number of operations to compute these guards.
-
-\item{\emph{$\psi$-promotion}} will change the predicates used in a
-  \psifun. The $\psi$-SSA representation can be used on a
-  partially predicated architecture, where only a subset of the
-  instructions supports a predicate operand.
-  Figure~\ref{fig:psi_partial} shows an example where some code with
-  control-flow edges was transformed into a linear sequence of
-  instructions.
-
-Taking the example of an architecture where the \texttt{ADD} operation
-cannot be predicated, the \texttt{ADD} operation has been speculated
-under the \textit{true} predicate. However, the information represented
-in the \phifun by the control-flow edges is now present in the
-\psifun by means of predicates.
-
-On an architecture where the \texttt{ADD} operation can be predicated, it
-may also be profitable to perform speculation in order to reduce the
-number of predicates on predicated code and to reduce the number of
-operations to compute these predicates. Using the representation in
-figure~\ref{fig:psi_partial} (b), there can be one predicate associated
-with the definition of a variable, and there will be one predicate
-associated with the use of the variable in a \psifun.
-
-Once speculation has been performed on the definition of a variable
-used in a \psifun, the predicate associated with this argument
-can be promoted, without changing the semantics of the $\psi$
-function. By predicate promotion, we mean that a predicate can be
-replaced by a predicate with a larger predicate domain. This is
-illustrated in figure~\ref{fig:psi_partial}(c). This promotion must
-obey the following condition so that the semantics of the $\psi$
-function after the transformation is valid and unchanged :
-
-\begin{tabular}{ll}
-\multicolumn{2}{l}{\it for an instruction} \\
-\ \ \ \ & {$ {a_0 = Psi(p_1?x_1, ..., p_i?x_i, ..., p_n?x_n)}$} \\
-\multicolumn{2}{l}{\it transformed to} \\
-\ \ \ \ & {$ {a_0 = Psi(p_1?x_1, ..., p_i'?x_i, ..., p_n?x_n)}$} \\
-\multicolumn{2}{l}{\it then} \\
-\ \ \ \ & {${p_i' \subseteq \bigcup_{k=i}^n p_k}$} \\
-\\
-\end{tabular}
-
-This promotion must also satisfy the properties of $\psi$
-functions, and in particular, that the predicate associated with a
+~\\
+\textbf{$\psi$-promotion} changes one of the predicates used in a
+  \psifun by a larger predicate. 
+ Promotion must obey the following condition so that the semantics of the \psifun 
+ is not altered by the transformation~: consider an operation $ a_0 = \psi(p_1?x_1, ..., p_i?x_i, ..., p_n?x_n)$
+promoted into $ a_0 = \psi(p_1?x_1, ..., p_i'?x_i, ..., p_n?x_n)$ with $p_i\subseteq p'_i$, then $p'_i$ must fulfill ${p_i' \subseteq \bigcup_{k=i}^n p_k}$. This is illustrated in Figure~\ref{fig:psi_partial}(c). 
+This promotion must also satisfy the properties of \psifuns, and in particular, that the predicate associated with a
 variable in a \psifun must be included in or equal to the
 predicate on the definition of that variable. This promotion will not
 change the predicate of a \psifun, defined as
 ${\bigcup_{k=1}^n p_k}$.
-
-\begin{figure*}
+\begin{figure}[h]
 \begin{center}
 \footnotesize
 \begin{tabular}{llllll}
 \iftt ${(p)}$                   &          &                                          &          & \\
 \thentt \\
-${\ \ \ \ \ a_1 = ADD\ i_1,1;}$ & \ \ \ \  & ${a_1 = ADD\ i_1,1;}$                & \ \ \ \  & ${a_1 = ADD\ i_1,1;}$ \\
+${\ \ \ \ \ a_1 = \texttt{ADD}\ i_1,1;}$ & \ \ \ \  & ${a_1 = \texttt{ADD}\ i_1,1;}$                & \ \ \ \  & ${a_1 = \texttt{ADD}\ i_1,1;}$ \\
 \elsett \\
-${\ \ \ \ \ a_2 = ADD\ i_1,2;}$ & \ \ \ \  & ${a_2 = ADD\ i_1,2;}$                & \ \ \ \  & ${a_2 = ADD\ i_1,2;}$ \\
+${\ \ \ \ \ a_2 = \texttt{ADD}\ i_1,2;}$ & \ \ \ \  & ${a_2 = \texttt{ADD}\ i_1,2;}$                & \ \ \ \  & ${a_2 = \texttt{ADD}\ i_1,2;}$ \\
 ${x = \phi(a_1, a_2)}$          & \ \ \ \  & ${x = \psi(p?a_1, \overline{p}?a_2)}$ & \ \ \ \  & ${x = \psi(a_1, \overline{p}?a_2)}$ \\
 \\
 \multicolumn{2}{l}{\bf (a)\ Phi operation} & \multicolumn{2}{l}{\bf (b)\ Psi\ operation} & \multicolumn{2}{l}{\bf (c)\ Psi\ operation after $\psi$-promotion} \\
@@ -462,55 +441,39 @@ ${x = \phi(a_1, a_2)}$          & \ \ \ \  & ${x = \psi(p?a_1, \overline{p}?a_2)
 \caption{$\psi$-SSA for partial predication}
 \label{fig:psi_partial}
 \end{center}
-\end{figure*}
+\end{figure}
 
-% The two domains for these two predicates do not need to be equal,
-% only the domain of the predicate on the definition has to contain
-% the domain of the predicate on the $\psi$ argument.
+The $\psi$-SSA representation can be used on a
+  partially predicated architecture, where only a subset of the
+  instructions supports a predicate operand.
+  Figure~\ref{fig:psi_partial} shows an example where some code with
+  control-flow edges was transformed into a linear sequence of
+  instructions.
+%
+Taking the example of an architecture where the \texttt{ADD} operation
+cannot be predicated, the \texttt{ADD} operation must be speculated
+under the {true} predicate. 
+%
+On an architecture where the \texttt{ADD} operation can be predicated, it
+may also be profitable to perform speculation in order to reduce the
+number of predicates on predicated code and to reduce the number of
+operations to compute these predicates. 
+%
+Once speculation has been performed on the definition of a variable
+used in a \psifun, the predicate associated with this argument
+can be promoted, provided that the semantic of the \psifun is maintained. 
 
-% True only if the predicate domain of the $\psi$ operation is 1.
 
-%% \begin{itemize}
-
-%% \item {\bf Condition 1} For an argument in a $\psi$ operation, the
-%% domain of the predicate used on the definition of this argument must
-%% contain the domain of the new predicate associated with this argument.
-
-%% \begin{tabular}{ll}
-%% \multicolumn{2}{l}{\it for the instructions}\\
-%% ${p?}$ & ${x = ...}$\\
-%% & ${y = Psi(..., q? x, ...)}$\\
-%% \multicolumn{2}{l}{\it then}\\
-%% & {${q} \subseteq {p}$}\\
-%% \end{tabular}
-
-%% \item {\bf Condition 2} For an argument in a $\psi$ operation, the
-%% domain of the new predicate associated with it can be extended up to
-%% include the domains of the predicates associated with arguments in the
-%% $\psi$ operation that were defined after the definition for this
-%% argument in the original program.
-
-%% \begin{tabular}{ll}
-%% \multicolumn{2}{l}{\it for an instruction} \\
-%% \ \ \ \ & {$ {y = Psi(p_1?x_1, p_2?x_2, ..., p_i?x_i, ..., p_n?x_n)}$} \\
-%% \multicolumn{2}{l}{\it transformed to} \\
-%% \ \ \ \ & {$ {y = Psi(p_1?x_1, p_2?x_2, ..., p_i'?x_i, ..., p_n?x_n)}$} \\
-%% \multicolumn{2}{l}{\it then} \\
-%% \ \ \ \ & {${p_i' \subseteq \bigcup_{k=i}^n p_k}$} \\
-%% \end{tabular}
-
-%% \end{itemize}
 
 Usually, the first argument of a \psifun can be promoted
-under the \textit{true} predicate. Also, when disjoint conditions are
+under the {true} predicate. Also, when disjoint conditions are
 computed, one of them can be promoted to include the other conditions,
 usually reducing the number of predicates. A side effect of this
 transformation is that it may increase the number of copy instructions
 to be generated during the $\psi$-SSA destruction phase, because of
 more live-range interference between arguments in a \psifun,
-as will be explained in next section~\ref{sec:Psi_ssa_destruction}.
+as will be explained in the following section.
 
-\end{itemize}
 
 \section{Psi-SSA destruction}
 \label{sec:Psi_ssa_destruction}
@@ -545,7 +508,7 @@ original program.
 % CSSA}) form. The $\psi$-SSA web definition is an extension of the
 % SSA web to include \psifuns.
 
-Now, consider figure~\ref{fig:psi_interference} to illustrate the
+Now, consider Figure~\ref{fig:psi_interference} to illustrate the
 transformations that must be performed to convert a program from a
 $\psi$-SSA form into a program in $\psi$-CSSA form.
 
@@ -596,7 +559,7 @@ code motion algorithm has moved the definitions for \textit{a} and
 %% \psifun is the order of their definitions in the dominance
 %% tree in the original program.
 
-In figure~\ref{fig:psi_interference}(a) the renaming of the variables
+In Figure~\ref{fig:psi_interference}(a) the renaming of the variables
 \textit{a}, \textit{b} and \textit{x} into a single variable will not restore
 the semantics of the original program. The order in which the
 definitions of the variables \textit{a}, \textit{b} and \textit{x} occur must
@@ -606,7 +569,7 @@ and is inserted after the definition of \textit{a}. Now, the renaming of
 the variables \textit{a}, \textit{c} and \textit{x} into a single variable will
 result in the correct behavior.
 
-In figure~\ref{fig:psi_interference}(d) the definition of the variable
+In Figure~\ref{fig:psi_interference}(d) the definition of the variable
 \textit{b} has been speculated. However, the semantics of the $\psi$
 operation is that the variable \textit{x} will only be assigned the value
 of \textit{b} when \textit{p} is \textit{true}. A new variable \textit{c} must be
@@ -616,7 +579,7 @@ ${\psi}$ function, variable \textit{b} is replaced by variable \textit{c},
 and the renaming of variables \textit{a}, \textit{c} and \textit{x} into a
 single variable will now restore the correct behavior.
 
-In figure~\ref{fig:psi_interference}(g), the renaming of the variables
+In Figure~\ref{fig:psi_interference}(g), the renaming of the variables
 \textit{a}, \textit{b}, \textit{c}, \textit{x} and \textit{y} into a single variable
 will not give the correct semantics. In fact, the value of \textit{a}
 used in the second \psifun would be overridden by the
@@ -669,8 +632,8 @@ unique definition of this argument.
 \end{itemize}
 
 These two characteristics correspond respectively to the two cases
-presented in figure~\ref{fig:psi_interference}(a) and
-figure~\ref{fig:psi_interference}(d).
+presented in Figure~\ref{fig:psi_interference}(a) and
+Figure~\ref{fig:psi_interference}(d).
 
 When some arguments of a \psifun are also defined by $\psi$
 functions, the {\em normalized}-$\psi$ characteristics must hold on a
@@ -736,7 +699,7 @@ normalized-\psifuns.
 In this pass, we repair the \psifuns when variables cannot be
 put into the same $\psi$-SSA web, because their live ranges
 interfere. This case corresponds to the example presented in
-figure~\ref{fig:psi_interference}(g).
+Figure~\ref{fig:psi_interference}(g).
 
 In the same way as there is a specific point of use for arguments on
 \phifuns for liveness analysis, we give a definition of the
@@ -746,7 +709,7 @@ accurately and an interference graph can be built.
 
 %\SubSubSection{Liveness and interferences in Psi-SSA}
 \paragraph{Liveness and interferences in Psi-SSA.}
-We have already shown in figure~\ref{fig:psi_interference}(g) that
+We have already shown in Figure~\ref{fig:psi_interference}(g) that
 repair code may be needed so that the arguments and definition of a
 \psifun can be renamed into a single name. We first give a
 definition of the point of use of the arguments in a \psifun
@@ -755,14 +718,14 @@ liveness, the cases where repair code is needed can be easily and
 accurately detected by observing that live-ranges for variables in a
 \psifun overlap.
 
-Consider the code in figure~\ref{fig:psi_ccond} (b). Instead of using
+Consider the code in Figure~\ref{fig:psi_ccond} (b). Instead of using
 a representation with \psifuns, predicated definitions have
 been modified to make a reference to the value the predicated
 definition will have in case the predicate is \textit{false}. We use in this
 example the notation of the C conditional operator
 ${x = cond\ ?\ exp1 : exp2}$. Each of the predicated definitions make an
 explicit use of the variable immediately to its left in the argument
-list of the original \psifun from figure~\ref{fig:psi_ccond}
+list of the original \psifun from Figure~\ref{fig:psi_ccond}
 (a). We can see that a renaming of the variables \textit{a}, \textit{b},
 \textit{c} and \textit{x} into a single representative name will still
 compute the same value for the variable \textit{x}. Note that this
@@ -815,7 +778,7 @@ First, the $\psi$-SSA webs are initialized such that each variable in
 the $\psi$-SSA representation belongs to its own $\psi$-SSA web. Then,
 \psifuns are processed one at a time, in no specific order. A
 pseudo-code of this algorithm is given in
-figure~\ref{fig:pseudo_psi_repair}.
+Figure~\ref{fig:pseudo_psi_repair}.
 
 The analysis of a \psifun starts by setting the current
 $\psi$-SSA web to the $\psi$-SSA web of the result of the $\psi$
@@ -871,7 +834,7 @@ all arguments are processed.
 
 % Some comments on an exact interference graph update ??
 
-Consider the code in figure~\ref{fig:live_interference} to see how
+Consider the code in Figure~\ref{fig:live_interference} to see how
 this algorithm works. The liveness on the \psifun creates a
 live-range for variable \textit{a} that extends down to the definition of
 \textit{b}, but not further down. Thus, the variable \textit{a} does not
@@ -897,7 +860,7 @@ interference between \textit{b'} and \textit{b} is added. The current
 $\psi$-SSA web now becomes ${\{x, b', c\}}$. Then variable \textit{a}
  is processed and inserted into the current $\psi$-SSA web. The
 final code after SSA destruction is shown in
-figure~\ref{fig:live_interference}(c).
+Figure~\ref{fig:live_interference}(c).
 
 \begin{figure}
 \begin{center}
