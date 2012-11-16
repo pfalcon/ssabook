@@ -511,15 +511,15 @@ as will be explained in the following section.
 The SSA destruction phase reverts an SSA representation into a non-SSA
 representation. This phase must be adapted to the $\psi$-SSA
 representation. This algorithm uses
-\psiwebs to create a conventional $\psi$-SSA
+\phipsiwebs to create a conventional $\psi$-SSA
 representation. The notion of \phiwebs is
 extended to $\phi$ and $\psi$ operations so as to derive the notion of
-conventional $\psi$-SSA ($\psi$-C-SSA) form. A \psiweb is
+conventional $\psi$-SSA ($\psi$-C-SSA) form. A \phipsiweb is
 a non empty, minimal, set of variables such that if two variables are
 referenced on the same $\phi$ or \psifun then they are in the
-same \psiweb. The property of the $\psi$-C-SSA form is that the
+same \phipsiweb. The property of the $\psi$-C-SSA form is that the
 renaming into a single variable of all variables that belong to the
-same \psiweb, and the removal of the $\psi$ and $\phi$
+same \phipsiweb, and the removal of the $\psi$ and $\phi$
 functions, results in a program with the same semantics as the
 original program.
 
@@ -674,12 +674,10 @@ $\psi$-SSA form into its $\psi$-C-SSA form. This algorithm is made of
 three parts.
 
 \begin{itemize}
-\item \emph{Psi-normalize}~: This phase will put all \psifuns
+\item \emph{Psi-normalize}~: This phase puts all \psifuns
 in what we call a {\em normalized} form.
-\item \emph{Psi-web}~: This phase will grow \psiwebs from \psifuns, and will introduce repair code where needed.
-\item \emph{Phi-web}~: This phase will extend the \psiwebs with
-  \phifuns. This phase is very similar to the standard SSA destruction
-  algorithm.
+\item \emph{Psi-web}~: This phase grows \psiwebs from \psifuns, and introduces repair code where needed such that each \psiweb is interference free.
+\item \emph{Phi-web}~: This phase is the standard SSA-destruction algorithm (e.g. see Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}) with the additional constraint that all variables in a \psiweb must be coalesced together. This can be done using the pining mechanism presented in Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}. 
 \end{itemize}
 
 We detail now the implementation of each of these three parts.
@@ -864,11 +862,10 @@ needed. A new variable, ${a'_i}$, is created and is initialized
 with a predicated copy ${p_i\cond a'_i = a_i}$, inserted just below
 the definition for ${a_i}$. The current argument ${a_i}$ in
 the \psifun is replaced by the new variable ${a'_i}$. The
-interference graph is updated. This can be done conservatively, by letting ${a'_i}$  interfere with $a_i$ and with all the variables, except with those in the merged \psiweb, ${a_i}$ interferes with. The
-conservative update of the interference graph may increase the number
-of copies generated during the conversion to the $\psi$-C-SSA form.
+interference graph is updated. This can be done by considering the set of variables, say $U$, $a_i$ interferes with. For each $u\in U$, if $u$ is in the merged \psiweb, it should not interfere with $a'_i$; if the definition of $u$ dominates the definition of $a_i$, it is live-through the definition of $a_i$, thus is should be made interfering with $a'_i$; last, if the definition of $a_i$ dominates the definition of $b$, it should be made interfering only if this definition is within the live-range of $a'_i$ (see Chapter~\ref{chapter:liveness}). 
 
-{\def\psiWeb{\textit{psiWeb}\xspace}
+{
+\def\psiWeb{\textit{psiWeb}\xspace}
 \def\opndWeb{\textit{opndWeb}\xspace}
 \begin{algorithm}[h]
 \Begin{
@@ -876,15 +873,21 @@ of copies generated during the conversion to the $\psi$-C-SSA form.
  \ForEach{$a_i$ \textbf{in} $[a_n,\ a_{n-1},\ \dots, a_1]$}{
    \Let{\opndWeb be the web containing $a_i$} \;
    \If{$\opndWeb \neq \psiWeb$}{
-      \If{\textit{IGraph}.\textrm{interfere}(\psiWeb, \opndWeb)}{
+      \If{\textit{IGraph}.\textsf{interfere}(\psiWeb, \opndWeb)}{
          \Let{$a'_i$ be a freshly created variable} \;
          \Let{$C_i$ be a new predicated copy $p_i\cond a'_i\gets a_i$} \;
-         append $C_i$ right after operation that defines $a_i$ \;
+         \Let{\textit{op} be the operation that defines $a_i$, $a_i.\textit{def.op}$} \;
+         \While{\textit{op} is a \psifun}{
+             replace \textit{op} by the operation that defines its first argument \;
+         }
+         append $C_i$ right after \textit{op} \;
          replace $a_i$ by $a'_i$ in the \psifun \;
          $\opndWeb \gets \{a'_i\}$ \;
-         \textit{IGraph}.addInterference($a'_i,\ a_i$) \;
-         \ForEach{$v$ \textbf{in} $\textit{IGraph}.\textrm{interferenceSet}(a_i)$}{
-            \lIf{$v \not\in\psiWeb$}{ \textit{IGraph}.addInterference($a'_i, v$) }\; 
+         \ForEach{$u$ \textbf{in} $\textit{IGraph}.\textsf{interferenceSet}(a_i)$}{
+            \If{$u \not\in\psiWeb$}{
+              \If{$u.\textit{def.op} \textsf{ dominates }  a_i.\textit{def.op} \bigvee a'_i \in \textsf{livein}(u.\textit{def.op})$}{ 
+                \textit{IGraph}.\textsf{addInterference}($a'_i, a$) \;
+              } }
          }
        }
        $\psiWeb \gets \psiWeb \cup \opndWeb$\;
@@ -895,7 +898,7 @@ of copies generated during the conversion to the $\psi$-C-SSA form.
   p_n?a_n)}$}
 \label{fig:pseudo_psi_repair}
 \end{algorithm}
-}
+
 
 % Some comments on an exact interference graph update ??
 
@@ -911,92 +914,67 @@ extends down to its use in the \psifun that defines the
 variable \textit{x}.
 %
 At the beginning of the processing on the \psifun ${x =
-  \psi(p?a,q?b,r?c)}$, all variables belong to their own \psiweb. The current \psiweb is set to the \psiweb of the
-result, ${\{x\}}$. Then the argument list is processed from right
-to left. Variable \textit{c} does not interfere with current $\psi$-SSA
-web ${\{x\}}$, they can be merged together, resulting in a current
-\psiweb ${\{x, c\}}$. Then, variable \textit{b} is
+  \psi(p?a,q?b,r?c)}$, \psiwebs are singletons $\{a\},\ \{b\},\ \{c\},\ \{x\},\ \{d\}$. The argument list is processed from right
+to left i.e. starting with variable $c$. $\{c\}$ does not interfere with $\{x\}$, they can be merged together, resulting in 
+$\psiWeb=\{x, c\}$. Then, variable \textit{b} is
 processed. Since it interferes with both \textit{x} and \textit{c},
-repair code is needed. A variable \textit{b'} is created, and is
+repairing code is needed. A variable \textit{b'} is created, and is
 initialized just below the definition for \textit{b}, as a predicated
-copy of \textit{b}. The interference graph is updated, only an
-interference between \textit{b'} and \textit{b} is added. The current
-\psiweb now becomes ${\{x, b', c\}}$. Then variable \textit{a}
- is processed and inserted into the current \psiweb. The
+copy of \textit{b}. The interference graph is updated conservatively, with no changes. \psiWeb now becomes ${\{x, b', c\}}$. Then variable \textit{a}
+ is processed, and as no interference is encountered, $\{a\}$ is merged to \psiWeb. The
 final code after SSA destruction is shown in
 Figure~\ref{fig:live_interference}(c).
-
+}
 \begin{figure}
 \begin{center}
 \footnotesize
-\begin{tabular}{llllll}
-${p?}$ & ${a = ...}$              & ${p?}$ & ${a = ...}$                 & ${p?}$ & ${x = ...}$\\
-${q?}$ & ${b = ...}$              & ${q?}$ & ${b = ...}$                 & ${q?}$ & ${b = ...}$\\
-           &                              & ${q?}$ & ${b' = b}$                  & ${q?}$ & ${x = b}$\\
-${r?}$ & ${c = ...}$              & ${r?}$ & ${c = ...}$                 & ${r?}$ & ${x = ...}$ \\
-           & ${x = \psi(p?a,q?b,r?c)}$ &            & ${x = \psi(p?a,q?b',r?c)}$   &            & \\
-${s?}$ & ${d = b+1}$              & ${s?}$ & ${d = b+1}$                 & ${s?}$ & ${d = b+1}$ \\
+\hfill
+\subfloat[before processing the \psifun]{
+\begin{tabular}{ll}
+${p?}$ & ${a = ...}$       \\
+${q?}$ & ${b = ...}$      \\
+           &               \\
+${r?}$ & ${c = ...}$         \\
+           & ${x = \psi(p?a,q?b,r?c)}$ \\
+${s?}$ & ${d = b+1}$          \\
 \\
-\multicolumn{2}{l}{\bf (a)\ before\ $\psi$\ processing} & \multicolumn{2}{l}{\bf (b)\ after $\psi$\ processing} & \multicolumn{2}{l}{\bf (c)\ after $\psi$\ renaming} \\
+\end{tabular}}
+\hfill
+\subfloat[after processing the \psifun]{
+\begin{tabular}{ll}
+    ${p?}$ & ${a = ...}$   \\
+    ${q?}$ & ${b = ...}$  \\
+    ${q?}$ & ${b' = b}$    \\
+    ${r?}$ & ${c = ...}$    \\
+   & ${x = \psi(p?a,q?b',r?c)}$ \\
+    ${s?}$ & ${d = b+1}$  \\
+\\
 \end{tabular}
+}
+\hfill
+\subfloat[after actual coalescing]{
+\hspace{1cm}\begin{tabular}{lp{2cm}}
+ ${p?}$ & ${x = ...}$\\
+ ${q?}$ & ${b = ...}$\\
+  ${q?}$ & ${x = b}$\\
+  ${r?}$ & ${x = ...}$ \\
+\\
+${s?}$ & ${d = b+1}$ \\
+\\
+\end{tabular}
+}
 \caption{Elimination of $\psi$ live-interference}
 \label{fig:live_interference}
 \end{center}
 \end{figure}
 
-\subsection{Phi-web}
-
-When all \psifuns are processed, the \psiwebs built
-from \psifuns are extended to include the variables in \phifuns. In this part, the algorithm presented in
-chapter~\ref{chapter:alternative_ssa_destruction_algorithm} is used, with a few
-modifications.
-
-The first modification is that the \psiwebs must not be
-initialized at the beginning of this process. They have already been
-initialized at the beginning of the \psiweb step, and were extended
-during the processing of \psifuns. These webs will be extended
-now with \phifuns during this step.
-
-The second modification is that the live-analysis run for this part
-must take into account the particular point of use of arguments on
-\psifuns.
-
-All other parts of the SSA destruction algorithm from
-chapter~\ref{chapter:alternative_ssa_destruction_algorithm}, to convert an SSA
-representation into a C-SSA form, are unchanged.
-
-We have described a complete algorithm to convert a $\psi$-SSA
-representation into a $\psi$-C-SSA representation. The final step to
-convert the code into a non-SSA form is a simple renaming of all the
-variables in the same \psiweb into a representative name. The
-$\psi$ and \phifuns are then removed.
-
-%% \paragraph{Interference with the result of a \psifun.}
-
-%% When the live-range for an argument of a \psifun overlaps
-%% with the live-range of the variable defined by the \psifun,
-%% this interference can be ignored. Actually, there are two cases to
-%% consider:
-
-%% \begin{itemize}
-%% \item If the argument is not the last one in the \psifun, and
-%% its live-range overlaps with the live-range of the definition of the
-%% \psifun, then this live-range also overlaps with the
-%% live-range of the last argument. Thus this interference will already
-%% be detected and repaired.
-
-%% \item If the argument is the last one of the \psifun, then
-%% the value of the \psifun is the value of this last argument,
-%% and this argument and the definition will be renamed into the same
-%% variable out of the SSA representation. Thus, there is no need to
-%% introduce a copy here.
-%% \end{itemize}
-
 
 \section{Additional reading}
 
-In this chapter we mainly described the $psi$-SSA representation and we detailed specific transformations that can be performed thanks to this representation. More details on the implementation of the $psi$-SSA algorithms, and figures on the benefits of this representation, can be found in \cite{Stoutchinin:2001:MICRO} and \cite{Ferriere:2007:SCOPES}.
+In this chapter we mainly described the $\psi$-SSA representation and we detailed specific transformations that can be performed thanks to this representation. More details on the implementation of the $\psi$-SSA algorithms, and figures on the benefits of this representation, can be found in \cite{Stoutchinin:2001:MICRO} and \cite{Ferriere:2007:SCOPES}.
 
-We mentioned in this chapter that a number of classical SSA-based algorithm can be easily adapted to the $psi$-SSA representation, usually by just adpating the rules on the \phifuns to the \psifuns. Among these algorithm, we can mention the constant propagation algorithm described in~\cite{WZ91}, dead code elimination~\cite{morgan98}, global value numbering~\cite{Cli95}, partial redundancy elimination~\cite{CCK+97} and induction variable analysis~\cite{Wolfe92} which have already been implemented into a $psi$-SSA framework.
+We mentioned in this chapter that a number of classical SSA-based algorithm can be easily adapted to the $\psi$-SSA representation, usually by just adapting the rules on the \phifuns to the \psifuns. Among these algorithm, we can mention the constant propagation algorithm described in~\cite{WZ91}, dead code elimination~\cite{morgan98}, global value numbering~\cite{Cli95}, partial redundancy elimination~\cite{CCK+97} and induction variable analysis~\cite{Wolfe92} which have already been implemented into a $\psi$-SSA framework.
 
-There are also other SSA representations that can handle predicated instruction, of which is the Predicated SSA representation~\cite{Carter:PACT99}. This representation is targeted at very low level optimization to improved operation scheduling in presence of predicated instructions. Another representation is the Gated SSA form, presented in chapter~\ref{chapter:vsdg}.
+There are also other SSA representations that can handle predicated instruction, of which is the Predicated SSA representation~\cite{Carter:PACT99}. This representation is targeted at very low level optimization to improved operation scheduling in presence of predicated instructions. Another representation is the Gated SSA form, presented in Chapter~\ref{chapter:vsdg}.
+
+The $\psi$-SSA destruction algorithm presented in this chapter is inspired from the SSA destruction algorithm of Sreedhar et al.~\cite{SreedharSep99} that introduces repair code when needed as it grows \phiwebs from \phifuns. The phi-web phase mentioned in this chapter to complete the $\psi$-SSA destruction algorithm can use exactly the same approach by simply initializing \phipsiwebs by \psiwebs.
