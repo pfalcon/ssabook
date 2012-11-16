@@ -241,80 +241,77 @@ $ \overline{p} \cond x = c $ \\
 \caption{\label{fig:pred_versus_spec}Speculation removes the dependency with the predicate but adds anti-dependencies between concurrent computations.}
 \end{figure}
 
-In practice, whenever it is considered as beneficial, speculation is performed during the $\phi$~removal transformation. Obviously only operations that do not have a side effect are speculated. 
-If-conversion using fully speculated code is actually simpler than when dealing with predicated code: The code of each conditional basic-blocks of the diamond-DAG is moved to the merging basic-block, and the \phifun replaced by a $\psi$-function with the branching predicates (and its complement) as gates. When predicating an operation that is already predicated predicates are simply merged using logical \textrm{and}.
-
-%% To identify the operation's results that need to be conditionally defined, we only need to look at the defining instructions of the $\phi$ instructions. All temporaries that do not have a join point within the considered region and that don't have a side effect can be unconditionally speculated during the SSA transformation processes. Only instructions with a side effect need to be guarded. 
-%% Instruction predicates from the taken path are merged (using a logical and) with the branch parameter. Predicates in instructions from the fall trough path are merged with the complement of the branch parameter.
+In practice, speculation is performed during the $\phi$~removal transformation, whenever it is possible (operations with side effect cannot be speculated) and considered as beneficial. As illustrated by Figure~\ref{nested_psi_speculated}, only the operations part of \emph{one} of the diamond-DAG branch are actually speculated. This partial speculation leads to manipulating code made up of a mixed of predication and speculation. 
 
 
-%% A $\psi$ operation exposes new data dependencies, by expressing the merge of two definitions. Note that the order of the partial definition is important, because a definition partially redefines the preceding ones. We use this property to speculate the first definitions, so it becomes speculated instead of disjoint. This local optimization allows the removal of predicate dependencies but also creates a new partial dependency when predicates are not disjoint. 
-
-
-\subsubsection{$\psi$ speculation properties}
-
-Since $\psi$ operations are part of the intermediate representation, they can be considered for inclusion in a candidate region for if-conversion. The conditional operations that they refer can in turn be speculated or predicated incrementally. We define here the promotion rules for $\psi$ operands, whereas the instructions defining the $\psi$ operands will be speculated.
-
-Consider the instructions \ref{nested_psi} containing a sub region already processed. The $\psi$ operation can be safely speculated if all the instructions defining its operands can be speculated: They don't produce hazardous execution, they don't produce any side effects and there exists a conditional move instruction to merge the operands. Then the block can be executed regardless of the value of $c$. The use of the $\psi$ result is also unconditionally executed.
-
-\subsubsection{$\psi$ predication properties}
-
-If an instructions is not speculable, it must be predicated:
-In \ref{nested_psi_predicated}, the $c$ condition merges with all conditions under which the $\psi$ operands are defined. Here a new predicate $p_1$ is created to hold the predicate definition for the instructions defined under $c$. 
-
-Note that conceptually, the speculative $\psi$ execution allows a predicate definition domain larger that the original one, such that the predicative transformation exactly matches the initial definition domain, at the expense of more data dependencies and predicate computation.
-
-We can see with this example that the decision to speculate or predicate can be done at the level of each joining definition, allowing a mix of both speculation and predication. The advantage of speculation over predication is a reduced dependency length. The disadvantage of speculation is that it increases register pressure until the merge point, and potentially moves long latency operations on the critical path.
- 
 \begin{figure}
 \footnotesize
 \subfloat[nested if] {
-\begin{minipage}[b]{3.5cm}
-$ if (c) $ \\
-$ \{ $ \\
-\hspace*{2mm}$ x_1 = a + b $ \\
-\hspace*{2mm}$ \overline{p} \cond x_2 = c $ \\
-\hspace*{2mm}$ x = \psi(T \cond x_1, \overline{p} \cond x_2) $ \\
-\hspace*{2mm}$ d_1 = use (x) $ \\
-$ \} $ \\
-$ else $ \\
-\hspace*{2mm}$ d_2 = 3 $ \\
-$ d = \phi(d_1,d_2) $ \\
+\begin{minipage}[b]{2cm}
+\begin{equation*}
+\begin{array}{l}
+\iftt (q)\\
+\thentt\\
+\quad p = (a<\hspace{-0.6em}?\ b)\\~\\
+\quad x_1 = a + b\\
+\quad \overline{p} \cond x_2 = c\\
+\quad x = \psi(x_1, \overline{p} \cond x_2) \\
+\quad d_1 = \texttt{f} (x) \\
+\elsett\\
+\quad d_2 = 3\\
+\endtt\\
+d = \phi(d_1,d_2)
+\end{array}
+\end{equation*}\\\vspace{-2.8em}
 \end{minipage}
 \label{nested_psi}}
-\subfloat[speculated nested] {
-\begin{minipage}[b]{3.5cm}
+\hfill
+\subfloat[speculating the \texttt{then} branch] {
+\hspace{1cm}
+\begin{minipage}[b]{3cm}
+~\\\\
+$ p = (a<\hspace{-0.6em}?\ b) $ \\~\\
 $ x_1 = a + b $ \\
 $ \overline{p} \cond x_2 = c $ \\
-$ x = \psi(T \cond x_1, \overline{p} \cond x_2) $ \\
-$ d_1 = use (x) $ \\
-$ \overline{c} \cond d_2 = 3 $ \\
-$ d = \psi(T \cond d_1, \overline{c} \cond d_2) $ \\
+$ x = \psi(x_1, \overline{p} \cond x_2) $ \\
+$ d_1 = \texttt{f} (x) $ \\
+~\\
+$ \overline{q} \cond d_2 = 3 $ \\
+~\\
+$ d = \psi(d_1, \overline{q} \cond d_2) $ 
 \end{minipage}
 \label{nested_psi_speculated}}
-\subfloat[predicated nested] {
-\begin{minipage}[b]{3.5cm}
-$ q = \overline{p} \& {c} $ \\
-$ c \cond x_1 = a + b $ \\
-$ q \cond x_2 = c $ \\
-$ x = \psi(c \cond x_1, q \cond x_2) $ \\
-$ c \cond d_1 = use (x) $ \\
-$ \overline{c} \cond d_2 = 3 $ \\
-$ d = \psi(c \cond d_1, \overline{c} \cond d_2) $ \\
+\hfill
+\subfloat[predicating both branches] {
+\hspace{0.5cm}
+\begin{minipage}[b]{3cm}
+~\\
+$ p = (a<\hspace{-0.6em}?\ b) $ \\
+$ s = q\wedge \overline{p} $ \\
+$ q \cond x_1 = a + b $ \\
+$ s \cond x_2 = c $ \\
+$ x = \psi(q \cond x_1, s \cond x_2) $ \\
+$ q \cond d_1 = \texttt{f} (x) $ \\~\\
+$ \overline{q} \cond d_2 = 3 $ \\~\\
+$ d = \psi(q \cond d_1, \overline{q} \cond d_2) $ 
 \end{minipage}
 \label{nested_psi_predicated}}
 \caption{Inner region $\psi$}
 \end{figure}
 
+Speculating code is the easiest part as it could be done prior to the actual if-conversion by simply hoisting the code above the conditional branch. Still we would like to outline that since $\psi$-functions are part of the intermediate representation, they can be considered for inclusion in a candidate region for if-conversion, and in particular for speculation. However, the strength of $\psi$-SSA allows to treat $\psi$-functions just as any other operation. Consider the code of Figure~\ref{nested_psi} containing a sub region already processed. To speculate the operation $d_1=\texttt{f}(x)$, the operation defining $x$, i.e. the $\psi$-function, also has to be speculated. Similarly, all the operations defining the operands $x_1$ and $x_2$ should also be speculated. If one of them can produce hazardous execution, then the $\psi$-function cannot be speculated, which forbids in turn the operation $d_1=\texttt{f}(x)$ to be speculated. Marking operations that cannot be speculated can be done easily using a forward propagation along def-use chains.
+
+All operations that cannot be speculated, including possibly some $\psi$-functions, must be predicated. Suppose we are considering a none-speculated operation we aim at if-converting, that is part of the \texttt{then} branch on predicate $q$. Just as for $x_2=c$ in Figure~\ref{nested_psi}, this operation can already be predicated (on $\overline{p}$ here) prior to the if-conversion. In that case, a \textit{projection} on $q$ is performed, meaning that instead of predicating $x_2=c$ by $\overline{p}$ it gets predicated by $q\wedge \overline{p}$. A $\psi$-function can also be projected on a predicate $q$ as described in Chapter~\ref{chapter:psi_ssa}: All gates of each operand are individually projected on $q$. As an example, originally non-gated operand $x_1$ gets gated by $q$, while the $\overline{p}$ gated operand $x_2$ gets gated by $s=q\wedge\overline{p}$. Note that as opposed to speculating it, predicating a $\psi$-function does not impose to predicate the operation that define its operands. The only subtlety related to projection is related to generating the new predicate as the logical conjunction of the original guard (e.g. $\overline{p}$) and the current branch predicate (e.g. $q$). Here $s$ needs to be computed at some point. Our heuristic consists in first listing the set of all necessary predicates and then emitting the corresponding code at the earlier place. Here, used predicates are $q$, $\overline{q}$, and $q\wedge\overline{p}$. $q$ and $\overline{q}$ are already available. The earlier place where $q\wedge\overline{p}$ can be computed is just after calculating $p$.
+
+Once, operations have been speculated or projected (on $q$ for the \texttt{then} branch, on $\overline{q}$ for the \texttt{else}), each \phifuns at the merge point is replaced by a $\psi$-function: operands of speculated operations are placed first and guarded by true; operands of projected operations follow, guarded by the predicate of the corresponding branch.
+
 \section{Global Analysis and Transformations}
 \label{sec:if_conversion:hyperblock}
-Critical regions are rarely just composed of simple if-then-else control flow regions and processors have limited resources. The number of registers will determine the acceptable level of data dependencies to minimize register pressure. The number of predicate registers will determine the depth of the if-conversion so that the number of conditions does not exceed the number of available predicates and the number of processing units will determine the number of instructions that can be executed simultaneously. 
-
-For this reason, standard techniques are either limited to a single conditional branch using peephole-style pattern matching or intrinsic functions (conditional code is inlined by the compiler in the internal representation). A more sophisticated approach is to scope larger regions such as hyperblocks. 
+Hot regions are rarely just composed of simple \texttt{if-then-else-end} control flow regions but processors have limited resources: the number of registers will determine the acceptable level of data dependencies to minimize register pressure; the number of predicate registers will determine the depth of the if-conversion so that the number of conditions does not exceed the number of available predicates; the number of processing units will determine the number of instructions that can be executed simultaneously. The inner-outer incremental process advocated in this chapter allows to evaluate finely the profitability of if-conversion. However, if-conversion in one shot of a larger region is possible. For completeness, both  the \emph{one-shot} and the \emph{incremental} approaches are described here.
 
 \subsection{Hyperblock formation}
 
-A Hyperblock is a region of straight code with a single entry and possibly multiple exits where inner branches have been removed by if-conversion.
+A Hyperblock is a region of straight line code with a single entry and possibly multiple exits where inner branches have been removed by if-conversion.
 Hyperblocks enlarge the scope for scheduling in two ways. First, since basic blocks swell as the scope of the predicated region grows, static scheduling can now be unconstrained. Second, instructions can be freely speculated without the need for compensation code. Conditional code to exit the hyperblock does not impact the execution flow, using a proper code basic block reordering to favor fall through execution.
 
 Tail duplication is used to exclude from the Hyperblock basic blocks that cannot be if-converted, either because they contain hazardous instructions, or because of heuristic decisions. 
