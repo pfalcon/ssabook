@@ -419,26 +419,50 @@ ${p_2?}$ & ${a_2 = \texttt{op}2}$             & \ \ \ \  & ${p_2?}$ & ${a_2 = \t
   \psifun by a larger predicate. 
  Promotion must obey the following condition so that the semantics of the \psifun 
  is not altered by the transformation~: consider an operation $ a_0 = \psi(p_1?x_1, ..., p_i?x_i, ..., p_n?x_n)$
-promoted into $ a_0 = \psi(p_1?x_1, ..., p_i'?x_i, ..., p_n?x_n)$ with $p_i\subseteq p'_i$, then $p'_i$ must fulfill ${p_i' \subseteq \bigcup_{k=i}^n p_k}$. This is illustrated in Figure~\ref{fig:psi_partial}(c). 
+promoted into $ a_0 = \psi(p_1?x_1, ..., p_i'?x_i, ..., p_n?x_n)$ with $p_i\subseteq p'_i$, then $p'_i$ must fulfill 
+\begin{equation}
+\left(p_i' \backslash \bigcup_{k=i}^n p_k\right) \cap \bigcup_{k=1}^{i-1} p_k=\emptyset \label{eq:psi_ssa:prom}
+\end{equation}
+where $p_i' \backslash \bigcup_{k=i}^n p_k$ corresponds to the possible increase of the predicate of the \psifun, $\bigcup_{k=1}^{n} p_k$. 
 This promotion must also satisfy the properties of \psifuns, and in particular, that the predicate associated with a
 variable in a \psifun must be included in or equal to the
-predicate on the definition of that variable. This promotion will not
-change the predicate of a \psifun, defined as
-${\bigcup_{k=1}^n p_k}$.
+predicate on the definition of that variable (which itself can be a \psifun). A simple $\psi$-promotion is illustrated in Figure~\ref{fig:psi_partial}(c). 
 \begin{figure}[h]
 \begin{center}
 \footnotesize
-\begin{tabular}{llllll}
-\iftt ${(p)}$                   &          &                                          &          & \\
+\hfill
+\subfloat[control flow]{
+\begin{tabular}{ll}
+\iftt ${(p)}$               \\
 \thentt \\
-${\ \ \ \ \ a_1 = \texttt{ADD}\ i_1,1;}$ & \ \ \ \  & ${a_1 = \texttt{ADD}\ i_1,1;}$                & \ \ \ \  & ${a_1 = \texttt{ADD}\ i_1,1;}$ \\
+${\ \ \ \ \ a_1 = \texttt{ADD}\ i_1,1;}$\\
 \elsett \\
-${\ \ \ \ \ a_2 = \texttt{ADD}\ i_1,2;}$ & \ \ \ \  & ${a_2 = \texttt{ADD}\ i_1,2;}$                & \ \ \ \  & ${a_2 = \texttt{ADD}\ i_1,2;}$ \\
-${x = \phi(a_1, a_2)}$          & \ \ \ \  & ${x = \psi(p?a_1, \overline{p}?a_2)}$ & \ \ \ \  & ${x = \psi(a_1, \overline{p}?a_2)}$ \\
+${\ \ \ \ \ a_2 = \texttt{ADD}\ i_1,2;}$\\
+${x = \phi(a_1, a_2)}$  \\
 \\
-\multicolumn{2}{l}{\bf (a)\ Phi operation} & \multicolumn{2}{l}{\bf (b)\ Psi\ operation} & \multicolumn{2}{l}{\bf (c)\ Psi\ operation after $\psi$-promotion} \\
+\end{tabular}} \hfill
+\subfloat[$\psi$-SSA]{
+\begin{tabular}{ll}
+\\
+\\
+  & ${a_1 = \texttt{ADD}\ i_1,1;}$ \\
+ \\
+  & ${a_2 = \texttt{ADD}\ i_1,2;}$ \\
+ & ${x = \psi(p?a_1, \overline{p}?a_2)}$ \\
+\\
+\end{tabular}}\hfill
+\subfloat[after $\psi$-promotion]{
+\begin{tabular}{p{2.5cm}}
+\\
+\\
+${a_1 = \texttt{ADD}\ i_1,1;}$ \\
+ \\
+ ${a_2 = \texttt{ADD}\ i_1,2;}$ \\
+ ${x = \psi(a_1, \overline{p}?a_2)}$ \\
+\\
 \end{tabular}
-\caption{$\psi$-SSA for partial predication}
+}
+\caption{$\psi$-SSA for partial predication. $\psi$-promotion of argument $a_1$}
 \label{fig:psi_partial}
 \end{center}
 \end{figure}
@@ -461,7 +485,7 @@ operations to compute these predicates.
 %
 Once speculation has been performed on the definition of a variable
 used in a \psifun, the predicate associated with this argument
-can be promoted, provided that the semantic of the \psifun is maintained. 
+can be promoted, provided that the semantic of the \psifun is maintained (Equation~\ref{eq:psi_ssa:prom}). 
 
 
 
@@ -470,15 +494,13 @@ under the {true} predicate. Also, when disjoint conditions are
 computed, one of them can be promoted to include the other conditions,
 usually reducing the number of predicates. A side effect of this
 transformation is that it may increase the number of copy instructions
-to be generated during the $\psi$-SSA destruction phase, because of
-more live-range interference between arguments in a \psifun,
+to be generated during the $\psi$-SSA destruction phase,
 as will be explained in the following section.
 
 
 \section{Psi-SSA destruction}
 \label{sec:Psi_ssa_destruction}
 
-\textbf{3 page}
 
 % Explain what must be done to go out of Psi-SSA. First,
 % Psi-normalization must be performed, then live-analysis can be run
@@ -488,29 +510,27 @@ as will be explained in the following section.
 
 The SSA destruction phase reverts an SSA representation into a non-SSA
 representation. This phase must be adapted to the $\psi$-SSA
-representation. The algorithm we present here is derived from the SSA
-destruction algorithm from Sreedhar et al., presented in
-chapter~\ref{chapter:alternative_ssa_destruction_algorithm}. This algorithm uses
-$\psi$-SSA webs to create a conventional $\psi$-SSA
-representation. The notion of SSA webs initially defined for $\phi$ is
+representation. This algorithm uses
+\psiwebs to create a conventional $\psi$-SSA
+representation. The notion of \phiwebs is
 extended to $\phi$ and $\psi$ operations so as to derive the notion of
-conventional $\psi$-SSA ({\em $\psi$-CSSA}) form. A $\psi$-SSA web is
+conventional $\psi$-SSA ($\psi$-C-SSA) form. A \psiweb is
 a non empty, minimal, set of variables such that if two variables are
 referenced on the same $\phi$ or \psifun then they are in the
-same $\psi$-SSA web. The property of the $\psi$-CSSA form is that the
+same \psiweb. The property of the $\psi$-C-SSA form is that the
 renaming into a single variable of all variables that belong to the
-same $\psi$-SSA web, and the removal of the $\psi$ and $\phi$
+same \psiweb, and the removal of the $\psi$ and $\phi$
 functions, results in a program with the same semantics as the
 original program.
 
-% We define the conventional $\psi$-SSA ({\em $\psi$-CSSA}) form in a
+% We define the conventional $\psi$-SSA ({\em $\psi$-C-SSA}) form in a
 % similar way to the Sreedhar definition of the conventional SSA ({\em
-% CSSA}) form. The $\psi$-SSA web definition is an extension of the
+% C-SSA}) form. The $\psi$-SSA web definition is an extension of the
 % SSA web to include \psifuns.
 
 Now, consider Figure~\ref{fig:psi_interference} to illustrate the
 transformations that must be performed to convert a program from a
-$\psi$-SSA form into a program in $\psi$-CSSA form.
+$\psi$-SSA form into a program in $\psi$-C-SSA form.
 
 \begin{figure}
 \footnotesize
@@ -533,7 +553,7 @@ ${p?}$ & ${c = b}$           \\
 \end{tabular}
 } \hfill
 \subfloat[non-SSA form]{
-\begin{tabular}{ll}
+\begin{tabular}{lp{2cm}}
 ${p?}$ & ${b = ...}$ \\
        & ${x = ...}$ \\
 ${p?}$ & ${x = b}$ \\
@@ -561,7 +581,7 @@ ${p?}$ & ${x = b}$ \\
 \end{tabular}
 } \hfill
 \subfloat[non-SSA form]{
-\begin{tabular}{ll}
+\begin{tabular}{lp{2cm}}
             & ${x = ...}$ \\
             & ${b = ...}$ \\
  ${p?}$     & ${x = b}$ \\
@@ -593,7 +613,7 @@ ${q?}$      & ${c = ...}$ \\
 \end{tabular}
 } \hfill
 \subfloat[non-SSA form]{
-\begin{tabular}{ll}
+\begin{tabular}{lp{2cm}}
             & ${x = ...}$ \\
             & ${y = x}$ \\
  ${p?}$ & ${x = ...}$ \\
@@ -612,36 +632,28 @@ ${q?}$      & ${c = ...}$ \\
 %% (Propagation des predicats a travers les instructions non gardes
 %% par un algorithm semblable a la sparse constant propagation) >>
 
-Looking at the first example, the dominance order of the definitions
+Looking at the first example (Figure~\ref{fig:psi_interference}(a)), the dominance order of the definitions
 for the variables \textit{a} and \textit{b} differs from their order from
 left to right in the \psifun. Such code may appear after a
 code motion algorithm has moved the definitions for \textit{a} and
 \textit{b} relatively to each other.
-
-%% We said that the semantics of a \psifun is dependent on the
-%% order of its arguments, and that the order of the arguments in a
-%% \psifun is the order of their definitions in the dominance
-%% tree in the original program.
-
-In Figure~\ref{fig:psi_interference}(a) the renaming of the variables
+%
+Here, the renaming of the variables
 \textit{a}, \textit{b} and \textit{x} into a single variable will not restore
 the semantics of the original program. The order in which the
 definitions of the variables \textit{a}, \textit{b} and \textit{x} occur must
 be corrected. This is done through the introduction of the variable
-\textit{c} that is defined as a predicated copy of the variable \textit{b},
-and is inserted after the definition of \textit{a}. Now, the renaming of
+\textit{c} that is defined as a predicated copy of the variable \textit{b}, after the definition of \textit{a}. Now, the renaming of
 the variables \textit{a}, \textit{c} and \textit{x} into a single variable will
 result in the correct behavior.
 
 In Figure~\ref{fig:psi_interference}(d) the definition of the variable
-\textit{b} has been speculated. However, the semantics of the $\psi$
-operation is that the variable \textit{x} will only be assigned the value
-of \textit{b} when \textit{p} is \textit{true}. A new variable \textit{c} must be
-introduced, after the definition of \textit{b} and \textit{p}. This variable
-is defined as a predicated copy of the variable \textit{b}. In the
-${\psi}$ function, variable \textit{b} is replaced by variable \textit{c},
-and the renaming of variables \textit{a}, \textit{c} and \textit{x} into a
-single variable will now restore the correct behavior.
+\textit{b} has been speculated. However, the semantics of the \psifun is that the variable \textit{x} will only be assigned the value
+of \textit{b} when \textit{p} is {true}. A new variable \textit{c} must be
+defined as a predicated copy of the variable \textit{b}, after the definition of \textit{b} and \textit{p}; in the
+\psifun, variable \textit{b} is then replaced by variable \textit{c}. 
+The renaming of variables \textit{a}, \textit{c} and \textit{x} into a
+single variable will now follow the correct behavior.
 
 In Figure~\ref{fig:psi_interference}(g), the renaming of the variables
 \textit{a}, \textit{b}, \textit{c}, \textit{x} and \textit{y} into a single variable
@@ -650,41 +662,31 @@ used in the second \psifun would be overridden by the
 definition of \textit{b} before the definition of the variable
 \textit{c}. Such code will occur after copy folding has been applied on a
 $\psi$-SSA representation. We see that the value of \textit{a} has to be
-preserved before the definition of \textit{b}, resulting in the code
-given for the $\psi$-CSSA representation. Now, the variables \textit{a},
+preserved before the definition of \textit{b}. This is done through the definition of a new variable ($d$ here), resulting in the code
+given in Figure~\ref{fig:psi_interference}(h). Now, the variables \textit{a},
 \textit{b} and \textit{x} can be renamed into a single variable, and the
 variables \textit{d}, \textit{c} and \textit{y} will be renamed into another
 variable, resulting in a program in a non-SSA form with the correct
 behavior.
 
 We will now present an algorithm that will transform a program from a
-$\psi$-SSA form into its $\psi$-CSSA form. This algorithm is made of
+$\psi$-SSA form into its $\psi$-C-SSA form. This algorithm is made of
 three parts.
 
 \begin{itemize}
-\item {\bf Psi-normalize} This part will put all \psifuns
+\item \emph{Psi-normalize}~: This phase will put all \psifuns
 in what we call a {\em normalized} form.
-\item {\bf Psi-web} This part will grow $\psi$-SSA webs from $\psi$
-  functions, and will introduce repair code where needed.
-\item {\bf Phi-web} This part will extend the $\psi$-SSA webs with
-  \phifuns. This part is very similar to the SSA destruction
-  algorithm presented in chapter~\ref{chapter:alternative_ssa_destruction_algorithm}.
+\item \emph{Psi-web}~: This phase will grow \psiwebs from \psifuns, and will introduce repair code where needed.
+\item \emph{Phi-web}~: This phase will extend the \psiwebs with
+  \phifuns. This phase is very similar to the standard SSA destruction
+  algorithm.
 \end{itemize}
 
 We detail now the implementation of each of these three parts.
 
 \subsection{Psi-normalize}
 
-We define the notion of {\em normalized}-$\psi$. When \psifuns
-are created during the construction of the $\psi$-SSA representation,
-they are naturally built in their normalized form. Later,
-transformations are applied to the $\psi$-SSA representation.
-Predicated definitions may be moved relatively to each others, and
-operation speculation and copy folding may enlarge the domain of the
-predicate used on the definition of a variable. These transformations
-may cause some \psifuns to be in a non-normalized form.
-
-The normalized form of a \psifun has two characteristics:
+We define the notion of {\em normalized}-$\psi$. The normalized form of a \psifun has two characteristics:
 
 \begin{itemize}
 \item The order of the arguments in a normalized-\psifun is,
@@ -698,14 +700,24 @@ unique definition of this argument.
 These two characteristics correspond respectively to the two cases
 presented in Figure~\ref{fig:psi_interference}(a) and
 Figure~\ref{fig:psi_interference}(d).
-
-When some arguments of a \psifun are also defined by $\psi$
-functions, the {\em normalized}-$\psi$ characteristics must hold on a
+When some arguments of a \psifun are also defined by \psifuns, the {normalized}-$\psi$ characteristics must hold on a
 virtual \psifun where $\psi$-inlining has been performed on
 these arguments.
 
+When \psifuns
+are created during the construction of the $\psi$-SSA representation,
+they are naturally built in their normalized form. Later,
+transformations are applied to the $\psi$-SSA representation.
+Predicated definitions may be moved relatively to each others. Also,
+operation speculation and copy folding may enlarge the domain of the
+predicate used on the definition of a variable. These transformations
+may cause some \psifuns to be in a non-normalized form.
+
+
+
+
 %\SubSubSection{PSI-normalize implementation}
-\paragraph{PSI-normalize implementation.}
+\paragraph{PSI-normalize implementation}
 
 Each \psifun is processed independently. An analysis of the
 \psifuns in a top down traversal of the dominator tree
@@ -725,15 +737,15 @@ replaced by ${a'_i}$ in the \psifun.
 Then, we consider the dominance order of the definition for ${a_i}$,
 with the definition for ${a_{i-1}}$. When ${a_i}$ is defined on a
 \psifun, we recursively look for the definition of the first
-argument of this \psifun, until a definition on a non-$\psi$
-function is found. Now, if the definition we found for ${a_i}$
+argument of this \psifun, until a definition on a non-\psifun is found. 
+If the definition we found for ${a_i}$
 dominates the definition for ${a_{i-1}}$, some correction is needed.
-
-If the predicates ${p_{i-1}}$ and ${p_i})$ are disjoint, a
+%
+If the predicates ${p_{i-1}}$ and ${p_i}$ are disjoint, a
 $\psi$-permutation can be applied between ${a_{i-1}}$ and
 ${a_i}$, so as to reflect into the \psifun the actual
 dominance order of the definitions of ${a_{i-1}}$ and ${a_i}$.
-
+%
 If $\psi$-permutation cannot be applied, a new variable ${a'_i}$
 is created for repair. ${a'_i}$ is defined by the operation
 ${p_i? a'_i = a_i}$. This copy operation is inserted at the highest
@@ -760,34 +772,27 @@ normalized-\psifuns.
 
 \subsection{Psi-web}
 
-In this pass, we repair the \psifuns when variables cannot be
-put into the same $\psi$-SSA web, because their live ranges
-interfere. This case corresponds to the example presented in
+The role of the psi-web phase is to repair the \psifuns that are part of a non interference-free \psiweb. 
+This case corresponds to the example presented in
 Figure~\ref{fig:psi_interference}(g).
-
+%
 In the same way as there is a specific point of use for arguments on
-\phifuns for liveness analysis, we give a definition of the
-actual point of use of arguments on \psifuns for liveness
-analysis. With this definition, liveness analysis will be computed
-accurately and an interference graph can be built.
+\phifuns for liveness analysis (e.g. see Section~\ref{sec:alternative_ssa_destruction_algorithm:liveness}), we give a definition of the
+actual point of use of arguments on normalized \psifuns for liveness
+analysis. With this definition, liveness analysis is computed
+accurately and an interference graph can be built. The cases where repair code is needed can be easily and
+accurately detected by observing that variables in a
+\psifun interfere.
 
 %\SubSubSection{Liveness and interferences in Psi-SSA}
 \paragraph{Liveness and interferences in Psi-SSA.}
-We have already shown in Figure~\ref{fig:psi_interference}(g) that
-repair code may be needed so that the arguments and definition of a
-\psifun can be renamed into a single name. We first give a
-definition of the point of use of the arguments in a \psifun
-such that liveness analysis can be accurately computed. With this
-liveness, the cases where repair code is needed can be easily and
-accurately detected by observing that live-ranges for variables in a
-\psifun overlap.
-
 Consider the code in Figure~\ref{fig:psi_ccond} (b). Instead of using
 a representation with \psifuns, predicated definitions have
 been modified to make a reference to the value the predicated
-definition will have in case the predicate is \textit{false}. We use in this
-example the notation of the C conditional operator
-${x = cond\ ?\ exp1 : exp2}$. Each of the predicated definitions make an
+definition will have in case the predicate evaluates to false. We use in this
+example the notation of the select operator
+$x = \textit{cond}\cond \textit{exp1}~:~\textit{exp2}$ that assigns \textit{exp1} to $x$ if \textit{cond} is true and \textit{exp2} otherwise. 
+Each of the predicated definitions make an
 explicit use of the variable immediately to its left in the argument
 list of the original \psifun from Figure~\ref{fig:psi_ccond}
 (a). We can see that a renaming of the variables \textit{a}, \textit{b},
@@ -802,30 +807,39 @@ Using this equivalence for the
 representation of a \psifun, we now give a definition of the
 point of use for the arguments of a \psifun.
 
-{\bf Definition} {\em We say that the point of use of an argument in a
-  normalized \psifun occurs at the point of definition of the
-  argument immediately at its right in the argument list of the $\psi$
-  function. For the last argument of the \psifun, the point of
-  use occurs at the \psifun itself. }
+\begin{definition}[use points] Let ${a_0 = \psi(p_1?a_1, ..., p_i?a_i, ...,
+  p_n?a_n)}$ be a normalized \psifun. For $i<n$, the point of use of argument $a_i$ occurs at the operation that defines $a_{i+1}$. The point of use
+  for the last argument $a_n$ occurs at the \psifun itself.
+\end{definition}
 
 \begin{figure}
 \begin{center}
-\footnotesize
-\begin{tabular}{llll}
-           & ${a = op1}$ & \ \ \ \ & ${a = op1}$ \\
-${p?}$ & ${b = op2}$ & \ \ \ \ & ${b = p\ ?\ op2\ :\ a}$ \\
-${q?}$ & ${c = op3}$ & \ \ \ \ & ${c = q\ ?\ op3\ :\ b}$ \\
-           & ${x = \psi(a,p?b,q?c)}$ & \ \ \ \ & ${x = c}$ \\
+\footnotesize\hfill
+\subfloat[$\psi$-SSA form]{
+\begin{tabular}{ll}
+           & ${a = \texttt{op}1}$ \\
+${p?}$ & ${b = \texttt{op}2}$  \\
+${q?}$ & ${c = \texttt{op}3}$\\
+           & ${x = \psi(a,\ p?b,\ q?c)}$  \\
 \\
-\multicolumn{2}{l}{{\bf (a)\ Psi-SSA form}} & \ \ \ \ & {{\bf (b)\ C conditional form}}
+\end{tabular}}
+\hfill
+\subfloat[conditional form]{
+\begin{tabular}{p{2.5cm}}
+${a = \texttt{op}1}$ \\
+${b = p\ ?\ \texttt{op}2\ :\ a}$ \\
+${c = q\ ?\ \texttt{op}3\ :\ b}$ \\
+${x = c}$ \\
+\\
 \end{tabular}
+}
 \caption{\psifuns and C conditional operations equivalence}
 \label{fig:psi_ccond}
 \end{center}
 \end{figure}
 
-Given this definition of point of use of $\psi$ arguments, and using
-the usual point of use of $\phi$ arguments, a traditional liveness
+Given this definition of point of use of \psifun arguments, and using
+the usual point of use of \phifun arguments, a traditional liveness
 analysis can be run. Then an interference graph can be built to
 collect the interferences between variables involved in $\psi$ or
 \phifuns. For the construction of the interference graph, an
@@ -834,67 +848,54 @@ predicates can be ignored.
 
 %\SubSubSection{Repairing interferences on $\psi$ operations}
 \paragraph{Repairing interferences on \psifuns.}
-We now present an algorithm that creates $\psi$-SSA webs from $\psi$
-functions such that there is no interference between two variables in
-the same $\psi$-SSA web.
-
-First, the $\psi$-SSA webs are initialized such that each variable in
-the $\psi$-SSA representation belongs to its own $\psi$-SSA web. Then,
-\psifuns are processed one at a time, in no specific order. A
+We now present an algorithm that resolves the interferences as it builds the \psiwebs. A
 pseudo-code of this algorithm is given in
 Figure~\ref{fig:pseudo_psi_repair}.
-
-The analysis of a \psifun starts by setting the current
-$\psi$-SSA web to the $\psi$-SSA web of the result of the $\psi$
-function. Then, the arguments of the \psifun are processed
-from right to left. The $\psi$-SSA web for an argument can be merged
-into the current $\psi$-SSA web if these two $\psi$-SSA webs do not
-interfere. Two $\psi$-SSA webs interfere if at least one variable in
-the first $\psi$-SSA web interferes with at least one variable in the
+First, the \psiwebs are initialized with a single variable per \psiweb. Then,
+\psifuns are processed one at a time, in no specific order, merging when non-interfering the \psiwebs of its operands together.
+Two \psiwebs interfere if at least one variable in
+the first \psiweb interferes with at least one variable in the
 other one.
-
-If the $\psi$-SSA web for an argument ${a_i}$ does not interfere
-with the current $\psi$-SSA web, then the two $\psi$-SSA webs are
-merged. Otherwise, the $\psi$-SSA web for the argument ${a_i}$
-cannot be merged with the current $\psi$-SSA web, and repair code is
+The arguments of the \psifun, say ${a_0 = \psi(p_1?a_1, ..., p_i?a_i, ...,
+  p_n?a_n)}$, are processed
+from right ($a_n$) to left ($a_1$). If the \psiweb that contains $a_i$ does not interfere with the \psiweb that contains $a_0$, they are merged together.
+Otherwise, repair code is
 needed. A new variable, ${a'_i}$, is created and is initialized
-with a predicated copy ${p_i? a'_i = a_i}$, inserted just below
+with a predicated copy ${p_i\cond a'_i = a_i}$, inserted just below
 the definition for ${a_i}$. The current argument ${a_i}$ in
 the \psifun is replaced by the new variable ${a'_i}$. The
-interference graph is updated with an interference between ${a_i}$
-and ${a'_i}$. Also, conservatively, ${a'_i}$ is considered to
-be interfering with all the variables ${a_i}$ interfere with,
-except with those variables in the current $\psi$-SSA web. The
+interference graph is updated. This can be done conservatively, by letting ${a'_i}$  interfere with $a_i$ and with all the variables, except with those in the merged \psiweb, ${a_i}$ interferes with. The
 conservative update of the interference graph may increase the number
-of copies generated during the conversion to the $\psi$-CSSA form.
+of copies generated during the conversion to the $\psi$-C-SSA form.
 
-Then the algorithm proceeds with the next argument on the left until
-all arguments are processed.
-
+{\def\psiWeb{\textit{psiWeb}\xspace}
+\def\opndWeb{\textit{opndWeb}\xspace}
 \begin{algorithm}[h]
 \Begin{
- $psiWeb \leftarrow SSAWeb\_get(psiOp->result())$ \;
- \ForEach{$psiOpnd \leftarrow psiOp->opnd(i)$, from right to left}{
-  $psiOpndWeb \leftarrow SSAWeb\_get(psiOpnd)$ \;
-  \If{$IGraph\_interferes(psiWeb, psiOpndWeb)$}{
-   \Let{$newOpnd$ be a freshly created variable} \;
-   insert $copy newOpnd \leftarrow psiOpnd$ under predicate $psiOp->predicate(i)$ after $psiOpnd->defOp()$ \;
-   $psiOp->opnd(i) \leftarrow newOpnd$ \;
-   $psiOpndWeb \leftarrow SSAWeb\_get(newOpnd)$ \;
-   $IGraph\_addInterference(newOpnd, psiOpnd)$ \;
-   \ForEach{$var$ in $IGraph\_interferenceSet(psiOpnd)$}{
-    \If{$!SSAWeb\_contain(psiWeb, var)$}{
-     $IGraph\_addInterference(newOpnd, var)$ \;
-    }
+ \Let{\psiWeb be the web containing $a_0$} \; 
+ \ForEach{$a_i$ \textbf{in} $[a_n,\ a_{n-1},\ \dots, a_1]$}{
+   \Let{\opndWeb be the web containing $a_i$} \;
+   \If{$\opndWeb \neq \psiWeb$}{
+      \If{\textit{IGraph}.\textrm{interfere}(\psiWeb, \opndWeb)}{
+         \Let{$a'_i$ be a freshly created variable} \;
+         \Let{$C_i$ be a new predicated copy $p_i\cond a'_i\gets a_i$} \;
+         append $C_i$ right after operation that defines $a_i$ \;
+         replace $a_i$ by $a'_i$ in the \psifun \;
+         $\opndWeb \gets \{a'_i\}$ \;
+         \textit{IGraph}.addInterference($a'_i,\ a_i$) \;
+         \ForEach{$v$ \textbf{in} $\textit{IGraph}.\textrm{interferenceSet}(a_i)$}{
+            \lIf{$v \not\in\psiWeb$}{ \textit{IGraph}.addInterference($a'_i, v$) }\; 
+         }
+       }
+       $\psiWeb \gets \psiWeb \cup \opndWeb$\;
    }
-   $psiWeb \leftarrow SSAWeb\_union(psiWeb, psiOpndWeb)$ \;
- }
  }
 }
-\caption{Merging $\psi$-SSA webs on a \psifun}
+\caption{\psiwebs merging during the processing of a \psifun ${a_0 = \psi(p_1?a_1, ..., p_i?a_i, ...,
+  p_n?a_n)}$}
 \label{fig:pseudo_psi_repair}
 \end{algorithm}
-
+}
 
 % Some comments on an exact interference graph update ??
 
@@ -908,21 +909,20 @@ definition of variable \textit{d}. This live-range interferes with the
 variables \textit{c} and \textit{x}. The live-range for variable \textit{c}
 extends down to its use in the \psifun that defines the
 variable \textit{x}.
-
+%
 At the beginning of the processing on the \psifun ${x =
-  \psi(p?a,q?b,r?c)}$, all variables belong to their own $\psi$-SSA
-web. The current $\psi$-SSA web is set to the $\psi$-SSA web of the
+  \psi(p?a,q?b,r?c)}$, all variables belong to their own \psiweb. The current \psiweb is set to the \psiweb of the
 result, ${\{x\}}$. Then the argument list is processed from right
 to left. Variable \textit{c} does not interfere with current $\psi$-SSA
 web ${\{x\}}$, they can be merged together, resulting in a current
-$\psi$-SSA web ${\{x, c\}}$. Then, variable \textit{b} is
+\psiweb ${\{x, c\}}$. Then, variable \textit{b} is
 processed. Since it interferes with both \textit{x} and \textit{c},
 repair code is needed. A variable \textit{b'} is created, and is
 initialized just below the definition for \textit{b}, as a predicated
 copy of \textit{b}. The interference graph is updated, only an
 interference between \textit{b'} and \textit{b} is added. The current
-$\psi$-SSA web now becomes ${\{x, b', c\}}$. Then variable \textit{a}
- is processed and inserted into the current $\psi$-SSA web. The
+\psiweb now becomes ${\{x, b', c\}}$. Then variable \textit{a}
+ is processed and inserted into the current \psiweb. The
 final code after SSA destruction is shown in
 Figure~\ref{fig:live_interference}(c).
 
@@ -946,15 +946,14 @@ ${s?}$ & ${d = b+1}$              & ${s?}$ & ${d = b+1}$                 & ${s?}
 
 \subsection{Phi-web}
 
-When all \psifuns are processed, the $\psi$-SSA webs built
-from \psifuns are extended to include the variables in $\phi$
-functions. In this part, the algorithm presented in
+When all \psifuns are processed, the \psiwebs built
+from \psifuns are extended to include the variables in \phifuns. In this part, the algorithm presented in
 chapter~\ref{chapter:alternative_ssa_destruction_algorithm} is used, with a few
 modifications.
 
-The first modification is that the $\psi$-SSA webs must not be
+The first modification is that the \psiwebs must not be
 initialized at the beginning of this process. They have already been
-initialized at the beginning of the $\psi$-web step, and were extended
+initialized at the beginning of the \psiweb step, and were extended
 during the processing of \psifuns. These webs will be extended
 now with \phifuns during this step.
 
@@ -964,12 +963,12 @@ must take into account the particular point of use of arguments on
 
 All other parts of the SSA destruction algorithm from
 chapter~\ref{chapter:alternative_ssa_destruction_algorithm}, to convert an SSA
-representation into a CSSA form, are unchanged.
+representation into a C-SSA form, are unchanged.
 
 We have described a complete algorithm to convert a $\psi$-SSA
-representation into a $\psi$-CSSA representation. The final step to
+representation into a $\psi$-C-SSA representation. The final step to
 convert the code into a non-SSA form is a simple renaming of all the
-variables in the same $\psi$-SSA web into a representative name. The
+variables in the same \psiweb into a representative name. The
 $\psi$ and \phifuns are then removed.
 
 %% \paragraph{Interference with the result of a \psifun.}
