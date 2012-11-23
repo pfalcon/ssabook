@@ -1,18 +1,43 @@
 \section{Code Quality}
-Once the code is in Conventional SSA, destructing it is straightforward, which solves the correctness problem. 
+Once the code is in conventional SSA, the correctness problem is solved: destructing it is by definition straightforward, as it relies in renaming all variables in each \phiweb into a unique representative name and then remove all \phifuns. To improve the code however, it
+is important to remove as many copies as possible. 
 
 \paragraph{Aggressive coalescing}
-To improve the code however, it
-is important to remove as many copies as possible. This can be treated
-with classic coalescing as conventional SSA allows to get rid of \phifuns: the set of variables of a SSA web can be coalesced leading to a single non-SSA variable; liveness and
-interferences can then be defined as for regular code (with parallel copies). An interference graph (as depicted in Figure~\ref{fig:alternative_ssa_destruction:ex_lost_c}) can be used. A plain edge between two nodes (e.g. between $x_2$ and $x_3$) materialize the presence of an interference between the two corresponding variables (e.g. between $x_2$ and $x_3$), i.e. expressing the fact that they cannot be coalesced and share the same resource. A dashed edge between two nodes materializes an affinity between the two corresponding variables, i.e. the presence of a copy (e.g. between $x_2$ and $u_0$) that could be removed by their coalescing.
+This can be treated
+with standard non-SSA coalescing technique as conventional SSA allows to get rid of \phifuns: the set of variables of a SSA web can be coalesced leading to a single non-SSA variable; liveness and
+interferences can then be defined as for regular code (with parallel copies). An interference graph (as depicted in Figure~\ref{fig:alternative_ssa_destruction:lost-graph}) can be used. A solid edge between two nodes (e.g. between $x_2$ and $x_3$) materialize the presence of an interference between the two corresponding variables, i.e. expressing the fact that they cannot be coalesced and share the same resource. A dashed edge between two nodes materializes an affinity between the two corresponding variables, i.e. the presence of a copy (e.g. between $x_2$ and $x'_2$) that could be removed by their coalescing.
 
-This process is illustrated by Figure~\ref{fig:alternative_ssa_destruction:ex_lost}: the isolation of the \phifun leads to inserting the three copies that respectively define $u_1$ and $u_2$ and uses $u_0$; the corresponding \phiweb  $\{u_0, u_1, u_2\}$ is coalesced into a representative variable $u$; according to the interference graph of Figure~\ref{fig:alternative_ssa_destruction:ex_lost_c}, $x_1$, $x_5$ can then be coalesced with $u$ leading to the code of Figure~\ref{fig:alternative_ssa_destruction:ex_lost_d}.
+This process is illustrated by Figure~\ref{fig:alternative_ssa_destruction:ex_lost}: the isolation of the \phifun leads to inserting the three copies that respectively define $x'_1$, $x'_3$, and uses $x'_2$; the corresponding \phiweb  $\{x'_1, x'_2, x'_3\}$ is coalesced into a representative variable $x$; according to the interference graph of Figure~\ref{fig:alternative_ssa_destruction:lost-graph}, $x_1$, $x_3$ can then be coalesced with $x$ leading to the code of Figure~\ref{fig:alternative_ssa_destruction:lost3}.
+
+\begin{figure}[H]
+\subfloat[Lost-copy problem]{
+  \hspace{1em}\includegraphics[scale=0.7]{lost.pdf}\hspace{1em}
+}
+\hfill
+\begin{minipage}{0.3\textwidth}
+\subfloat[C-SSA]{
+  \includegraphics[scale=0.7]{lost2.pdf}
+}\\
+\subfloat[Interferences\label{fig:alternative_ssa_destruction:lost-graph-cssa}]{
+  \hspace{1em}\includegraphics[scale=0.85]{lost-graph-cssa.pdf}\hspace{1em}
+}
+\end{minipage}
+\hfill
+\begin{minipage}{0.3\textwidth}
+\subfloat[After coalescing\label{fig:alternative_ssa_destruction:lost3}]{
+  \hspace{1em}\includegraphics[scale=0.7]{lost3.pdf}\hspace{1em}
+}\\\vspace{1em}~\\
+\subfloat[Interferences\label{fig:alternative_ssa_destruction:lost-graph}]{
+  \includegraphics[scale=0.85]{lost-graph.pdf}
+}
+\end{minipage}
+\caption{SSA destruction for the lost-copy problem.\label{fig:alternative_ssa_destruction:ex_lost}}
+\end{figure}
 
 \paragraph{Liveness under SSA}
 \label{sec:alternative_ssa_destruction_algorithm:liveness}
 If the goal is not to destruct SSA completely but remove as many copies as possible while maintaining the conventional property, liveness of \phifun operands should reproduce the behavior of the corresponding non-SSA code as if the variables of the \phiweb were coalesced all together. The semantic of the \phiop in the so called \emph{multiplexing} mode
-fits the requirements. The corresponding interference graph on our example is depicted in Figure~\ref{fig:alternative_ssa_destruction:ex_lost_c_cssa}.
+fits the requirements. The corresponding interference graph on our example is depicted in Figure~\ref{fig:alternative_ssa_destruction:lost-graph-cssa}.
 
 
 \begin{definition}[multiplexing mode]
@@ -20,33 +45,10 @@ Let a \phifun $B_0:a_0=\phi(B_1:a_1,\dots,B_n:a_n)$ be in \emph{multiplexing} mo
 \end{definition}
 
 
-\begin{figure}[H]
-\subfloat[Lost-copy problem]{
-  \includegraphics[width=0.20\textwidth]{lost.pdf}
-}
-\hfill
-\subfloat[Corresponding CSSA code]{
-  \includegraphics[width=0.20\textwidth]{lost2.pdf}
-}
-\hfill
-\begin{minipage}[b]{0.2\textwidth}
-  \subfloat[\label{fig:alternative_ssa_destruction:ex_lost_c_cssa}Interferences under CSSA]{
-    \includegraphics[width=\textwidth]{lost-graph-cssa.pdf}
-}\\
-  \subfloat[\label{fig:alternative_ssa_destruction:ex_lost_c}Interferences and coalescing]{
-    \includegraphics[width=\textwidth]{lost-graph.pdf}
-  }
-\end{minipage}
-\hfill
-\subfloat[\label{fig:alternative_ssa_destruction:ex_lost_d}After copy optimization]{
-  \includegraphics[width=0.20\textwidth]{lost3.pdf}
-}
-\caption{Out-of-SSA translation for the lost-copy problem.\label{fig:alternative_ssa_destruction:ex_lost}}
-\end{figure}
 
 \paragraph{Value-based interference}
 \label{par:alternative_ssa_destruction:value}
-As said earlier, after the $\phi$-isolation phase, and the treatment of operand pining constraints the code contains many overlapping live-ranges that carry the same value. Because of this, to be efficient coalescing must use an accurate notion of interference.
+As said earlier, after the $\phi$-isolation phase and the treatment of operand pining constraints, the code contains many overlapping live-ranges that carry the same value. Because of this, to be efficient coalescing must use an accurate notion of interference.
  % 
 \ifhab
 It is common to find in the literature the following definition of

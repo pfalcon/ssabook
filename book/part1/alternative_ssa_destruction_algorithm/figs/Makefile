@@ -1,26 +1,18 @@
-FIGFILES=$(wildcard *.fig)
-PDFTEXFILES=$(FIGFILES:.fig=)
-FILES_PDFTEX=$(addsuffix .pdftex,$(PDFTEXFILES))
-FILES_PDFTEX_T=$(addsuffix .pdftex_t,$(PDFTEXFILES))
-PDFFILES=$(FIGFILES:.fig=.pdf)
+# source files
+TIKZ=$(wildcard *.tikz)
+PDF=$(TIKZ:.tikz=.pdf)
 
-all: $(PDFFILES)
+.PHONY:all 
 
-%.pdftex: %.fig
-	fig2dev -L pdftex $< > $@
+all: pdf
 
-%.pdftex_t: %.pdftex %.fig 
-	fig2dev -L pdftex_t -p $*.pdftex $*.fig > $@
+pdf: $(PDF)
 
-%.pdf: %.pdftex %.pdftex_t
-	pdflatex --jobname=$* fig2figure
-	mv $*.pdf /tmp/
-	pdfcrop /tmp/$*.pdf $*.pdf
+%.pdf: %.tikz tikz2figure.tex
+	pdflatex --jobname=$* tikz2figure
+	pdfcrop --verbose $*.pdf /tmp/t.pdf
+	mv /tmp/t.pdf $*.pdf
 
-clean-all: clean clean-fig
+clean:
+	rm -f *.aux *.log *~ *.out
 
-clean: 
-	-rm -f *.bak *.aux *.dvi *.log 
-
-clean-fig:
-	-rm -f *.pdftex *.pdftex_t *.pdf
