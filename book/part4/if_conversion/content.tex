@@ -168,14 +168,14 @@ The objective of \emph{path duplication} is to get rid of all side entry edges t
   \subfloat[after renaming/copy-folding]{
     \includegraphics[scale=0.9]{phi_augmentation_c}
   }
-  \subfloat[after $\phi$ removal]{
+  \subfloat[after $\phi$ reduction]{
     \includegraphics[scale=0.9]{phi_augmentation_d}
   }
   \caption{\label{fig:phi_aug}Path duplication}
 \end{figure}
 
 
-The last transformation, namely the \emph{Conjunctive predicate merging}, concerns the if-conversion of a control flow pattern that sometimes appears on codes to represent logical \texttt{and} or \texttt{or} conditional operations. As illustrated by Figure~\ref{fig:phi_merge} technically the goal is to get rid of side exit edges that avoid a single-entry-node region to be a diamond-DAG. As opposed to path duplication, the transformation is actually restricted to a very simple pattern highlighted in Figure~\ref{fig:phi_merge} made up of three distinct basic-block, \textit{entry}, that branches with predicate $p$ to \textit{side}, or \textit{exit}. \textit{side}, which is empty, branches itself with predicate $q$ to another basic-block outside of the region or to \textit{exit}. Conceptually the transformation can be understood has first isolating the outgoing path $p\rightarrow q$ and then if-converting the obtained diamond-DAG. Note that providing that $s=p\wedge q$ is true, $p\wedge \overline{q}$ simplifies to $\overline{q}$. Hence, $r_1$ can be written either way $p\cond t_1:t_2$ or  $\overline{q}\cond t_1:t_2$.
+The last transformation, namely the \emph{Conjunctive predicate merging}, concerns the if-conversion of a control flow pattern that sometimes appears on codes to represent logical \texttt{and} or \texttt{or} conditional operations. As illustrated by Figure~\ref{fig:phi_merge} the goal is to get rid of side exit edges that avoid a single-entry-node region to be a diamond-DAG. As opposed to path duplication, the transformation is actually restricted to a very simple pattern highlighted in Figure~\ref{fig:phi_merge} made up of three distinct basic-block, \textit{entry}, that branches with predicate $p$ to \textit{side}, or \textit{exit}. \textit{side}, which is empty, branches itself with predicate $q$ to another basic-block outside of the region or to \textit{exit}. Conceptually the transformation can be understood has first isolating the outgoing path $p\rightarrow q$ and then if-converting the obtained diamond-DAG. Note that if $s=p\wedge q$ is false, $p\wedge \overline{q}$ simplifies to $\overline{q}$. Hence, $r_2$ can be written either way $p\cond t_1:t_2$ or  $\overline{q}\cond t_1:t_2$. 
 
 \begin{figure}[h]
   \includegraphics[scale=0.9]{phi_merge}
@@ -308,171 +308,81 @@ Once, operations have been speculated or projected (on $q$ for the \texttt{then}
 
 \section{Global Analysis and Transformations}
 \label{sec:if_conversion:hyperblock}
-Hot regions are rarely just composed of simple \texttt{if-then-else-end} control flow regions but processors have limited resources: the number of registers will determine the acceptable level of data dependencies to minimize register pressure; the number of predicate registers will determine the depth of the if-conversion so that the number of conditions does not exceed the number of available predicates; the number of processing units will determine the number of instructions that can be executed simultaneously. The inner-outer incremental process advocated in this chapter allows to evaluate finely the profitability of if-conversion. However, if-conversion in one shot of a larger region is possible. For completeness, both  the \emph{one-shot} and the \emph{incremental} approaches are described here.
-
-\subsection{Hyperblock formation}
-
-A Hyperblock is a region of straight line code with a single entry and possibly multiple exits where inner branches have been removed by if-conversion.
-Hyperblocks enlarge the scope for scheduling in two ways. First, since basic blocks swell as the scope of the predicated region grows, static scheduling can now be unconstrained. Second, instructions can be freely speculated without the need for compensation code. Conditional code to exit the hyperblock does not impact the execution flow, using a proper code basic block reordering to favor fall through execution.
-
-Tail duplication is used to exclude from the Hyperblock basic blocks that cannot be if-converted, either because they contain hazardous instructions, or because of heuristic decisions. 
-
-Standard approach to Hyperblock construction is to apply the following steps:
-
-\begin{itemize}
-\item Create a trace and select the blocks. A trace is a sequence of basic blocks that can be scheduled together. 
-\item Remove the side entries with tail duplication. This step removes the scheduling constraints imposed by side entries.
-\item Perform if-conversion while still in SSA.
-\end{itemize}
-
-\subsection{CLassical approach}
-
-One way to perform if-conversion in SSA is to apply a classical if-conversion algorithm, such as Fang \cite{Fang:1996:CAI:645674.663446} or RK \cite{Schlansker-predicated}, on a conventional SSA representation. 
-During the if-conversion process, instructions that are merged into the deleted $\phi$ operations are now expressed as $\psi$ operations, merging different values from their $\psi-congruence$ class. Assuming that all instructions are predicated, an additional pass is required during instruction selection to emit speculative instructions when a predicated variant is not available. Another pass is needed for predicate promotion, based on the predicate dependence graph.
-
-To illustrate the differences between a traditional framework and a native SSA framework, we first start by describing the RK algorithm proposed by Park and Schlansker on the nested tests in figure \ref{fig:nested1}. We will then describe in detail the SSA based approach.
-
-Standard if-conversion techniques address the problem in the following order: First, identify the region to be if-converted. An execution trace is selected based on profiling information to isolate the region. Then allocate boolean variables to the basic blocks, in the identified region. Then perform predicate initialization placement, instruction emissions and CFG restructuring into the final if-converted regions.
-
-The RK algorithm starts by computing the Control Dependence Graph. It is necessary to associate each basic block with a guard condition, and to associate each guard width the set of basic blocks that need to set it. The algorithm creates a new guard, eventually initialized to false, for each condition. \ref{fig:nested2} shows the inner basic blocks with the new conditions initialized, and \ref{fig:RK} the RK mappings.
-
-\begin{figure}
-\centering
-  \subfloat[Nested test] {
-    \includegraphics[scale=0.8]{nested1}
-    \label{fig:nested1}}
-  \subfloat[Predicate Assignments] {
-    \includegraphics[scale=0.8]{nested1_rk}
-    \label{fig:nested2}}
-  \subfloat[After Instruction layout] {
-    \includegraphics[scale=0.8]{nested1_rk2}
-    \label{fig:nested}}
-\caption{Classical support for partial predication}
-\label{fig:trad_part_pred}
-\end{figure}
-
-\begin{figure}
-\footnotesize
-  \subfloat[R mapping] {
-     \begin{tabular}[t]{|l|cccccc|}
-\hline
-      Basic Block & BB1 & BB2 & BB3 & BB4 & BB5 & BB6  \\
-\hline
-      Guard       &  T  &  p   & q  & p4  &  p  &  p2 \\
-\hline
-     \end{tabular}}
-  \subfloat[K mapping] {
-     \begin{tabular}[t]{|l|cccc|}
-\hline
-      Guard          & p & q & p4  & p2  \\
-\hline
-      Basic Block    & 1 & 2,-0 & -2,-0 & -1 \\
-\hline
-     \end{tabular}}
-\caption{Output from RK algorithm}
-\label{fig:RK}
-\end{figure}
-
-By the end, the algorithm merges and reorder the basic blocks, emitting the predicated instructions and predicate setting operations, and removing the instruction branches. \ref{fig:nested}. 
-
-This approach assumes that the region to if-convert is defined and that all instructions can be predicated, Without predicate support for comparison instructions, logical operations must be used to merge condition setting operations. For instance, An algorithm based on speculative transformations, necessary to support partially predicated architectures, is then penalized by this approach, since an additional pass is needed to convert a conditional instruction into a temporary register and a conditional move.
-
-We describe next a native approach to build hyperblocks under SSA, in which the if-conversion process is inherently part of a single comprehensible framework.
+Hot regions are rarely just composed of simple \texttt{if-then-else-end} control flow regions but processors have limited resources: the number of registers will determine the acceptable level of data dependencies to minimize register pressure; the number of predicate registers will determine the depth of the if-conversion so that the number of conditions does not exceed the number of available predicates; the number of processing units will determine the number of instructions that can be executed simultaneously. The inner-outer incremental process advocated in this chapter allows to evaluate finely the profitability of if-conversion. 
 
 \subsection{SSA Incremental if-conversion algorithm}
 
-For each basic block considered within the region, a predicate must be computed and assigned to the corresponding instructions. Those predicate computations introduce new instructions and new data dependencies, that need to be controlled while the region is been if-converted.
+%% For each basic block considered within the region, a predicate must be computed and assigned to the corresponding instructions. Those predicate computations introduce new instructions and new data dependencies, that need to be controlled while the region is been if-converted.
 
-The native If-conversion in SSA form is based on an incremental, incremental if-conversion construction, unifying region selection and region transformation. 
+The algorithm takes as input a CFG in SSA form and applies incremental reductions on it using a list of candidate conditional basic-blocks sorted in post-order. 
+Each basic-block in the list designates the head of a sub-graph that can be if-converted using the transformations described in Section~\ref{sec:basic}. Post-order traversal allows to process the regions from inner to outer. When the if-converted region cannot grow anymore because of resources, or because a basic block cannot be if-converted, then another candidate is considered in the post-order list until all the CFG is explored.
+%
+%% During this incremental process, since nested regions are already predicated when evaluating the if-conversion of a branch, all the side effects, such as new predicate merging instructions, new conditional moves merging flow or new data dependencies, will be accounted to evaluate the profitability.
+%
+Note that as the reduction proceeds, maintaining SSA can be done using the general technique described in Chapter~\ref{chapter:repair_maintain_ssa_after_optimization}. However, basic ad-hoc updates can be implemented instead. 
 
-The algorithm takes as input a structured region in SSA form and produces a valid SSA representation using conditional move instructions to realize join points, Incrementally building-up the if-converted region during a control flow traversal maintaining the SSA representation.
-
-We create the list of candidate conditional blocks of the control flow sorted in post-order. Each one designates the head of a sub-graph that can be if-converted using the techniques described in chapter-\ref{sec:basic}. Post-order traversal guarantees that each inner region will be processed before regions of larger scope. No sub-graph needs to be selected at this point, because the decision to if-convert will be retaken incrementally from inner to outer regions as the hyperblock grows. When the region cannot grow anymore because of resources, or because a basic block cannot be if-converted, then another region is considered in the post-order list until all the CFG is explored
-
-During this incremental process, since nested regions are already predicated when evaluating the if-conversion of a branch, all the side effects, such as new predicate merging instructions, new conditional moves merging flow or new data dependencies, will be accounted for locally. Furthermore, the predicate assignment is simplified, since new predicates are mechanically inserted when merging inner regions containing conditional code. The prevalent idea is that the inner region once predicated will be viewed as a single basic region by the outer scopes evaluation engines.
-
-As the algorithm processes the control flow in post-order traversal, the dominator tree does not change, and it is possible to maintain the SSA locally to the inner region. By recurrence the if-converted region can in turn be optimized out if its head belongs to the dominance frontier of an outer region.
-
-Consider for example the CFG from the $wc$ program (figure \ref{fig:wc1}). The exit node is $BB7$, and $BB3$ contains a function call, so will be excluded from the hyperblock. This control-flow contains three back edges and form a good example how a cyclic graph can be if-converted.
-
- The post-order list of the basic nested regions is ($BB11$, $BB17$, $BB16$, $BB14$, $BB10$, $BB9$, $BB6$, $BB2$). The head of nested hammocks is represented by the circle nodes.
-The first hammock region starting at $BB11$ to $BB2$ contains only $BB12$. The fact that $BB2$ dominates the region to if-convert is not a problem, since what matters is the merging SSA $\phi$ operations. The instructions in $BB12$ are then predicated and $BB2$ becomes the single successor of $BB11$. 
-Considering next the region pointed by $BB17$, $BB19$ cannot yet be promoted because of the side entries coming from $BB15$ and $BB16$, so it is duplicated into a $BB19'$ with $BB2$ as successor. $BB19$ can then be predicated into $BB17$
-$BB16$ is the start of a region containing $BB17$ and $BB19'$. $BB17$ can be promoted into $BB16$. $BB19'$ already contains predicated operations from the previous transformation, So a new merging predicate is introduced at this point. $BB16$ unique successor is now a back edge to $BB2$.
-$BB14$ is the head of the newly created region where $BB15$, $BB16$ can be promoted. Again since $BB16$ contains predicated and predicate setting operations, a newly predicate must be created to hold the merged conditions.
-$BB10$ points to a cyclic hammock consisting from $BB10$-$BB14$-$BB11$-$BB2$. $BB14$ needs to be duplicated to $BB14'$ and $BB11$ to $BB11'$. The process finished with the hammock formed by $BB9$-$BB10$-$BB14'$.
-The region is now if-converted, leaving a single back-edge, removing 7 branches inside the body loop.
+Consider for example the CFG from the gnu \texttt{wc} (word count) program reported in Figure~\ref{fig:wc1}. The exit node $\textit{BB}7$, and basic-block $\textit{BB}3$ that contains a function call cannot be if-converted (represented in gray). 
+ The post-order list of conditional blocks (represented in bold) is [$\textit{BB}11$, $\textit{BB}17$, $\textit{BB}16$, $\textit{BB}14$, $\textit{BB}10$, $\textit{BB}9$, $\textit{BB}6$, $\textit{BB}2$]. 
+The first candidate region is composed of $\{\textit{BB11}, \textit{BB}2, \textit{BB}12\}$. $\phi$ reduction can be applied, promoting the instructions of $\textit{BB}12$ in $\textit{BB}11$. $\textit{BB}2$ becomes the single successor of $\textit{BB}11$. 
+%
+The region headed by $\textit{BB}17$ is then considered. $\textit{BB}19$ cannot yet be promoted because of the side entries coming both from $\textit{BB}15$ and $\textit{BB}16$. $\textit{BB}19$ is duplicated into a $\textit{BB}19'$ with $\textit{BB}2$ as successor. $\textit{BB}19'$ can then be promoted into $\textit{BB}17$.
+%
+The region headed by $\textit{BB}16$ that have now $\textit{BB}17$ and $\textit{BB}19$ as successors is considered. $\textit{BB}19$ is duplicated into $\textit{BB}19''$, so as to promote $\textit{BB}17$ and $\textit{BB}19'$ into $\textit{BB}16$ through $\phi$ reduction. $\textit{BB}19'$ already contains predicated operations from the previous transformation. So, a new merging predicate is computed and inserted. After the $\phi$ removal is fully completed $\textit{BB}16$ has a unique successor, $\textit{BB}2$.
+%
+$\textit{BB}14$ is the head of the new candidate region where $\textit{BB}15$, $\textit{BB}16$ can be promoted. Again since $\textit{BB}16$ contains predicated and predicate setting operations, a newly predicate must be created to hold the merged conditions.
+$\textit{BB}10$ is then considered; $\textit{BB}14$ needs to be duplicated to $\textit{BB}14'$. The process finished with the region head by $\textit{BB}9$.
 
 \begin{figure}
-  \subfloat[Before if-conversion] {
-    \includegraphics[scale=0.6]{graph1}
+  \subfloat[Initial] {
+    \includegraphics[scale=0.7]{graph_a}
     \label{fig:wc1}}
-  \subfloat[After if-conversion] {
-    \includegraphics[scale=0.6]{graph7}
+  \subfloat[If-conversion] {
+    \hspace{1em}\includegraphics[scale=0.7]{graph_b}\hspace{1em}
     \label{fig:wc2}}
-\label{fig:wc example}
+  \subfloat[Tail duplication] {
+    \includegraphics[scale=0.7]{graph_c}
+    \label{fig:wc3}}
+\caption{\label{fig:wc example}If-conversion of \texttt{wc} (word count program). Basic-blocks in gray cannot be if-converted. Tail duplication can be used to exclude \textit{BB3} from the to-be-if-converted region.}
 \end{figure}
+
 
 \subsection{Tail Duplication}
 
-Consider the example of Hyperblock formation given in figure \ref{fig:hyper1}. This loop contains two branches, and so if-converting it would be profitable. However, block selection has excluded BB2 and has integrated BB5, because heuristics have determined that the schedule of BB5 inside BB4 would be beneficial. The trace contains {BB1, BB3, BB4, BB5, BB6}. Since BB4 has a side entry, it must be removed by tail duplication. Figure \ref{fig:hyper2} shows the control flow after block duplication. Notice that a new node, BB7, has been added after the tail duplication by a process called branch coalescing. Finally figure \ref{fig:hyper3} shows the code once if-converted.
+Just as for the example of Figure~\ref{fig:wc example}, some basic-blocks (such as \textit{BB3}) may have to be excluded from the region to if-convert. \emph{Tail duplication} can be used for this purpose. Similar to path duplication described in Section~\ref{sec:basic}, the goal of tail duplication is to get rid of incoming edges of a region to if-convert. This is usually done in the context of hyper-block formation, which technique consists in, as opposed to the inner-outer incremental technique described in this chapter, to if-convert a region in ``one shot''. Consider again the example of Figure~\ref{fig:wc1}, and suppose the set of selected basic-blocks defining the region to if-convert consists of all basic-blocks from \textit{BB2} to \textit{BB19} excluding \textit{BB3}, \textit{BB4}, and \textit{BB7}. Getting rid of the incoming edge from \textit{BB4} to \textit{BB6} is possible by duplicating all basic-blocks of the region reachable from \textit{BB6} as shown in Figure~\ref{fig:wc2}. 
+
+Formally, consider a region $R$ made up of a set of basic-blocks, a distinguished one $\textit{entry}$ and the others denoted $\left(B_i\right)_{2\leq i\leq n}$, such that any $B_i$ is reachable from \textit{entry} in $R$. Suppose a basic-block $B_s$ has some predecessors $\textit{out}_1,\ \dots,\ \textit{out}_m$ that are not in $R$. Tail duplication consists in: (1) for all $B_j$ (including $B_s$) reachable from $B_s$ in $R$, create a basic-block $B'_j$ as a copy of $B_j$; (2) any branch from $B'_j$ that points to a basic-block $B_k$ of the region is rerouted to its duplicate $B'_k$; (3) any branch from a basic-block $\textit{out}_k$ to $B_s$ is rerouted to $B'_s$. In our example, we would have $\textit{entry}=\textit{BB2}$, $B_s=\textit{BB6}$, and $\textit{out}=\textit{BB4}$.
+
+A global approach would just do as in Figure~\ref{fig:wc3}: first select the region; second, get-rid of side incoming edges using tail duplication; finally perform if-conversion of the whole region in one shot. We would like to point out that there is no phasing issue with tail duplication. To illustrate this point, consider the example of Figure~\ref{fig:hyper1} where \textit{BB2} cannot be if-converted. The selected region is made up of all other basic-blocks. Using a global approach as in standard hyper-block formation, tail duplication would be performed prior to any if-conversion. This would lead to the CFG of Figure~\ref{fig:hyper2}. Note that a new node, \textit{BB}7, has been added here after the tail duplication by a process called branch coalescing. Applying if-conversion on the two disjoint regions respectively head by \textit{BB4} and \textit{BB4'} would lead to the final code shown if Figure~\ref{fig:hyper3}. Our incremental scheme would first perform if-conversion of the region head by \textit{BB4}, leading to the code depicted in Figure~\ref{fig:hyper4}. Applying tail duplication to get rid of side entry from \textit{BB2} would lead to exactly the same final code as shown in Figure~\ref{fig:hyper5}.
 
 \begin{figure}[h]
-  \subfloat[loop] {
-    \includegraphics[scale=0.7]{hyper1}
-    \label{fig:hyper1}}
-  \subfloat[standard tail-duplication] {
-    \includegraphics[scale=0.7]{hyper2}
-    \label{fig:hyper2}}
-  \subfloat[after SSA if-conversion] {
-    \includegraphics[scale=0.7]{hyper4}
-    \label{fig:hyper4}}
-  \subfloat[final flow] {
-    \includegraphics[scale=0.7]{hyper3}
-    \label{fig:hyper3}}
+  \subfloat[initial] {
+    \hspace{2em}\includegraphics[scale=0.7]{hyper1}\hspace{2em}
+    \label{fig:hyper1}}\hfill
+  \subfloat[tail duplication] {
+    \hspace{2em}\includegraphics[scale=0.7]{hyper2}\hspace{2em}
+    \label{fig:hyper2}}\hfill
+  \subfloat[if-convertion] {
+    \hspace{2em}\includegraphics[scale=0.7]{hyper3}\hspace{2em}
+    \label{fig:hyper3}}\\
+  \subfloat[initial] {
+    \hspace{2em}\includegraphics[scale=0.7]{hyper1}\hspace{2em}
+    }\hfill
+  \subfloat[if-conversion] {
+    \hspace{2em}\includegraphics[scale=0.7]{hyper4}\hspace{2em}
+    \label{fig:hyper4}}\hfill
+  \subfloat[tail duplication] {
+    \hspace{2em}\includegraphics[scale=0.7]{hyper3}\hspace{2em}
+    \label{fig:hyper5}}
+ \caption{Absence of phasing issue for tail duplication\label{fig:hyper}}
 \end{figure}
 
-When using this standard decomposition, the if-conversion is performed after tail-duplication. Hyperblock formation, if-conversion and speculation introduce a major phase ordering problem. 
-
-Consider in contrast how tail-duplication can be performed lazily using the SSA incremental transformations, after the code has been if-converted. Figure \ref{fig:hyper4} shows the same loop body where the second $if$ region has been SSA if-converted. The decision to if-convert the region formed by {BB1, BB2, BB3} is now local and can be taken conservatively. Only at this stage, tail-duplication can be performed if necessary to remove the side entry coming from BB2. Duplicating a single predicated block is now a very simple operation that is described in the next paragraph. Note that if BB2 can be included in the region, the whole loop region would have been if-converted.
-
-\subsection{Basic Block duplication}
-
-Basic Block duplication is used to remove side entries and to obviate the constraints on control dependencies. Unless applied carefully, basic block duplication could be the cause of code bloating without performance improvement. However experience has shown that when applied carefully it can be efficient, enabling further scalar optimizations.
-Consider figure \ref{fig:bbdup}. Since we are if-converting from the inner most regions, the algorithm first considers the region $BB3$, $BB4$, $BB5$, $BB6$ and $BB7$, and discards the edge coming from BB2 by duplicating BB6 into BB8. The $\phi$ becomes a move in the duplicated block with a renamed definition. The new $\phi$ operands are updated from the new edge. Note that in the implementation the block does not need to be created during this intermediate step because it will next be promoted into $BB3$. We have two nested hammocks and the process can be applied incrementally. The dependency that has been removed in the control flow is now expressed as a data dependency between the two $select$ instructions.
-Naturally, any number of incoming edges into the duplicated basic block are allowed.
-
-The algorithm to perform SSA basic block duplication is decomposed into:
-\begin{itemize}
-\item Extract the $\phi$s definitions to be conditionalized from the duplicated block creating a $move$ instruction and a new reduced $\phi$ (or two $move$ instructions if the duplicated block had only two incoming edges).
-\item Then the $\phi$s in the tail basic block are augmented with the new definition created by the new repair instruction. If the $\phi$ was live-out after the tail block a move must be inserted to avoid propagating renaming outside of the region considered. 
-\item The last step consists of renaming the new definitions to keep the region in SSA form.
-\end{itemize}
-
-\begin{figure}[h]
-\centering
-  \subfloat[Original] {
-    \includegraphics[scale=0.75]{side1}
-    \label{fig:side1}}
-  \subfloat[After duplication] {
-    \includegraphics[scale=0.75]{side2}
-    \label{fig:side2}}
-  \subfloat[inner branch] {
-    \includegraphics[scale=0.75]{side3}
-    \label{fig:side3}}
-  \subfloat[outer branch] {
-    \includegraphics[scale=0.75]{side4}
-    \label{fig:side4}}
-\caption{Side entry removal using basic block duplication}
-\label{fig:bbdup}
-\end{figure}
 
 \subsection{Profitability}
 
 Fusing execution paths can over commit the architectural ability to execute in parallel the multiple instructions: Data dependencies and register renaming introduce new register constraints. Moving operations earlier in the instruction stream increases live-ranges. 
-Aggressive if-conversion can easily exceed the processor resources, leading to excessive register pressure or moving infrequently used long latencies instructions into the critical path. In a SSA incremental approach, the decision to if-convert or not the inner region will propagate recurrently to the outer regions.
+Aggressive if-conversion can easily exceed the processor resources, leading to excessive register pressure or moving infrequently used long latencies instructions into the critical path. 
 
-The prevalent idea is that a region can be if-converted if the cost of the resulting if-converted basic block is smaller than the cost of each region taken separately weighted by the branch frequencies.
+The prevalent idea is that a region can be if-converted if the cost of the resulting if-converted basic block is smaller than the cost of each basic block of the region taken separately weighted by its frequency. To evaluate the cost of the region before if-conversion, we consider all possible paths from the \textit{entry} block to the \textit{exit} block. For all transformations but the conjunctive predicate merging, there are only two disjoint paths.
 
 We compare the cost of the region before if-conversion. So the cost of a path is the schedule estimation of all the blocks in the path pondered by the execution profile:
 \begin{align*}
@@ -493,7 +403,6 @@ Cost(BBs_{before:\ ifc}) > Cost(BB_{after:\ ifc})
 
 The estimated cost of the if-converted region is the schedule height estimation of the instructions without the branches. When the schedule height of the if-converted region is smaller than the profiled estimation, then it is profitable.
 
-
 The profitability of logical disjunctive and conjunctive merge, convergent or not, can be considered as a simple merge of two paths. Consider the example from Figure~\ref{fig:phi_merge}. Since we are aiming at merging $side$ into $head$, we have:
 \begin{align*}
 Cost(BBs_{before:\ ifc})=Cost(bb_{head}) + branchlat + Cost(bbs_{head-side:\ path})
@@ -506,13 +415,13 @@ Cost(BB_{after:\ ifc})=Cost(bb_{head} \circ bb_{head-side:\ path} +1)
 Note that since the frequency for the $head-exit$ path, for $(p\wedge \overline{q})\vee \overline{p}$, and the frequency for the $head->B1$ path, for $p\wedge q$, are unchanged after if-conversion. Those paths are not included into the profitability function.
 However, it is interesting to observe that when the $head-side$ path Cost is higher than the if-conversion budget, emitting a conjunctive merge might not be beneficial, and another strategy such as block duplication of the $exit$ block will be evaluated.
 
-The objective function needs the target machine description to derive the instruction latencies, resource usage and scheduling constraints. The local dependencies computed between instructions are used to compute the dependence height. The branch frequency is obtained either from static branch prediction heuristics, profile information or user inserted directives. Naturally, this heuristic can be either pessimistic, because it does not take into account new optimization opportunities introduced by the branch removals or explicit new dependencies, or optimistic because of bad register pressure estimation leading to register spilling on the critical path, or uncertainty in the branch prediction. But since the SSA incremental restructuring framework reduces the scope for the decision function to a localized part of the CFG, the size and complexity of the inner region under consideration makes the profitability a comprehensive process. Consequently, this cost function must be fast enough to be reapplied to each hammock during the incremental processing, with the advantage that all the instructions introduced by the if-conversion process in the inner regions, such as new predicate merging instructions or new temporary pseudo registers, will be accounted for in the decision to if-convert the regions encompassing them.
+The objective function needs the target machine description to derive the instruction latencies, resource usage and scheduling constraints. The local dependencies computed between instructions are used to compute the dependence height. The branch frequency is obtained either from static branch prediction heuristics, profile information or user inserted directives. Naturally, this heuristic can be either pessimistic, because it does not take into account new optimization opportunities introduced by the branch removals or explicit new dependencies, or optimistic because of bad register pressure estimation leading to register spilling on the critical path, or uncertainty in the branch prediction. But since the SSA incremental if-conversion framework reduces the scope for the decision function to a localized part of the CFG, the size and complexity of the inner region under consideration makes the profitability a comprehensive process. Consequently, this cost function must be fast enough to be reapplied to each hammock during the incremental processing, with the advantage that all the instructions introduced by the if-conversion process in the inner regions, such as new predicate merging instructions or new temporary pseudo registers, will be accounted for in the decision to if-convert the regions encompassing them.
 
 \section{Conclusion} 
 
 We presented in this chapter how an if-conversion algorithm can take advantage of the SSA properties to efficiently assign predicates and lay out the new control flow in an incremental, inner-outer process. As opposed to the alternative top-down approach, the region selection can be reevaluated at each nested transformation, using local analysis.
-Basic block selection and if-conversion are performed as a single process, hyperblocks being created lazily, using well known techniques such as tail-duplication or branch coalescing only when the benefit is established.
-Predication and speculation are often presented as two different alternatives for if-conversion. While it is true than they both require different hardware support, they should coexist in an efficient if-conversion process such that every model of conditional execution is accepted. Thanks to conditional moves and $\psi$ transformations, they are now generated together in the same framework.
+Basic block selection and if-conversion are performed as a single process, hyperblocks being created lazily, using well known techniques such as tail duplication or branch coalescing only when the benefit is established.
+Predication and speculation are often presented as two different alternatives for if-conversion. While it is true that they both require different hardware support, they should coexist in an efficient if-conversion process such that every model of conditional execution is accepted. Thanks to conditional moves and $\psi$ transformations, they are now generated together in the same framework.
 
 \section{Additional reading}
 
