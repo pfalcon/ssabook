@@ -158,7 +158,7 @@ The objective of \emph{path duplication} is to get rid of all side entry edges t
 
 
 \begin{figure}[h]
-  \subfloat[almost diamond-DAG]{
+  \subfloat[almost diamond-DAG\label{fig:phi_augmentation_a}]{
     \includegraphics[scale=0.9]{phi_augmentation_a}
   }
   \subfloat[after path-duplication]{
@@ -175,7 +175,7 @@ The objective of \emph{path duplication} is to get rid of all side entry edges t
 \end{figure}
 
 
-The last transformation, namely the \emph{Conjunctive predicate merging}, concerns the if-conversion of a control flow pattern that sometimes appears on codes to represent logical \texttt{and} or \texttt{or} conditional operations. As illustrated by Figure~\ref{fig:phi_merge} the goal is to get rid of side exit edges that avoid a single-entry-node region to be a diamond-DAG. As opposed to path duplication, the transformation is actually restricted to a very simple pattern highlighted in Figure~\ref{fig:phi_merge} made up of three distinct basic-block, \textit{entry}, that branches with predicate $p$ to \textit{side}, or \textit{exit}. \textit{side}, which is empty, branches itself with predicate $q$ to another basic-block outside of the region or to \textit{exit}. Conceptually the transformation can be understood has first isolating the outgoing path $p\rightarrow q$ and then if-converting the obtained diamond-DAG. Note that if $s=p\wedge q$ is false, $p\wedge \overline{q}$ simplifies to $\overline{q}$. Hence, $r_2$ can be written either way $p\cond t_1:t_2$ or  $\overline{q}\cond t_1:t_2$. 
+The last transformation, namely the \emph{Conjunctive predicate merging}, concerns the if-conversion of a control flow pattern that sometimes appears on codes to represent logical \texttt{and} or \texttt{or} conditional operations. As illustrated by Figure~\ref{fig:phi_merge} the goal is to get rid of side exit edges that avoid a single-entry-node region to be a diamond-DAG. As opposed to path duplication, the transformation is actually restricted to a very simple pattern highlighted in Figure~\ref{fig:phi_merge} made up of three distinct basic-block, \textit{entry}, that branches with predicate $p$ to \textit{side}, or \textit{exit}. \textit{side}, which is empty, branches itself with predicate $q$ to another basic-block outside of the region or to \textit{exit}. Conceptually the transformation can be understood has first isolating the outgoing path $p\rightarrow q$ and then if-converting the obtained diamond-DAG. 
 
 \begin{figure}[h]
   \includegraphics[scale=0.9]{phi_merge}
@@ -227,7 +227,7 @@ $ x = \psi(p \cond x_1, \overline{p} \cond x_2) $
 $ p = (a<\hspace{-0.6em}?\ b) $ \\
 $ x_1 = a + b $ \\
 $ \overline{p} \cond x_2 = c $ \\
-$ x = \psi(x_1, \overline{p} \cond x_2) $ 
+$ x = \psi(p\cond x_1, \overline{p} \cond x_2) $ 
 \end{minipage}
 }\hfill
 \subfloat[after coalescing]{
@@ -256,7 +256,7 @@ In practice, speculation is performed during the $\phi$~removal transformation, 
 \quad p = (a<\hspace{-0.6em}?\ b)\\~\\
 \quad x_1 = a + b\\
 \quad \overline{p} \cond x_2 = c\\
-\quad x = \psi(x_1, \overline{p} \cond x_2) \\
+\quad x = \psi( x_1, \overline{p} \cond x_2) \\
 \quad d_1 = \texttt{f} (x) \\
 \elsett\\
 \quad d_2 = 3\\
@@ -279,7 +279,7 @@ $ d_1 = \texttt{f} (x) $ \\
 ~\\
 $ \overline{q} \cond d_2 = 3 $ \\
 ~\\
-$ d = \psi(d_1, \overline{q} \cond d_2) $ 
+$ d = \psi(q\cond d_1, \overline{q} \cond d_2) $ 
 \end{minipage}
 \label{nested_psi_speculated}}
 \hfill
@@ -294,7 +294,7 @@ $ s \cond x_2 = c $ \\
 $ x = \psi(q \cond x_1, s \cond x_2) $ \\
 $ q \cond d_1 = \texttt{f} (x) $ \\~\\
 $ \overline{q} \cond d_2 = 3 $ \\~\\
-$ d = \psi(q \cond d_1, \overline{q} \cond d_2) $ 
+$ d = \psi(q\cond d_1, \overline{q} \cond d_2) $ 
 \end{minipage}
 \label{nested_psi_predicated}}
 \caption{Inner region $\psi$}
@@ -381,41 +381,36 @@ A global approach would just do as in Figure~\ref{fig:wc3}: first select the reg
 
 Fusing execution paths can over commit the architectural ability to execute in parallel the multiple instructions: Data dependencies and register renaming introduce new register constraints. Moving operations earlier in the instruction stream increases live-ranges. 
 Aggressive if-conversion can easily exceed the processor resources, leading to excessive register pressure or moving infrequently used long latencies instructions into the critical path. 
+The prevalent idea is that a region can be if-converted if the cost of the resulting if-converted basic block is smaller than the cost of each basic block of the region taken separately weighted by its execution probability. To evaluate those costs, we consider all possible paths impacted by the if-conversion. 
 
-The prevalent idea is that a region can be if-converted if the cost of the resulting if-converted basic block is smaller than the cost of each basic block of the region taken separately weighted by its frequency. To evaluate the cost of the region before if-conversion, we consider all possible paths from the \textit{entry} block to the \textit{exit} block. For all transformations but the conjunctive predicate merging, there are only two disjoint paths.
+For all transformations but the conjunctive predicate merging, there are two such paths starting at basic-block \textit{head}. For the code of Figure~\ref{fig:paths_reduction}, we would have $\textit{path}_p=[\textit{head}, B_1, \textit{exit}[$ and $\textit{path}_{\overline{p}}=[\textit{head}, B'_1, B'_2, \textit{exit}[$ of respective probability $\proba{p}$ and $\proba{\overline{p}}$. For a path $\textit{P}_q=[B_0, B_1, \dots, B_n[$ of probability $\proba{q}$, its cost is given by 
+$\cost{\textit{P}_q}=\proba{q}\times \sum_{i=0}^{n-1} \left(\cost{B_i}+\cost{(B_i,B_{i+1})}\right)$ where the cost a basic-block $\cost{B_i}$ is estimated using its schedule height; the cost of an edge $\cost{(B_i,B_{i+1})}$ is set to the branch latency $\brlat$ if it corresponds to a taken conditional branch or to 0 otherwise.
 
-We compare the cost of the region before if-conversion. So the cost of a path is the schedule estimation of all the blocks in the path pondered by the execution profile:
-\begin{align*}
-Cost(path)=Freq(path)*\sum_{k=1}^n(Cost(bb_{k}))
-\end{align*}
-The cost of the region starting at basic block $head$ before if-conversion is therefore the cost of all the basic blocks in the considered region, on each path.
-\begin{align*}
-Cost(BBs_{before:\ ifc})=Cost(bb_{head}) + branchlat + Cost(bbs_{taken:\ path}) + Cost(bbs_{fall-though:\ path})
-\end{align*}
-The Cost after if-conversion is estimated with:
-\begin{align*}
-Cost(BB_{after:\ ifc})=Cost(bb_{head} \circ bb_{taken:\ path} \circ bb_{fall-though:\ path})
-\end{align*}
-Where $\circ$ is the composition function that merges basic blocks together, removes associated branches and creates the predicate operations. The resulting $Cost$ applied to the new basic block represents the estimated schedule after if-conversion, that will be effective only if
-\begin{align*}
-Cost(BBs_{before:\ ifc}) > Cost(BB_{after:\ ifc})
-\end{align*}
+Let $\textit{path}_p=[\textit{head}, B_1, \dots, B_n, \textit{exit}[$ and $\textit{path}_{\overline{p}}=[\textit{head}, B'_1, \dots, B'_m, \textit{exit}[$ be the two paths. 
+Then $\cost{\textit{path}_p}+\cost{\textit{path}_{\overline{p}}}$, the overall cost  before if-conversion  simplifies to
+$$\textsf{cost}_{\textsf{control}}=\cost{\textit{head}} + \proba{p}\times\left(\brlat+\sum_{i=0}^n \cost{B_i}\right) + \proba{\overline{p}}\times\sum_{i=0}^m \cost{B'_i}$$
+This is to be compared to the cost after if-conversion
+$$\textsf{cost}_{\textsf{predicated}}=\cost{\textit{head} \circ \left(\bigcirc_{i=1}^n B_i\right)\circ \left(\bigcirc_{i=1}^m B'_i\right)  }$$
+where $\circ$ is the composition function that merges basic blocks together, removes associated branches and creates the predicate operations. 
 
-The estimated cost of the if-converted region is the schedule height estimation of the instructions without the branches. When the schedule height of the if-converted region is smaller than the profiled estimation, then it is profitable.
+\begin{figure}[h]
+  \includegraphics[scale=0.7]{paths_reduction_a.pdf}\hspace{0.5cm}\includegraphics[scale=0.7]{paths_reduction_b.pdf}
+  \caption{$\phi$ reduction\label{fig:paths_reduction}}
+\end{figure}
 
-The profitability of logical disjunctive and conjunctive merge, convergent or not, can be considered as a simple merge of two paths. Consider the example from Figure~\ref{fig:phi_merge}. Since we are aiming at merging $side$ into $head$, we have:
-\begin{align*}
-Cost(BBs_{before:\ ifc})=Cost(bb_{head}) + branchlat + Cost(bbs_{head-side:\ path})
-\end{align*}
-which is after if-conversion
-\begin{align*}
-Cost(BB_{after:\ ifc})=Cost(bb_{head} \circ bb_{head-side:\ path} +1)
-\end{align*}
+The profitability for the logical disjunctive and conjunctive merge (convergent or not)  can be done similarly. As shown in Figure~\ref{fig:paths_convergent} there are three paths impacted by the transformation: $\textit{path}_{p\wedge q}=[\textit{head}, \textit{side}, B_1[$, $\textit{path}_{p\wedge \overline{q}}=[\textit{head}, \textit{side}, \textit{exit}[$, and $\textit{path}_{\overline{p}}=[\textit{head}, \textit{exit}[$ of respective probability  $\proba{p\wedge q}$, $\proba{p\wedge \overline{q}}$, and $\proba{\overline{p}}$. The overall cost before the transformation $\cost{\textit{path}_{p\wedge q}}+\cost{\textit{path}_{p\wedge \overline{q}}}+\cost{\textit{path}_{\overline{p}}}$ simplifies to
+$$\textsf{cost}_{\textsf{control}}=\cost{\textit{head}}+(1+\proba{p})\times\brlat$$
+which should be compared to
+$$\textsf{cost}_{\textsf{predicated}}=\cost{\textit{head}\circ \textit{side}}+\brlat$$
 
-Note that since the frequency for the $head-exit$ path, for $(p\wedge \overline{q})\vee \overline{p}$, and the frequency for the $head->B1$ path, for $p\wedge q$, are unchanged after if-conversion. Those paths are not included into the profitability function.
-However, it is interesting to observe that when the $head-side$ path Cost is higher than the if-conversion budget, emitting a conjunctive merge might not be beneficial, and another strategy such as block duplication of the $exit$ block will be evaluated.
+\begin{figure}[h]
+  \includegraphics[scale=0.7]{paths_convergent.pdf}
+  \caption{conjunctive predicate merge\label{fig:paths_convergent}}
+\end{figure}
 
-The objective function needs the target machine description to derive the instruction latencies, resource usage and scheduling constraints. The local dependencies computed between instructions are used to compute the dependence height. The branch frequency is obtained either from static branch prediction heuristics, profile information or user inserted directives. Naturally, this heuristic can be either pessimistic, because it does not take into account new optimization opportunities introduced by the branch removals or explicit new dependencies, or optimistic because of bad register pressure estimation leading to register spilling on the critical path, or uncertainty in the branch prediction. But since the SSA incremental if-conversion framework reduces the scope for the decision function to a localized part of the CFG, the size and complexity of the inner region under consideration makes the profitability a comprehensive process. Consequently, this cost function must be fast enough to be reapplied to each hammock during the incremental processing, with the advantage that all the instructions introduced by the if-conversion process in the inner regions, such as new predicate merging instructions or new temporary pseudo registers, will be accounted for in the decision to if-convert the regions encompassing them.
+Note that if $\proba{p}\ll 1$, emitting a conjunctive merge might not be beneficial. In that case, another strategy such as path duplication from the \textit{exit} block will be evaluated.
+
+The objective function needs the target machine description to derive the instruction latencies, resource usage and scheduling constraints. The local dependencies computed between instructions are used to compute the dependence height. The branch probability is obtained either from static branch prediction heuristics, profile information or user inserted directives. Naturally, this heuristic can be either pessimistic, because it does not take into account new optimization opportunities introduced by the branch removals or explicit new dependencies, or optimistic because of bad register pressure estimation leading to register spilling on the critical path, or uncertainty in the branch prediction. But since the SSA incremental if-conversion framework reduces the scope for the decision function to a localized part of the CFG, the size and complexity of the inner region under consideration makes the profitability a comprehensive process. This cost function is fast enough to be reapplied to each region during the incremental processing, with the advantage that all the instructions introduced by the if-conversion process in the inner regions, such as new predicate merging instructions or new temporary pseudo registers, can be taken into account.
 
 \section{Conclusion} 
 
