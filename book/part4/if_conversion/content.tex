@@ -384,13 +384,13 @@ Aggressive if-conversion can easily exceed the processor resources, leading to e
 The prevalent idea is that a region can be if-converted if the cost of the resulting if-converted basic block is smaller than the cost of each basic block of the region taken separately weighted by its execution probability. To evaluate those costs, we consider all possible paths impacted by the if-conversion. 
 
 For all transformations but the conjunctive predicate merging, there are two such paths starting at basic-block \textit{head}. For the code of Figure~\ref{fig:paths_reduction}, we would have $\textit{path}_p=[\textit{head}, B_1, \textit{exit}[$ and $\textit{path}_{\overline{p}}=[\textit{head}, B'_1, B'_2, \textit{exit}[$ of respective probability $\proba{p}$ and $\proba{\overline{p}}$. For a path $\textit{P}_q=[B_0, B_1, \dots, B_n[$ of probability $\proba{q}$, its cost is given by 
-$\cost{\textit{P}_q}=\proba{q}\times \sum_{i=0}^{n-1} \left(\cost{B_i}+\cost{(B_i,B_{i+1})}\right)$ where the cost a basic-block $\cost{B_i}$ is estimated using its schedule height; the cost of an edge $\cost{(B_i,B_{i+1})}$ is set to the branch latency $\brlat$ if it corresponds to a taken conditional branch or to 0 otherwise.
+$\cost{\textit{P}_q}=\proba{q}\times \sum_{i=0}^{n-1} \cost{[B_i,B_{i+1}[}$ where $\cost{[B_i,B_{i+1}[}$ represents the cost of basic-block $\cost{[B_i]}$ estimated using its schedule height plus the branch latency $\brlat$, if the edge $(B_i,B_{i+1})$ corresponds to a conditional branch, 0 otherwise. Note that if $B_i$ branches to $S_q$ on predicate $q$, and falls through to $S_{\overline{q}}$, $\cost{B_i}=\proba{q}\times \left(\cost{[B_i,S_q[}\right)+\proba{\overline{q}}\times \left(\cost{[B_i,S_{\overline{q}}[}\right)=\cost{[B_i]}+\proba{q}\times\brlat$.
 
-Let $\textit{path}_p=[\textit{head}, B_1, \dots, B_n, \textit{exit}[$ and $\textit{path}_{\overline{p}}=[\textit{head}, B'_1, \dots, B'_m, \textit{exit}[$ be the two paths. 
-Then $\cost{\textit{path}_p}+\cost{\textit{path}_{\overline{p}}}$, the overall cost  before if-conversion  simplifies to
-$$\textsf{cost}_{\textsf{control}}=\cost{\textit{head}} + \proba{p}\times\left(\brlat+\sum_{i=0}^n \cost{B_i}\right) + \proba{\overline{p}}\times\sum_{i=0}^m \cost{B'_i}$$
+Let $\textit{path}_p=[\textit{head}, B_1, \dots, B_n, \textit{exit}[$ and $\textit{path}_{\overline{p}}=[\textit{head}, B'_1, \dots, B'_m, \textit{exit}[$ be the two paths with the condition taken branch on $p$.
+Then, the overall cost  before if-conversion  simplifies to
+$$\textsf{cost}_{\textsf{control}}=\cost{\textit{path}_p}+\cost{\textit{path}_{\overline{p}}}=\cost{[\textit{head}]} + \proba{p}\times\left(\brlat+\sum_{i=0}^n \cost{[B_i]}\right) + \proba{\overline{p}}\times\sum_{i=0}^m \cost{[B'_i]}$$
 This is to be compared to the cost after if-conversion
-$$\textsf{cost}_{\textsf{predicated}}=\cost{\textit{head} \circ \left(\bigcirc_{i=1}^n B_i\right)\circ \left(\bigcirc_{i=1}^m B'_i\right)  }$$
+$$\textsf{cost}_{\textsf{predicated}}=\cost{\left[\textit{head} \circ \left(\bigcirc_{i=1}^n B_i\right)\circ \left(\bigcirc_{i=1}^m B'_i\right)  \right]}$$
 where $\circ$ is the composition function that merges basic blocks together, removes associated branches and creates the predicate operations. 
 
 \begin{figure}[h]
@@ -398,17 +398,16 @@ where $\circ$ is the composition function that merges basic blocks together, rem
   \caption{$\phi$ reduction\label{fig:paths_reduction}}
 \end{figure}
 
-The profitability for the logical disjunctive and conjunctive merge (convergent or not)  can be done similarly. As shown in Figure~\ref{fig:paths_convergent} there are three paths impacted by the transformation: $\textit{path}_{p\wedge q}=[\textit{head}, \textit{side}, B_1[$, $\textit{path}_{p\wedge \overline{q}}=[\textit{head}, \textit{side}, \textit{exit}[$, and $\textit{path}_{\overline{p}}=[\textit{head}, \textit{exit}[$ of respective probability  $\proba{p\wedge q}$, $\proba{p\wedge \overline{q}}$, and $\proba{\overline{p}}$. The overall cost before the transformation $\cost{\textit{path}_{p\wedge q}}+\cost{\textit{path}_{p\wedge \overline{q}}}+\cost{\textit{path}_{\overline{p}}}$ simplifies to
-$$\textsf{cost}_{\textsf{control}}=\cost{\textit{head}}+(1+\proba{p})\times\brlat$$
-which should be compared to
-$$\textsf{cost}_{\textsf{predicated}}=\cost{\textit{head}\circ \textit{side}}+\brlat$$
-
+The profitability for the logical conjunctive merge of Figure~\ref{fig:paths_convergent} can be evaluated similarly. There are three paths impacted by the transformation: $\textit{path}_{p\wedge q}=[\textit{head}, \textit{side}, B_1[$, $\textit{path}_{p\wedge \overline{q}}=[\textit{head}, \textit{side}, \textit{exit}[$, and $\textit{path}_{\overline{p}}=[\textit{head}, \textit{exit}[$ of respective probability  $\proba{p\wedge q}$, $\proba{p\wedge \overline{q}}$, and $\proba{\overline{p}}$. The overall cost before the transformation (if branches are on $p$ and $q$) $\cost{\textit{path}_{p\wedge q}}+\cost{\textit{path}_{p\wedge \overline{q}}}+\cost{\textit{path}_{\overline{p}}}$ simplifies to
+$$\textsf{cost}_{\textsf{control}}=\cost{\textit{head}}+\cost{\textit{side}}=\cost{\textit{[head]}}+\proba{p}\times (1+\proba{q})\times\brlat$$
+which should be compared to (if the branch on the new \textit{head} block is on $p \wedge q$)
+$$\textsf{cost}_{\textsf{predicated}}=\cost{\textit{head}\circ \textit{side}}=\cost{[\textit{head}\circ \textit{side}]}+\proba{p}\times\proba{q}\times \brlat$$
 \begin{figure}[h]
   \includegraphics[scale=0.7]{paths_convergent.pdf}
   \caption{conjunctive predicate merge\label{fig:paths_convergent}}
 \end{figure}
 
-Note that if $\proba{p}\ll 1$, emitting a conjunctive merge might not be beneficial. In that case, another strategy such as path duplication from the \textit{exit} block will be evaluated.
+Note that if $\proba{p}\ll 1$, emitting a conjunctive merge might not be beneficial. In that case, another strategy such as path duplication from the \textit{exit} block will be evaluated. Profitability for any conjunctive predicate merge (disjunctive or conjunctive; convergent or not) is evaluated similarly.
 
 The objective function needs the target machine description to derive the instruction latencies, resource usage and scheduling constraints. The local dependencies computed between instructions are used to compute the dependence height. The branch probability is obtained either from static branch prediction heuristics, profile information or user inserted directives. Naturally, this heuristic can be either pessimistic, because it does not take into account new optimization opportunities introduced by the branch removals or explicit new dependencies, or optimistic because of bad register pressure estimation leading to register spilling on the critical path, or uncertainty in the branch prediction. But since the SSA incremental if-conversion framework reduces the scope for the decision function to a localized part of the CFG, the size and complexity of the inner region under consideration makes the profitability a comprehensive process. This cost function is fast enough to be reapplied to each region during the incremental processing, with the advantage that all the instructions introduced by the if-conversion process in the inner regions, such as new predicate merging instructions or new temporary pseudo registers, can be taken into account.
 
