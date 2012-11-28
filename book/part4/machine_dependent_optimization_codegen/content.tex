@@ -44,12 +44,15 @@ scheduling.
 
 This increasing sophistication of compiler code generation motivates the
 introduction of the SSA form in order to simplify analyses and optimizations.
-However, using the SSA form on machine code raises issues, a number of
-which we list in Section~\ref{sec:ssa-codegen-issues}.  Some options for
-engineering a code generator with the SSA form as a first class representation
-are presented in Section~\ref{sec:ssa-codegen-engineering}.  The suitability of
-the SSA form for main code generation phases is discussed in
+However, engineering the SSA form on machine code raises a number of issues,
+some of which we present in Section~\ref{sec:ssa-codegen-engineering}.  The
+suitability of the SSA form for main code generation phases is discussed in
 Section~\ref{sec:ssa-codegen-suitability}.
+
+\section{SSA form engineering issues}
+\label{sec:ssa-codegen-engineering}
+
+\subsection{About instructions, operands, operations, and operators}
 
 In this chapter, we adopt the following terminology. An \emph{instruction} is a
 member of the processor Instruction Set Architecture (ISA). Instructions access
@@ -74,9 +77,6 @@ encoded in register mask immediates.
 
 % of instructions such as PUSH/POP on the ARM.
 
-\section{Issues with the SSA form on machine code}
-\label{sec:ssa-codegen-issues}
-
 \subsection{Representation of instruction semantics}
 
 Unlike IR operators, there is no straightforward mapping between machine
@@ -100,27 +100,34 @@ was implemented in the SML/NJ \cite{Leung:1999:PLDI} compiler and the LAO
 compiler \cite{Dinechin:2000:CASES}.  \end{itemize}
 
 An issue related to the representation of instruction semantics is how to factor
-it. Most information can be statically tabulated by the instruction operator, yet
-properties such as safety for control speculation, or being equivalent to a
+it. Most information can be statically tabulated by the instruction operator,
+yet properties such as safety for control speculation, or being equivalent to a
 simple IR instruction, can be refined by the context where the instruction
 appears. For instance, range propagation may ensure that an addition cannot
-overflow, that a division by zero is impossible, or that a memory access is safe.
-Alternate semantic combinators, or modifiers of the instruction operator semantic
-combinator, need to be associated with each machine instruction of the code
-generator internal representation.
+overflow, that a division by zero is impossible, or that a memory access is safe
+for control speculation.  Alternate semantic combinators, or modifiers of the
+instruction operator semantic combinator, need to be associated with each
+machine instruction of the code generator internal representation.
 
 Finally, code generation for some instruction set architectures require that
 pseudo-instructions with known semantics be available, besides variants of
 $\phi$-functions and parallel COPY instructions. \begin{itemize}
-\item Machine instructions that
-operate on register pairs, such as the long multiplies on the ARM, or more
-generally on register tuples, are common. In such cases there is a need for
-pseudo-instructions to compose wide operands in register tuples, and to extract
-independently register allocatable operands from wide operands.
-\item A number of embedded processor architectures such as the Tensilica Xtensa
-provide hardware loops, where an implicit conditional branch back to the loop
-header is taken whenever the program counter match some address. The implied
-loop-back branch is also conveniently materialized by a pseudo-instruction.
+
+\item Machine instructions that operate on register pairs, such as the long
+multiplies on the ARM, or more generally on register tuples, are common. In such
+cases there is a need for pseudo-instructions to compose wide operands in
+register tuples, and to extract independently register allocatable operands from
+wide operands.
+
+\item Embedded processor architectures such as the Tensilica Xtensa provide
+hardware loops, where an implicit conditional branch back to the loop header is
+taken whenever the program counter match some address. The implied loop-back
+branch is also conveniently materialized by a pseudo-instruction.
+
+\item Register allocation for predicated architectures need that the live-ranges
+of pseudo-registers or SSA variables with predicated definitions be contained by
+kill pseudo-instructions \cite{Gillies:1996:MICRO}.
+
 \end{itemize}
 
 \subsection{Operand naming constraints}
@@ -215,7 +222,7 @@ simple way to handle predicated or conditional execution in vanilla SSA form:
 \item For each target operand of the predicated or conditional instruction, add
 a corresponding source operand in the instruction signature.
 
-\item For each added source operand, add a 'must be same same register' renaming
+\item For each added source operand, add a 'must be same same register' naming
 constraint with the corresponding target operand.
 
 \end{itemize}
@@ -224,10 +231,6 @@ oblivious to predicated and conditional code. The drawback of this solution is
 that non-kill definitions of a given variable (before SSA renaming) remain in
 dominance order across transformations, as opposed to $\psi$-SSA where predicate
 value analysis may enable to relax this order.
-
-
-\section{SSA form in a code generator}
-\label{sec:ssa-codegen-engineering}
 
 %\subsection{Machine description system}
 %
@@ -256,216 +259,78 @@ value analysis may enable to relax this order.
 % What about predicated code for critical edge splitting?
 % What is the coalescing that Sreedhar can do and Chaintin cannot?
 
-\subsection{Control tree flavor}
+\subsection{Program representation invariants}
 
-%The code generator program representation must embed enough information to
-%generate an executable and debuggable program, and this information is usually
-%passed 
+% PHIs with memory operands (stack slots), also need parallel spill instructions
+% Enable to coalesce memory slots
 
-%Moreover, the code generator
-%needs to access higher-level information
+Enginering a code generator requires decisions about what information is
+transient, or belongs to the invariants of the program representation.  By
+invariant we mean a property which is ensured before and after each phase.
+Transient information is recomputed as needed by some phases from the program
+representation invariants.  The applicability of the SSA form only spans the
+early phases of the code generation process: from instruction selection, down to
+register allocation.  After register allocation, program variables are mapped to
+architectural registers or to memory locations, so the SSA form analyses and
+optimizations no longer apply. In addition, a program may be only partially
+converted to the SSA form. This motivates the engineering of the SSA form
+as extensions to a baseline code generator program representation.
 
-\begin{itemize}
+Some extensions to the program representation required by the SSA form are
+better engineered as invariants, in particular for operands, operations, basic
+blocks, and control-flow graph.  Operands which are SSA variables need to record
+the unique operation that defines them as target operand, and possibly to
+maintain the list of where they appear as source operands. Operations such as
+$\phi$-functions, $\sigma$-functions of the SSI form \cite{BoissinotBDR12}, and
+parallel copies, may appear as regular operations constrained to specific places
+in the basic blocks. The incoming arcs of basic blocks need also be kept in the
+same order as the source operands of each of its $\phi$-functions.
 
-\item Control tree and memory dependences and user hints
+A program representation invariant that impacts SSA form engineering is the
+structure of loops. The modern way of identifying loops in a CFG is the
+construction of a loop nesting forest as defined by Ramalingam
+\cite{ramalingam:loopforest}. Non-reducible control-flow allow for different
+loop nesting forest for a given CFG, yet high-level information such as
+loop-carried memory dependences, or user-level loop annotations, are provided to
+the code generator. This information is attached to a loop structure, which thus
+becomes an invariant. The impact on the SSA form is that some loop nesting
+forests, such as the Havlak \cite{havlak:loop} loop structure, are better than
+others for key analyses such as SSA variable liveness
+\cite{Boissinot:2011:APLAS}.
 
-\item Control structures Bourdoncle Havlak.
+Up-to-date live-in and live-out sets at basic block boundaries are also
+candidates for being program representation invariants. However, when using and
+updating liveness information under the SSA form, it appears convenient to
+distinguish the $\phi$-function contributions from the results of dataflow
+fixpoint computation.  In particular, Sreedhar et al.  \cite{SreedharSep99}
+introduced the $\phi$-function semantics that became later known as
+\emph{multiplexing mode} (see
+Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}), where a
+$\phi$-function $B_0:a_0=\phi(B_1:a_1,\dots,B_n:a_n)$ makes $a_0$ live-in of
+basic block $B_0$, and $a_1,\dots a_n$ live-out of basic blocks $B_1,\dots B_n$.
+The classic basic block invariants $\hbox{LiveIn}(B)$ and $\hbox{LiveOut}(B)$
+are then complemented with $\hbox{PhiDefs}(B)$ and $\hbox{PhiUses}(B)$
+\cite{Boissinot:2011:APLAS}.
 
-\item Choice to use DJ graph or not
+Finally, we know one compiler who adopted the invariant that the SSA form be
+conventional across the code generation phases. This approach was motivated in
+part by the fact that some classic optimizations such as SSAPRE \cite{CCK+97}
+require that the 'live ranges of different versions of $h$ [an arbitrary SSA
+variable] do not overlap', implying the SSA form is conventional. Other
+compilers that use SSA numbers and omit the $\phi$-functions from the program
+representation \cite{Lapkowski:1996:CASCON} are similary constrained. Work by
+Sreedhar et al. \cite{SreedharSep99} makes it clear how to make the transformed
+SSA form conventional wherever required, so there is no reason nowadays for this
+property to be an invariant.
 
-\item Loop nesting forest for abstract interpretation (under SSA)
-
-\item Mismatch with the IR control tree
-
-\end{itemize}
-
-\subsection{SSA form variant}
-
-\begin{itemize}
-
-\item Mixes with non-SSA form or not
-
-\item Choice to use multiplex or not
-
-\item Choices of phi function semantics
-
-\item Choice to keep conventional or not.
-
-\item SSI flavor or not
-
-\item SSA on stack slots for register allocation
-
-\end{itemize}
-
-\subsection{Variable lineness and interference}
-
-\begin{itemize}
-
-\item liveness sets, liveness checking
-(Chapter~\ref{chapter:ssa_tells_nothing_of_liveness}).
-
-\item Variable interference, intersection
-
-\end{itemize}
 
 %More generally, the code generator intermediate representation should allow
 %that machine instruction operands mix SSA variables, ordinary compiler
 %temporaries, and possibly architectural registers.
 
-\subsection{SSA form construction}
-
-\begin{itemize}
-
-\item When is SSA form constructed
-
-\item Copy folding or not
-
-\item Inherit from byte-code of from IR
-
-\item Conventional SSA is assumed for inputs of phases.
-
-\end{itemize}
-
-\subsection{SSA form destruction}
-
-\begin{itemize}
-
-\item Before, during, after register allocation
-
-\item Sreedhar, Boissinot
-
-\item Parallel copy sequentialization
-
-\item Pseudo-kill insertion if no regalloc under SSA
-
-\end{itemize}
-
-\begin{itemize}
-
-\item Cytron et al. ``Efficiently Computing Static Single Assignment Form and
-the Control Dependence Graph'' [TOPLAS 13(4) 1991]
-\begin{itemize}
-\item insert COPY for the arguments of $\Phi$-functions in the predecessors,
-then rely on the register allocator coalescing
-\end{itemize}
-
-\item Briggs et al. ``Practical Improvements to the Construction and Destruction
-of Static Single Assignment Form'' [SPE 28(8) 1998]
-
-\begin{itemize}
-\item identifies 'Lost Copy' and 'Swap' problems
-\item fix incorrect behavior of Cytron et al. [TOPLAS 13(4) 1991]
-when critical edges are not split
-\end{itemize}
-
-\item Budimli\'c et al. ``Fast Copy Coalescing and Live-Range Identification''
-[PLDI'02]
-
-\begin{itemize}
-\item lightweight SSA destruction motivated by JIT compilation
-\item use the SSA form dominance of definitions over uses to avoid explicit
-interference graph
-\item construct SSA-webs with early pruning of interfering variables, then
-partition into non-interfering classes
-\item introduce the ``dominance forest'' data-structure to avoid quadratic
-number of interference tests
-\item critical edge splitting is required
-\end{itemize}
-
-\item Sreedhar et al. ``Translating Out of Static Single Assignment Form''
-[SAS'99] (US patent 6182284):
-
-\begin{itemize}
-\item Method~1 inserts COPY for the arguments of $\Phi$-functions in the
-predecessors \emph{and} for the $\Phi$-functions targets in the current block,
-then applies a new SSA-based coalescing algorithm
-\item Method~3 maintains liveness and interference graph to insert COPY that will not
-be removed by the new SSA-based coalescing algorithm
-\item the new SSA-based coalescing algorithm is more effective than register allocation
-coalescing
-%\item Both methods yield significantly better code than Briggs et al. [SPE 28(8) 1998]
-%or Budimli\'c et al. [PLDI'02]
-\end{itemize}
-
-\item Leung \& George ``Static Single Assignment Form for Machine Code'' [PLDI'99]
-
-\begin{itemize}
-\item handles the operand constraints of machine-level SSA form
-\item builds on the algorithm by Briggs et al. [SPE 28(8) 1998]
-\end{itemize}
-
-\item Rastello et al. ``Optimizing Translation Out of SSA using Renaming
-Constraints'' [CGO'04] (STMicroelectronics)
-\begin{itemize}
-\item fix bugs and generalize Leung \& George [PLDI'99]
-\item generalize Sreedhar et al. [SAS'99] (and avoid patent)
-\end{itemize}
-
-\end{itemize}
-
-
-\begin{center} \underline{Sreedhar et al. [SAS~1999] Liveness and Congruence Example}
-\end{center}
-
-%\input{ssa-live.latex}
-
-\begin{itemize}
-
-\item variables ${x_1, x_3, x_3, y_1, y_2, y_3}$ are in the same congruence class
-
-\item in this example, several interferences inside the congruence class
-
-\end{itemize}
-
-
-\begin{center} \underline{Insights of Sreedhar et al. [SAS~1999]}
-\end{center}
-
-\begin{itemize}
-
-\item a $\Phi$-congruence class is the closure of the $\Phi$-connected relation
-
-\item liveness under SSA form: $\Phi$ arguments are live-out of predecessor
-blocks and $\Phi$ targets are live-in of $\Phi$ block
-
-\item SSA form is \emph{conventional} if no two members of a $\Phi$-congruence
-class interfere under this liveness
-
-\item correct SSA destruction is the removal of $\Phi$-functions from
-a conventional SSA form
-
-\item after SSA construction (without COPY propagation), the SSA form is
-conventional
-
-\item Methods 1 -- 3 restore a conventional SSA form
-
-\item the new SSA-based coalescing is able to coalesce interfering variables, as long
-as the SSA form remains conventional
-
-\end{itemize}
-
-
-\begin{itemize}
-
-\item Region-based or not
-
-\item Register allocate under SSA or not
-
-\item Reassociation under SSA
-
-\item Coalescing aggressiveness before instruction scheduling (dedicated etc.)
-
-\end{itemize}
-
 
 \section{Code generation phases and the SSA form}
 \label{sec:ssa-codegen-suitability}
-
-The applicability of the SSA form only spans the early phases of the code
-generation process: from instruction selection, down to register allocation.
-After register allocation, program variables are mapped to architectural
-registers or to memory locations, so the SSA form analyses and optimizations no
-longer apply.
 
 \subsection{Instruction selection}
 
@@ -583,12 +448,12 @@ multiple predicates. A restriction of the RK algorithm to single-entry
 single-exit regions is proposed, adapted to the Unconditional PDIs and the ORP
 instructions. The other contribution from this work is the generation of
 'phi-ops', whose insertion points are computed like the SSA form placement of the
-$\phi$-functions. The source operands of the $\phi$-functions are replaced by
-so-called $\phi$-lists, where each operand is associated with the predicate of
+$\phi$-functions. The $\phi$-functions source operands are replaced by
+$\phi$-lists, where each operand is associated with the predicate of
 its source basic block. The $\phi$-lists are processed by topological order of
 the operand predicates to generate the 'phi-ops'.
 
-\end{itemize} Recent contributions to if-conversion input SSA form
+\end{itemize} Recent contributions to if-conversion input SSA form,
 and output $\psi$-SSA form: \begin{itemize}
 
 \item Stoutchinin \& Ferri\`ere \cite{Stoutchinin:2001:MICRO} introduce
@@ -736,7 +601,7 @@ Induction variable classification (Chapter~\ref{chapter:loop_tree}),
 
 %Hardware loop mapping.
 
-\subsection{Memory addressing and memory packing}
+%\subsection{Memory addressing and memory packing}
 
 Memory addressing optimizations include selection of auto-modified addressing
 modes. Memory packing optimizations select wider memory access instructions
@@ -753,6 +618,9 @@ GVN or LICM or PRE
 
 Instruction re-selection. Uses bit width analysis. SIMD idioms.
 Required because analyses and code specialization
+
+Reassociation
+
 
 \subsection{Pre-pass instruction scheduling}
 
@@ -824,7 +692,148 @@ classic compiler temporary variables. This representation is obtained from the
 SSA form after aggressive coalescing and SSA destruction. If required by the
 register allocation, the SSA form should be re-constructed.
 
+
+\subsection{SSA form destruction}
+
+The destruction of the SSA form in a code generator is required before the
+pre-pass instruction scheduling and software pipelining, at least with the
+established techniques, and also before classic register allocation such as
+George \& Appel \cite{George96}. A weaker form is the conversion of transformed
+SSA form to conventional, which is required by some register allocators
+operating on the SSA form \cite{Pereira08}. For all these uses cases, the main
+objective besides removing the SSA form extensions from the program
+representation is to ensure that the ISA and ABI operand naming constraints are
+satisfied. These objectives are met with aggressive coalescing.
+
+A summary of the SSA form destruction techniques is that correctness issues of
+the original out-of-SSA translation of Cytron et al. \cite{Cytron} were
+addressed first. The focus then moved to the handling of ISA and
+ABI operand naming constraints. Simultaneously, the time and space constraints of
+JIT compilation motivated new approaches to SSA variable interference checks.
+State-of-the-art algorithms such as those presented in
+Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} fix the remaining
+correctness issues, handle all ISA and ABI operand naming constraints, support
+aggressive coalescing, and can be adapted to JIT compilation constraints.
+\begin{itemize}
+
+\item Cytron et al. \cite{Cytron} describe the process of 'translating out of
+SSA' as 'naive replacement preceded by dead code elimination and followed by
+coloring' (graph coloring coalescing). The naive replacement replaces
+each $\phi$-function $B_0:a_0=\phi(B_1:a_1,\dots,B_n:a_n)$ by $n$ copies $a_0 = a_i$,
+one per basic block $B_i$.
+
+\item Briggs et al. \cite{bib:briggs.ea-98} identifies correctness issues in
+Cytron et al. translation out of (transformed) SSA form and illustrate them by
+the 'lost-copy' and the 'swap' problems. These issues are related to the fact
+that critical edges must be split, and that a sequence of $\phi$-functions at
+the start of a basic block has parallel assignment semantics. Two SSA form
+destruction algorithms are proposed, depending on the presence of critical edges
+in the confrol-flow graph.
+
+\item Sreedhar et al. \cite{SreedharSep99} 
+
+\end{itemize}
+
+
+\begin{itemize}
+
+\item Budimli\'c et al. ``Fast Copy Coalescing and Live-Range Identification''
+[PLDI'02]
+
+\begin{itemize}
+\item lightweight SSA destruction motivated by JIT compilation
+\item use the SSA form dominance of definitions over uses to avoid explicit
+interference graph
+\item construct SSA-webs with early pruning of interfering variables, then
+partition into non-interfering classes
+\item introduce the ``dominance forest'' data-structure to avoid quadratic
+number of interference tests
+\item critical edge splitting is required
+\end{itemize}
+
+\item Sreedhar et al. ``Translating Out of Static Single Assignment Form''
+[SAS'99] (US patent 6182284):
+
+\begin{itemize}
+\item Method~1 inserts COPY for the arguments of $\Phi$-functions in the
+predecessors \emph{and} for the $\Phi$-functions targets in the current block,
+then applies a new SSA-based coalescing algorithm
+\item Method~3 maintains liveness and interference graph to insert COPY that will not
+be removed by the new SSA-based coalescing algorithm
+\item the new SSA-based coalescing algorithm is more effective than register allocation
+coalescing
+%\item Both methods yield significantly better code than Briggs et al. [SPE 28(8) 1998]
+%or Budimli\'c et al. [PLDI'02]
+\end{itemize}
+
+\item Leung \& George ``Static Single Assignment Form for Machine Code'' [PLDI'99]
+
+\begin{itemize}
+\item handles the operand constraints of machine-level SSA form
+\item builds on the algorithm by Briggs et al. [SPE 28(8) 1998]
+\item Errors in missing parallel copies in case of W shaped CFG, the copies in
+the pointy edge need to be in parallel
+\end{itemize}
+
+\item Rastello et al. ``Optimizing Translation Out of SSA using Renaming
+Constraints'' [CGO'04] (STMicroelectronics)
+\begin{itemize}
+\item fix bugs and generalize Leung \& George [PLDI'99]
+\item generalize Sreedhar et al. [SAS'99] (and avoid patent)
+\end{itemize}
+
+\end{itemize}
+
+
+\begin{center} \underline{Sreedhar et al. [SAS~1999] Liveness and Congruence Example}
+\end{center}
+
+%\input{ssa-live.latex}
+
+\begin{itemize}
+
+\item variables ${x_1, x_3, x_3, y_1, y_2, y_3}$ are in the same congruence class
+
+\item in this example, several interferences inside the congruence class
+
+\end{itemize}
+
+
+\begin{center} \underline{Insights of Sreedhar et al. [SAS~1999]}
+\end{center}
+
+\begin{itemize}
+
+\item a $\Phi$-congruence class is the closure of the $\Phi$-connected relation
+
+\item liveness under SSA form: $\Phi$ arguments are live-out of predecessor
+blocks and $\Phi$ targets are live-in of $\Phi$ block
+
+\item SSA form is \emph{conventional} if no two members of a $\Phi$-congruence
+class interfere under this liveness
+
+\item correct SSA destruction is the removal of $\Phi$-functions from
+a conventional SSA form
+
+\item after SSA construction (without COPY propagation), the SSA form is
+conventional
+
+\item Methods 1 -- 3 restore a conventional SSA form
+
+\item the new SSA-based coalescing is able to coalesce interfering variables, as long
+as the SSA form remains conventional
+
+\end{itemize}
+
+% virtual swap & lost copy: need parallel copies and critical arc splitting
+% critical arc splitting required when folded copy and multiple edges from same
+% predecessor
+
 \subsection{Register allocation}
+
+% brute-force is a conservative coalescing algorithm
+% for low run-times, better brute-force followed by decoalescing
+% see paperby Rastello, Guillon, Pereira for register aliasing
 
 The last major phase of code generation where SSA form has demonstrated benefits
 is register allocation and its three sub-problems: variable spilling, variable
