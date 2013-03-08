@@ -18,12 +18,12 @@
 
 \index{if-conversion}
 Very Large Instruction Word (VLIW)\index{Very Long Instruction Word, WLIW} or Explicitly Parallel Instruction Computing (EPIC) architectures make Instruction Level Parallelism (ILP)\index{Instruction Level Parallelism, ILP} visible within the Instruction Set Architecture (ISA), relying on static schedulers\index{scheduling} to organize the compiler output such that multiple instructions can be issued in each cycle.
-The imperative control flow\index{control flow} representation of the program, inherently imposes an order of execution between instructions of different basic blocks. Yet, two different instructions, even ``connected'' by some control flow edges, could be executed in parallel. As explained in Chapter~\ref{chapter:vsdg}, this is the case whenever they are connected neither by a data nor a control dependence. 
 
-If-conversion is the process of transforming a control flow region with conditional branches, into an equivalent predicated\index{predicated execution} or speculated\index{speculative execution} sequence of instructions (in a single basic block). If-converted code replaces control dependencies\index{dependence, control-} by data dependencies\index{dependence, data-}, and thus exposes parallelism\index{parallelism} very naturally within the new merging basic block. 
-Removing branches improves performance in several ways: By removing the misprediction penalty, the instruction fetch throughput is increased and the instruction cache locality improved. Enlarging the size of basic blocks allows earlier execution of long latency operations and the merging of multiple control flow paths into a single flow of execution, that can later be exploited by scheduling frameworks such as VLIW scheduling, hyperblock scheduling or modulo scheduling.\index{scheduling}
+If-conversion is the process of transforming a control flow region with conditional branches, into an equivalent predicated\index{predicated execution} or speculated\index{speculative execution} sequence of instructions (into a region of Basic Blocks (possible single) referred to as an Hyperblock. If-converted code replaces control dependencies\index{dependence, control-} by data dependencies\index{dependence, data-}, and thus exposes Instruction Level Parallelism\index{parallelism} very naturally within the new region at the software level.
 
-Consider the simple example given in figure \ref{fig:example1}, that represents the execution of an \texttt{if-then-else-end} statement on a 4-issue processor. In this figure, $r=q\cond r_1:r_2$ stands for a \texttt{select}\index{select, instruction} instruction where $r$ is assigned $r_1$ if $q$ is true, and $r_2$ otherwise. With standard basic block ordering, assuming that all instructions have a one cycle latency, the schedule height goes from six cycles in the most optimistic case, to seven cycles. After if-conversion the execution path is reduced to six cycles with no branches, regardless of the test outcome, and assuming a very optimistic one cycle branch penalty. But the main benefit here is that it can be executed without branch disruption. 
+Removing control hazards improves performance in several ways: By removing the misprediction penalty, the instruction fetch throughput is increased and the instruction cache locality improved. Enlarging the size of basic blocks allows earlier execution of long latency operations and the merging of multiple control flow paths into a single flow of execution, that can later be exploited by scheduling frameworks such as VLIW scheduling, hyperblock scheduling or modulo scheduling.\index{scheduling}
+
+Consider the simple example given in figure \ref{fig:example1}, that represents the execution of an \texttt{if-then-else-end} statement on a 4-issue processor with non-biased branches. In this figure, $r=q\cond r_1:r_2$ stands for a \texttt{select}\index{select, instruction} instruction where $r$ is assigned $r_1$ if $q$ is true, and $r_2$ otherwise. With standard basic block ordering, assuming that all instructions have a one cycle latency, the schedule height goes from five cycles in the most optimistic case, to six cycles. After if-conversion the execution path is reduced to four cycles with no branches, regardless of the test outcome, and assuming a very optimistic one cycle branch penalty. But the main benefit here is that it can be executed without branch disruption. 
 
 \begin{figure}
   \subfloat[Control Flow] {
@@ -37,15 +37,14 @@ Consider the simple example given in figure \ref{fig:example1}, that represents 
   \subfloat[After if-conversion] {
     \includegraphics[scale=0.9]{specul-ifconverted}
   }
-\caption{Static schedule of a simple region on a 4 issue processor. }
+\caption{Static schedule of a simple region on a 4-issue processor. }
 \label{fig:example1}
 \end{figure}
-
 
 From this introductory example, we can observe that:
 \begin{itemize}
 \item the two possible execution paths have been merged into a single execution path, implying a  better exploitation of the available resources;  
-\item the schedule height have been reduced, because instructions can be control speculated before the branch;\index{speculation}
+\item the schedule height has been reduced, because instructions can be control speculated before the branch;\index{speculation}
 \item the variables have been renamed, and a \textit{merge} pseudo-instruction have been introduced.
 \end{itemize}
 
@@ -95,17 +94,17 @@ Memory operations are  a major impediment to if-conversion. This is regrettable,
 %
 Stores can also be executed conditionally by speculating part of their address value, with additional constraints on the ordering on the memory operations due to possible alias between the two paths. Figure \ref{fig:spec} shows examples of various forms of speculative memory operations.
 
-Note that the \texttt{select} instruction is an architecture instruction that does not need to be replaced during the SSA destruction phase. If the target architecture does not provide such gated instruction\index{gated instruction}, it can be emulated using two conditional moves\index{conditional move}. This translation can be done afterward, and the \texttt{select} instruction still be used as an intermediate form. It allows the program to stay in full SSA form where all the data dependencies are made explicit, and can thus be feed to all SSA optimizers. 
+Note that the \texttt{select} instruction is an architecture instruction that does not need to be replaced during the SSA destruction phase. If the target architecture does not provide such gated instruction\index{gated instruction}, it can be emulated using two conditional moves\index{conditional move}. This translation can be done afterward, and the \texttt{select} instruction still be used as an intermediate form. It allows the program to stay in full SSA form where all the data dependencies are made explicit, and can thus be fed to all SSA optimizers. 
 
 \begin{figure}[h]
 \subfloat[IA64 speculative load]{\index{load, speculative}
 \begin{minipage}[b]{0.30\textwidth}
 $t = \texttt{ld.s(\textit{addr})} $ \\
-$\texttt{chk.s} $\\
+$\texttt{chk.s (t)} $\\
 $p \cond x = t$ 
 \end{minipage}
 }\hfill
-\subfloat[ST231 dismissible load]{\index{load, dismissible}
+\subfloat[Multiflow/ST231 dismissible load]{\index{load, dismissible}
 \begin{minipage}[b]{0.32\textwidth}
 $t = \texttt{ldw.d(\textit{addr})} $ \\
 $x = \texttt{select}\:p \cond t : x $ \\
@@ -136,7 +135,7 @@ This chapter is organized as follow: we start to describe the SSA techniques to 
 \section{Basic Transformations}
 \label{sec:basic}
 
-Global if-conversion approaches identify a control-flow region and if-convert it in one shot. As opposed to global approaches, the technique described in this chapter is based on incremental reductions. To this end, we consider basic SSA transformations which goal is to isolate a simple diamond-DAG structure (informally an \texttt{if-then-else-end}) that can be easily if-converted. The complete framework, that identifies and incrementally performs the transformation, will be described in Section~\ref{sec:if_conversion:hyperblock}. 
+Unlike global approaches, that identify a control-flow region and if-convert it in one shot, the technique described in this chapter is based on incremental reductions. To this end, we consider basic SSA transformations whose goal is to isolate a simple diamond-DAG structure (informally an \texttt{if-then-else-end}) that can be easily if-converted. The complete framework, that identifies and incrementally performs the transformation, is described in Section~\ref{sec:if_conversion:hyperblock}. 
 
 \subsection{SSA operations on Basic Blocks}
 
