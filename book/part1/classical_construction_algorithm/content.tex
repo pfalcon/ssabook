@@ -6,9 +6,8 @@
 \inputpath{{tikz/}{classical_construction_algorithm/tikz/}{part1/classical_construction_algorithm/tikz/}}
 
 { 
-\index{construction, of SSA}
-\index{destruction, of SSA}
-\index{SSA destruction}
+\index{SSA!construction}
+\index{SSA!destruction}
 %% jsinger - simple introductory paragraphs
 
 This chapter describes the standard algorithms for construction and
@@ -76,7 +75,7 @@ to demonstrate various aspects of SSA construction.
 
 
 \begin{figure}
-  \includegraphics[scale=0.9]{initial1.pdf}
+  \tikzfigure{initial1}
 \caption{\label{fig:classical_construction_algorithm:examplecfg}Example control flow graph, before
   SSA construction occurs.}
 \end{figure}
@@ -189,7 +188,7 @@ Figure~\ref{fig:classical_construction_algorithm:examplecfg_varx} shows the exam
 with \phifuns\ for $x$ inserted.
 
 \begin{figure}
-  \includegraphics[scale=0.9]{initial2.pdf}
+  \tikzfigure{initial2}
 \caption{\label{fig:classical_construction_algorithm:examplecfg_varx}Example control flow graph, including
 inserted \phifuns\ for variable $x$.
 }
@@ -234,7 +233,6 @@ variable handles all incoming definitions of that variable to that node.
 %  Seems there is a problem, F should be emptied for a new v
 %%%
 \begin{algorithm}[h]
-\Begin{
  $W \leftarrow \{ \}$: set of basic blocks\;
  $F \leftarrow \{ \}$: set of basic blocks where $\phi$ is added\;
  \For{$v$: variable names in original program}{
@@ -254,7 +252,6 @@ variable handles all incoming definitions of that variable to that node.
      }
     }
   }
-}
 }
 \caption{\label{alg:classical_construction:phi_insertion}Standard algorithm for 
 inserting $\phi$-functions for  a variable $v$.}
@@ -297,16 +294,16 @@ Providing the dominator tree is given, the computation of the dominance frontier
 In other-words, for each  $J$-edge $(a,b)$, all ancestors of $a$ (including
 $a$) that do not strictly dominate $b$ have $b$ in their dominance
 frontier. For example, in Figure~\ref{fig:classical_construction_algorithm:iDF}, $(F,G)$ is a J-edge, so $\{(F,G),\ (E,G),\ (B,G)\}$ are \DF-edges. This leads to the pseudo-code given in
-Algorithm~\ref{alg:classical_construction:df}, where we visit all ancestors of 
+Algorithm~\ref{alg:classical_construction:df}, where for every edge $(a,b)$ we visit all ancestors of 
 $a$ to add $b$ to their dominance frontier.
  
 Since the iterated dominance frontier is simply the transitive closure
-of the dominance frontier, then we can define the \iDF-graph as the transitive closure of the \DF-graph. In our example, as $\{(C,E),\ (E,G)\}$ are \DF-edges, $(C,G)$ is a \iDF-edge. Hence, a definition of $x$ in $C$ will lead to inserting \phifuns in $E$ and $G$.
+of the dominance frontier, we can define the \iDF-graph as the transitive closure of the \DF-graph. In our example, as $\{(C,E),\ (E,G)\}$ are \DF-edges, $(C,G)$ is a \iDF-edge. Hence, a definition of $x$ in $C$ will lead to inserting \phifuns in $E$ and $G$.
 We can compute the iterated dominance frontier for each variable independently, as outlined in this chapter, or ``cache'' it to avoid repeated computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chapter:alternative_ssa_construction_algorithms}.
 
 \begin{figure}
   \subfloat[CFG]{
-    \includegraphics[scale=0.65]{iDF-CFG.pdf}
+    \tikzfigure{iDF-CFG}
   }
   \subfloat[\DJ-graph]{\label{fig:classical_construction_algorithm:iDF-J}
     \includegraphics[scale=0.7]{iDF-J.pdf}
@@ -322,7 +319,6 @@ corresponding DJ-graph ($D$-edges are top-down), \DF-graph and \iDF-graph.}
 \end{figure}
 
 \begin{algorithm}
-\Begin{
  \For{$(a,b) \in \mathrm{CFG\ edges}$}{
   $x \leftarrow a$\;
   \While{x does not strictly dominate b}{
@@ -330,7 +326,6 @@ corresponding DJ-graph ($D$-edges are top-down), \DF-graph and \iDF-graph.}
      $x \leftarrow \mathrm{immediate\ dominator}(x)$\;
   }
  }
-}
 \caption{\label{alg:classical_construction:df}Algorithm for computing the 
 dominance frontier of each CFG node.}\index{dominance frontier, construction}
 \end{algorithm}
@@ -370,17 +365,16 @@ During the traversal, for each variable $v$, it is necessary to
 remember the version of its unique reaching definition at some point $p$ in
 the graph. This corresponds to the closest definition that dominates $p$.
 In Algorithm~\ref{alg:classical:renaming}, we compute and cache the 
-reaching definition for $v$ in the per-variable slot $\reachingDef{v}$
+reaching definition for $v$ in the per-variable slot ``$\reachingDef{v}$''
 that is updated as the algorithm traverses the dominator tree of the
 SSA graph.
 This per-variable slot 
 % This renaming algorithm uses a single $\mathrm{reachingDef}$ slot 
-stores the in-scope, `new' variable name (version) for the equivalent
+stores the in-scope, ``new'' variable name (version) for the equivalent
 variable at the same point in the un-renamed program.
 
 \begin{algorithm}
 %proc renaming:
-\Begin{
 \tcc{rename variable definitions and uses to have one definition per
   variable name}
 \ForEach{v : Variable}{
@@ -388,12 +382,11 @@ variable at the same point in the un-renamed program.
 }
 \ForEach{ \textit{BB} : basic Block in depth-first search preorder traversal of the dominance tree}{
   \ForEach{ i : instruction in linear code sequence of \textit{BB}}{
-      \ForEach{v : variable used as a source operand on right-hand
-        side of  non-\phifun\ i}{
+      \ForEach{v : variable used by non-\phifun\ i}{
         $\mathrm{updateReachingDef}(v,i)$\;
         replace this use of $v$ by $\reachingDef{v}$ in $i$\;
       }
-      \ForEach{ v : variable defined by i, which may be a \phifun}{
+      \ForEach{ v : variable defined by i (may be a \phifun)}{
         $\mathrm{updateReachingDef}(v,i)$\;
         create fresh variable $v'$\;
         replace this definition of $v$ by $v'$ in $i$\;
@@ -401,14 +394,12 @@ variable at the same point in the un-renamed program.
         $\reachingDef{v} \leftarrow v'$\;
       }
   }
-  \ForEach{f: \phifun\ in a successor of \textit{BB}}{
-      \ForEach{ v : variable used as a source operand on right-hand
-        side of f}{
-        $\mathrm{updateReachingDef}(v,f)$\;
-        replace this use of $v$ by $\reachingDef{v}$ in $f$\;
+  \ForEach{$\phi$: \phifun\ in a successor of \textit{BB}}{
+      \ForEach{ v : variable used by $\phi$}{
+        $\mathrm{updateReachingDef}(v,\phi)$\;
+        replace this use of $v$ by $\reachingDef{v}$ in $\phi$\;
       }
  }
-}
 }
 \caption{\label{alg:classical:renaming}Renaming algorithm for second
   phase of SSA construction}\index{renaming, of variable.}
@@ -430,27 +421,31 @@ a definition statement, then $x_\mathrm{new}$ afterwards.
 
 \begin{figure}
 \subfloat[CFG]{
-  \includegraphics[scale=0.9]{initial3.pdf}
+  \tikzfigure{initial3}
 \label{fig:classical_construction_algorithm:renaming}
 }\hfill
-\subfloat[Walktrough of renaming for variable $x$ in example CFG]
-{\begin{tabular}[b]{|c|c|l|}\hline
-\textit{BB} & $x$ mention &  $\reachingDef{x}$ \\ \hline \hline
-$r$ & use at $l_1$ & $\bot$\\
-$A$ & def at $l_1$ &  $\bot$ then $x_1$\\
-$B$ & def at $l_2$ &  $x_1$ then $x_2$\\
-$B$ & use at $l_5$ & $x_2$\\
-$C$ & use at $l_3$ & $x_2$ updated into $x_1$\\
-$C$ & def at $l_4$ &  $x_1$ then $x_3$\\
-$C$ & use at $l_5$ & $x_3$\\
-$C$ & use at $l_7$ & $x_3$\\
-$D$ & def at $l_5$ & $x_3$ updated into $x_1$ then $x_4$\\
-$D$ & use at $l_6$ & $x_4$\\
-$D$ & def at $l_6$ & $x_4$ then $x_5$\\
-$D$ & use at $l_1$ & $x_5$\\
-$D$ & use at $l_7$ & $x_5$\\
-$E$ & def at $l_7$ & $x_5$ then $x_6$\\
-$E$ & use at $l_8$ & $x_6$\\ \hline
+\subfloat[Walk-trough of renaming for variable $x$]
+{
+\def\u#1{\hphantom{def} $l_#1$ use}
+\def\d#1{def $l_#1$ \hphantom{use}}
+\def\k{@{\kern4pt}}
+\begin{tabular}[b]{c\k|\k c\k |\k l}
+\textit{BB} & $x$ mention &  $\reachingDef{x}$ \\ \hline
+$r$ & \u{1} & $\bot$\\
+$A$ & \d{1} &  $\bot$ then $x_1$\\
+$B$ & \d{2} &  $x_1$ then $x_2$\\
+$B$ & \u{5} & $x_2$\\
+$C$ & \u{3} & $x_2$ updated into $x_1$\\
+$C$ & \d{4} &  $x_1$ then $x_3$\\
+$C$ & \u{5} & $x_3$\\
+$C$ & \u{7} & $x_3$\\
+$D$ & \d{5} & $x_3$ updated into $x_1$ then $x_4$\\
+$D$ & \u{6} & $x_4$\\
+$D$ & \d{6} & $x_4$ then $x_5$\\
+$D$ & \u{1} & $x_5$\\
+$D$ & \u{7} & $x_5$\\
+$E$ & \d{7} & $x_5$ then $x_6$\\
+$E$ & \u{8} & $x_6$\\
 \end{tabular}\label{table:classical_construction_algorithm:renaming}
 }
 \caption{SSA form of the example of 
@@ -461,7 +456,6 @@ Figure~\ref{fig:classical_construction_algorithm:examplecfg}.}
 \begin{procedure}
 \KwData{$v$ : variable from program}
 \KwData{$i$ : instruction from program}
-\Begin{
   \tcc{search through chain of definitions for v until we find the
     closest definition that dominates i, then update $\reachingDef{v}$
     in-place with this definition}
@@ -470,7 +464,6 @@ Figure~\ref{fig:classical_construction_algorithm:examplecfg}.}
     $r \leftarrow \reachingDef{r}$\;
   }
   $\reachingDef{v} \leftarrow r$\;
-}
 \caption{updateReachingDef(v,i) Utility
   function for SSA renaming\label{alg:classical:updateRD}}\index{reaching 
   definition.}
@@ -493,7 +486,8 @@ in the dominator tree
 (we always check whether we need to update the reachingDef field
 before we read from it).
 %
-While the slot-based algorithm requires more memory, it can take advantage of an existing variable's working field, and be more efficient in practice. 
+While the slot-based algorithm requires more memory, it can take advantage of 
+an existing working field for a variable, and be more efficient in practice. 
 
 \subsection{Summary}
 
@@ -503,20 +497,20 @@ SSA properties that were introduced in
 Chapter~\ref{chapter:properties_and_flavours}.
 
 \begin{itemize}
-\item It is \textit{minimal}, see Section~\ref{sec:properties_and_flavors:minimality}.\index{minimal SSA form}
+\item It is \textit{minimal} (see~Section~\ref{sec:properties_and_flavors:minimality}).\index{minimal SSA form}
 After the \phifun\ insertion phase,
 but before variable renaming, the CFG contains the minimal 
 number of inserted \phifuns\ to achieve the property that exactly
 one definition of each variable $v$ reaches every point in the graph.
-\item It is \textit{not pruned}, see Section~\ref{sec-prop-pruned}.\index{pruned SSA form}
+\item It is \textit{not pruned} (see Section~\ref{sec-prop-pruned}).\index{pruned SSA form}
 Some of the inserted \phifuns\
-may be dead(e.g., $y_5$ in Figure~\ref{fig:classical_construction_algorithm:renaming}), i.e., there is no explicit use of the variable subsequent
-to the \phifun.
-\item It is \textit{conventional}, see Section~\ref{sec-prop-conventional}.\index{conventional SSA form, CSSA}
+may be dead, i.e., there is not always an explicit use of the variable subsequent
+to the \phifun (e.g., $y_5$ in Figure~\ref{fig:classical_construction_algorithm:renaming}).
+\item It is \textit{conventional} (see Section~\ref{sec-prop-conventional}).\index{conventional SSA form, CSSA}
 The transformation that renames all $\phi$-related variables into a
 unique representative name and then removes all \phifuns\ is a correct SSA-destruction algorithm.
-\item Finally, it has the \textit{dominance} property, see Section
-\ref{sec:properties_and_flavours:domprop}.\index{strict SSA form}\index{dominance property, SSA form with}
+\item Finally, it has the \textit{dominance} property (see Section
+\ref{sec:properties_and_flavours:domprop}).\index{strict SSA form}\index{dominance property, SSA form with}
 Each variable use is dominated by its unique definition. 
 This is due to the use of iterated dominance frontiers
 during the $\phi$-placement phase,
@@ -530,8 +524,8 @@ any actual reaching definition that dominates it. This corresponds to
 the $\undef$ value used to initialize each reachingDef slot in Algorithm\index{undefined variable}
 \ref{alg:classical:renaming}.
 Actual implementation code can use a \texttt{NULL} value, create a
-fake undefined variable at the entry of the CFG, or create on the fly
-undefined pseudo-operations just before the particular use.
+fake undefined variable at the entry of the CFG, or create
+undefined pseudo-operations on-the-fly just before the particular use.
 % We choose to use in this book the undef value, represented with the $\undef$ sign.
 \end{itemize}
 
@@ -539,8 +533,7 @@ undefined pseudo-operations just before the particular use.
 \section{Destruction}
 \label{sec:classical_construction_algorithm:destruction}
 \index{SSA destruction}
-SSA form is a 
-sparse representation of program information,
+SSA form is a sparse representation of program information,
 which enables simple, efficient code analysis and optimization.
 Once we have completed SSA based optimization passes,
 and certainly before code generation,
@@ -548,12 +541,12 @@ it is necessary to eliminate \phifuns\ since these
 are not executable machine instructions.
 This elimination phase is known as \textit{SSA destruction}. 
 
-Since freshly constructed, untransformed SSA code is conventional, its destruction is straightforward.\index{conventional SSA form}
+When freshly constructed, an untransformed SSA code is conventional and its destruction is straightforward:\index{conventional SSA form}
 One simply has to rename all 
 $\phi$-related variables (source and destination operands of
-a single \phifun\ are related)
+the same \phifun)
 into a unique representative variable.
-Then each \phifun\ should have syntactically identical
+Then, each \phifun\ should have syntactically identical
 names for all its operands,
 and thus can be removed to coalesce the related live-ranges.\index{coalescing, of variables}
 
@@ -561,8 +554,9 @@ We refer to a set of $\phi$-related variables as
 a \phiweb\index{\phiweb}. We recall from
 Chapter~\ref{chapter:properties_and_flavours}
 that conventional SSA is defined as a flavor under which each
-\phiweb is interference free. In particular if each \phiweb's constituent\index{conventional SSA}
-variables have non-overlapping live-ranges then the SSA form is conventional.
+\phiweb is free from interferences.
+Hence, if all variables of a \phiweb\index{conventional SSA}
+have non-overlapping live-ranges then the SSA form is conventional.
 The discovery of \phiwebs can be performed efficiently 
 using the classical \textit{union-find} algorithm 
 with a disjoint-set data structure,
@@ -590,9 +584,9 @@ based on the union-find pattern}\index{\phiweb, discovery.}
 
 
 While freshly constructed SSA code is conventional, 
-this may not be the case after optimizations 
-such as copy propagation have been performed.
-Going back to conventional SSA form implies the insertion of copies.
+this may not be the case after performing some optimizations 
+such as copy propagation.
+Going back to conventional SSA form requires the insertion of copies.
 %
 The simplest (although not the most efficient) way to destroy non-conventional SSA form is to split all \textit{critical edges}, and then replace \phifuns\ by copies\index{parallel copy} at the end of predecessor basic blocks. 
 A critical edge is an edge from a node with several successors to a node with several predecessors.\index{critical edge}
@@ -600,15 +594,14 @@ The process of splitting an edge\index{edge splitting}, say $(b_1,b_2)$,
 involves replacing edge $(b_1, b_2)$ by (i) an
 edge from $b_1$ to a freshly created basic block 
 and by (ii) another edge from this fresh basic block to $b_2$. 
-As \phifuns have a parallel semantic, i.e. have to be executed simultaneously not sequentially, the same holds for the corresponding copies inserted at the end of predecessor basic blocks. To this end, a pseudo instruction called a \emph{parallel copy}\index{parallel copy}, is created to represent a set of copies that have to be executed in parallel.
-As explained further, the replacement of parallel copies by sequences of simple copies is handled later on.
+As \phifuns have a parallel semantic, i.e., have to be executed simultaneously not sequentially, the same holds for the corresponding copies inserted at the end of predecessor basic blocks. To this end, a pseudo instruction called a \emph{parallel copy}\index{parallel copy} is created to represent a set of copies that have to be executed in parallel.
+The replacement of parallel copies by sequences of simple copies is handled later on.
 Algorithm~\ref{alg:ssadestruction:splitting} presents
 the corresponding pseudo-code that makes non-conventional SSA conventional. \index{transformed SSA, T-SSA}\index{conventional SSA, C-SSA}
-As already mentioned, SSA destruction of such form is straightforward. However 
+As already mentioned, SSA destruction of such form is straightforward. However, 
 Algorithm~\ref{alg:ssadestruction:splitting} can be slightly modified to 
-directly destruct SSA by: removing line~15; replacing $a'_i$ by $a_0$ in the 
-following lines; adding ``remove the \phifun'' at line~19. Test label 
-line~\ref{line:api} and line~\ref{line:removephi}.
+directly destruct SSA by deleting line~\ref{line:api}, replacing $a'_i$ by $a_0$ in the 
+following lines, and adding ``remove the \phifun'' after them.
 
 %  \LinesNotNumbered
 \begin{algorithm}
@@ -688,7 +681,7 @@ into the desired flavor.
 %
 Making SSA \emph{conventional}\index{conventional, making SSA} corresponds exactly to the first phase of SSA destruction (described in Section~\ref{sec:classical_construction_algorithm:destruction}) that splits critical edges and introduces parallel copies (sequentialized later in bulk or on-demand) around \phifuns. As already discussed, this straightforward algorithm has several drawbacks addressed in Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}.
 
-Making SSA \emph{strict}, i.e., fulfill \emph{the dominance property},\index{strict, making SSA} is as `hard' as constructing SSA. Of course, a pre-pass through the graph can detect the offending variables that have definitions that do not dominate their uses. Then there are several possible single-variable \phifun\ insertion algorithms (see Chapter~\ref{chapter:alternative_ssa_construction_algorithms}) that can be used to patch up the SSA, by restricting attention to the set of non-conforming variables. The renaming phase can also be applied with the same filtering process. As the number of variables requiring repair might be a small proportion of all variables, a costly traversal of the whole program can be avoided by building the def-use chains (for non-conforming variables) during the detection pre-pass. Renaming can then be done on a per-variable basis or better (if pruned SSA is preferred) the reconstruction algorithm presented in Chapter~\ref{chapter:repair_maintain_ssa_after_optimization} can be used for both \phifuns\ placement and renaming.
+Making SSA \emph{strict}, i.e., fulfill \emph{the dominance property},\index{strict, making SSA} is as ``hard'' as constructing SSA. Of course, a pre-pass through the graph can detect the offending variables that have definitions that do not dominate their uses. Then there are several possible single-variable \phifun\ insertion algorithms (see Chapter~\ref{chapter:alternative_ssa_construction_algorithms}) that can be used to patch up the SSA, by restricting attention to the set of non-conforming variables. The renaming phase can also be applied with the same filtering process. As the number of variables requiring repair might be a small proportion of all variables, a costly traversal of the whole program can be avoided by building the def-use chains (for non-conforming variables) during the detection pre-pass. Renaming can then be done on a per-variable basis or better (if pruned SSA is preferred) the reconstruction algorithm presented in Chapter~\ref{chapter:repair_maintain_ssa_after_optimization} can be used for both \phifuns\ placement and renaming.
 
 
 The construction algorithm described above does not
@@ -704,7 +697,7 @@ dead-\phifun\ elimination simply relies on marking actual uses
 (non-\phifun\ ones) as \emph{useful} and propagating 
 \emph{usefulness} backward through \phifuns.
 Algorithm~\ref{alg:classical_construction_algorithm:pruning} 
-presents the relevant pseudo-code for this operation. Here \textit{stack} is used to store useful and unprocessed variables, defined by \phifuns. 
+presents the relevant pseudo-code for this operation. Here, \textit{stack} is used to store useful and unprocessed variables defined by \phifuns. 
 
 \begin{algorithm}[h]
 \Begin{
@@ -714,7 +707,7 @@ $\textit{stack} \leftarrow ()$\;
   \lIf{$I$ is \phifun\ defining variable $a$}{mark $a$ as useless}\;
   \Else($I$ is not \phifun){
     \ForEach{$x$ : source operand of $I$}{
-      \If{$x$ is defined by \phifun}{
+      \If{$x$ is defined by some \phifun}{
         mark $x$ as useful; $\textit{stack}.\mathrm{push}(x)$\;
       }
     }
@@ -745,7 +738,7 @@ it is generally much faster to first build \emph{semi-pruned SSA
 form}\index{semi-pruned SSA}, rather than minimal SSA form, and then apply
 dead code elimination.
 Semi-pruned SSA form is based on the observation that
-many variables are \emph{local}\index{local variable}, i.e. have a single live-range that is
+many variables are \emph{local}\index{local variable}, i.e., have a small live-range that is
 within a single basic block. Consequently, pruned SSA would not 
 instantiate any $\phi$-functions for these variables.
 Such variables can be identified by a linear traversal
@@ -778,32 +771,31 @@ Code transformations such as code motion, or other CFG modifications,
 can also introduce redundant \phifuns, i.e.,
 make a minimal SSA program become non-minimal.\index{minimal, making SSA non-}
 
-The application of \emph{copy propagation}\index{copy-propagation} and rule-based \phifun\ rewriting,
-can removes many of these redundant \phifuns. 
+The application of \emph{copy propagation}\index{copy-propagation} and rule-based \phifun\ rewriting
+can remove many of these redundant \phifuns. 
 As already mentioned in Chapter~\ref{chapter:properties_and_flavours}, 
 copy propagation can break the dominance property by propagating\index{strict, making SSA non-} 
 variable $a_j$ through \phifuns\ of the form $a_i=\phi(a_{x_1},\ldots,a_{x_k})$ where
 all the source operands are syntactically equal to either $a_j$ or $\undef$. 
 If we want to avoid breaking the dominance property we simply have to
-avoid the application of copy propagation that involves $\undef$. 
+avoid applying copy propagations that involve $\undef$. 
 A more interesting rule is the one that propagates $a_j$ through a
 \phifun\ of the form $a_i=\phi(a_{x_1},\ldots,a_{x_k})$ where all the source operands are
 syntactically equal to either $a_i$ or $a_j$. 
-These \phifuns\ turn out to be `identity' operations, where all the
+These \phifuns\ turn out to be ``identity'' operations, where all the
 source operands become syntactically identical and equivalent to the 
-destination operand. As such, they can be trivially elided from the program.
+destination operand. As such, they can be trivially eliminated from the program.
 Identity \phifuns\ can be simplified this way from inner to outer loops. 
-To be efficient (otherwise as many iterations as the maximum loop
-depth might be necessary for copy propagation)
-variable def-use chains should be pre-computed. 
-When the CFG is reducible~%
-\footnote{
-A CFG is reducible if there are no jumps into the middle of loops
+To be efficient, 
+variable def-use chains should be pre-computed---otherwise as many iterations 
+as the maximum loop depth might be necessary for copy propagation.
+When the CFG is reducible,%
+\footnote{A CFG is reducible if there are no jumps into the middle of loops
 from the outside, so the only entry to a loop is through its header.
 Section~\ref{sec:classical_construction_algorithm:reading} 
 gives a fuller discussion of reducibility, with
-pointers to further reading.}%
-, this simplification produces minimal SSA. \index{reducible CFG}\index{minimal, making SSA}
+pointers to further reading.}
+this simplification produces minimal SSA. \index{reducible CFG}\index{minimal, making SSA}
 The underlying reason is that the def-use chain of a given \phiweb\ is,
 in this context, isomorphic with a subgraph of the reducible CFG: 
 all nodes except those that can be reached by two different paths (from
@@ -814,16 +806,16 @@ application of
 Figure~\ref{fig:t1t2transforms} illustrates these graph transformations.
 To be precise, we can simplify an SSA program as follows:
 \begin{compactenum}
-\item Remove any \phifun\ $a_i=\phi(a_{x_1},\ldots,a_{x_k})$ where all $x_n
-  \in \{ i \}$. This corresponds to \emph{T1} reduction.
+\item Remove any \phifun\ $a_i=\phi(a_{x_1},\ldots,a_{x_k})$ where all $a_{x_n}$
+  are $a_i$. This corresponds to \emph{T1} reduction.
 \item Remove any \phifun\ $a_i=\phi(a_{x_1},\ldots,a_{x_k})$ where all
- $x_n \in \{ i, j \}$. Replace all occurrences of $a_i$ by $a_j$.
+  $a_{x_n} \in \{ a_i, a_j \}$. Replace all occurrences of $a_i$ by $a_j$.
  This corresponds to \emph{T2} possibly followed by
  \emph{T1} reduction.
 \end{compactenum}
 
 \begin{figure}
-  \includegraphics[scale=0.9]{t1_t2_transforms.pdf}
+  \tikzfigure{t1_t2_transforms}
   \caption{\label{fig:t1t2transforms}\emph{T1} and \emph{T2} rewrite
   rules for graph reduction, applied to def-use relations between SSA 
   variables.}
@@ -833,12 +825,12 @@ This approach can be implemented using a worklist,
 which stores the candidate nodes for simplification.
 Using the graph made up of def-use chains (see Chapter~\ref{chapter:vsdg}), 
 the worklist can be initialized with successors of non-\phifuns.
-However for simplicity, we may initialize it with all \phifuns.
+However, for simplicity, we may initialize it with all \phifuns.
 Of course, if loop nesting forest
 information is available, 
 the worklist can be avoided by traversing the CFG in a single pass 
 from inner to outer loops, and in a topological order within each loop (header excluded).
-However since we believe the main motivation for this approach to be its
+But since we believe the main motivation for this approach to be its
 simplicity,
 the pseudo-code shown in Algorithm 
 \ref{alg:classical_construction_algorithm:pessimistic} uses a work queue.
@@ -878,21 +870,20 @@ The number of \phifuns\ in
 the program is bounded so the number of insertions to $W$ is bounded.
 The queue could be replaced by a worklist, and the insertions/removals
 done at random. The algorithm would be less efficient, but the
-end-result would be the same.
+end result would be the same.
 
 \section{Additional reading}
 \label{sec:classical_construction_algorithm:reading}
 
 The early literature on SSA form
 \cite{cytron89efficient,cytron91efficiently}
-introduces both phases of the construction algorithm
+introduces the two phases of the construction algorithm
 we have outlined in this chapter,
 and discusses algorithmic complexity on common and worst-case inputs.
 These initial presentations trace the ancestry of SSA form back to
-early work on data flow representations by Shapiro and Saint
-\cite{shapiro69representation}.
+early work on data flow representations by Shapiro and Saint~\cite{shapiro69representation}.
 
-Briggs et al~\cite{briggs98practical} discuss pragmatic
+Briggs et al.~\cite{briggs98practical} discuss pragmatic
 refinements to the original algorithms for SSA construction
 and destruction, with the aim of reducing execution time.
 They introduce the notion of semi-pruned form, % (\ref{section:classical_construction_algorithm:turning}),
@@ -919,7 +910,7 @@ general case of SSA construction from arbitrary CFGs.
 A \textit{reducible} CFG is one that will collapse to a single node when 
 it is transformed using repeated application of \emph{T1}/\emph{T2}
 rewrite rules.
-Aho et al~\cite{aho86compilers} describe the concept of reducibility
+Aho et al.~\cite{aho86compilers} describe the concept of reducibility
 and trace its history in early compilers literature.
 
 % Take out Wolfe - Fabrice mentions him in previous chapter
@@ -933,10 +924,10 @@ Chapter~\ref{chapter:alternative_ssa_construction_algorithms}
 explores these alternative construction algorithms in depth.
 
 
-Blech et al~\cite{blech05optimizing}
+Blech et al.~\cite{blech05optimizing}
 formalize the semantics of SSA, in order to verify
 the correctness of SSA destruction algorithms.
-Boissinot et al~\cite{boissinot09revisiting} review the history of SSA destruction approaches,
+Boissinot et al.~\cite{boissinot09revisiting} review the history of SSA destruction approaches,
 and highlight misunderstandings that led to incorrect destruction
 algorithms.
 Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} presents
