@@ -22,7 +22,7 @@ has been converted to three-address intermediate code.
 SSA \emph{destruction} is sometimes called out-of-SSA translation. This step
 generally
 takes place in an optimizing compiler after all SSA optimizations have
-been performed, and prior to code generation. However note that there are
+been performed, and prior to code generation. Note however that there are
 specialized code generation techniques that can work directly on SSA-based
 intermediate representations such as instruction selection (see
 Chapter~\ref{chapter:code_selection}), if-conversion (see
@@ -58,17 +58,16 @@ and
 %% pointer-based aliasing, arrays, compound data structures, concurrency, etc.)
 
 Figure~\ref{fig:classical_construction_algorithm:examplecfg}
-shows an example CFG 
-program. The set of nodes is $\{ r, A, B, C, D, E\}$.
-The set of variables is $\{ x, y, \textit{tmp} \}$.
-Note that the program shows the complete control flow structure,
+shows the control-flow graph (CFG) of an example
+program. The set of nodes is $\{ r, A, B, C, D, E\}$, and
+the variables used are $\{ x, y, \textit{tmp} \}$.
+Note that the program shows the complete control-flow structure,
 denoted by directed edges between the nodes.
-However the program only shows 
+However, the program only shows 
 statements that define relevant variables, together with the
 unique \texttt{return} statement at the exit point of the CFG.
 All of the program variables are undefined on entry. On certain
-control
-flow paths, some variables may be used without being defined, 
+control-flow paths, some variables may be used without being defined, 
 e.g.\ $x$ on the path $r \rightarrow A \rightarrow C$. 
 We discuss this issue later in the chapter.
 We intend to use this program as a running example
@@ -79,7 +78,7 @@ to demonstrate various aspects of SSA construction.
 \begin{figure}
   \includegraphics[scale=0.9]{initial1.pdf}
 \caption{\label{fig:classical_construction_algorithm:examplecfg}Example control flow graph, before
-  SSA construction occurs}
+  SSA construction occurs.}
 \end{figure}
 
 \section{Construction}
@@ -88,16 +87,16 @@ to demonstrate various aspects of SSA construction.
 The original construction algorithm for SSA form 
 consists of two distinct phases.
 \begin{enumerate}
-\item \textbf{\phifun\ insertion}\index{insertion, of \phifun} performs \textit{live-range splitting}\index{live-range splitting} to ensures that any use of a given variable $v$ is reached\footnote{A program point $p$ is said to be \emph{reachable} by a definition of $v$, if there exists a path in the CFG from that definition to $p$ that does not contain any other definition of $v$.}\index{reachable, by a definition}  by exactly one definition of $v$. 
+\item \textbf{\phifun\ insertion}\index{insertion, of \phifun} performs \textit{live-range splitting}\index{live-range splitting} to ensures that any use of a given variable $v$ is reached\footnote{A program point $p$ is said to be \emph{reachable} by a definition of $v$ if there exists a path in the CFG from that definition to $p$ that does not contain any other definition of $v$.}\index{reachable, by a definition}  by exactly one definition of $v$. 
 The resulting live-ranges exhibit the property of having a single definition, which occurs at the beginning of each live-range.\index{live-range}\index{single definition property}
-\item \textbf{variable renaming}\index{renaming, of variables} assigns a unique variable name\index{variable name} to each live-range. This second phase rewrites variable names in program statements such that the program text contains only one definition of each variable, and every use refers to its corresponding unique reaching definition.
+\item \textbf{Variable renaming}\index{renaming, of variables} assigns a unique variable name\index{variable name} to each live-range. This second phase rewrites variable names in program statements such that the program text contains only one definition of each variable, and every use refers to its corresponding unique reaching definition.
 \end{enumerate}
 
 As already outlined in Chapter~\ref{chapter:properties_and_flavours},
 there are different flavors of SSA with distinct properties.
 In this chapter, we focus on the \textit{minimal} SSA form\index{minimal SSA form}.
 
-\subsubsection*{Join Sets and Dominance Frontiers}
+\subsection{Join Sets and Dominance Frontiers}
 
 In order to explain how \phifun\ insertions occur,
 it will be helpful 
@@ -106,9 +105,9 @@ to review the related concepts of \textit{join sets} and
 
 For a given set of nodes $S$ in a CFG, the join set $\join(S)$\index{join set}
 is the set of \textit{join nodes} of $S$,
-i.e.\ nodes in the CFG that can be reached by
+i.e., nodes in the CFG that can be reached by
 two (or more) distinct elements of $S$ using disjoint paths.
-Join sets were introduced in
+Join sets were introduced in Chapter~\ref{chapter:properties_and_flavours}, 
 Section~\ref{sec:properties_and_flavors:minimality}.
 
 Let us consider some join set examples from the
@@ -129,23 +128,33 @@ The \textit{dominance frontier}\index{dominance frontier, DF} of a node $n$,
 $\DF(n)$, is the border of the CFG region that is dominated by $n$.
 More formally,
 \begin{itemize}
-\item node $a$ \textit{strictly dominates}\index{dominates, strictly} node $b$ if $a$ dominates
-  $b$ and $a \neq b$
-\item the set of nodes $\DF(a)$ contains all nodes $n$ such that $a$
-  dominates a predecessor of $n$ but $a$ does not strictly dominate $n$.
+\item node $x$ \textit{strictly dominates}\index{dominates, strictly} node $y$ if $x$ dominates
+  $y$ and $x \neq y$;
+\item the set of nodes $\DF(n)$ contains all nodes $x$ such that $n$
+  dominates a predecessor of $x$ but $n$ does not strictly dominate $x$.
 \end{itemize}
+
+For instance, in our 
+Figure~\ref{fig:classical_construction_algorithm:examplecfg}, the dominance 
+frontier of the $y$ defined in block B is the first operation of D, while the 
+$\DF$ of the $y$ defined in block C would be the first operations 
+of D and E.
+
 
 Note that $\DF$ is defined over individual nodes, 
 but for simplicity of presentation, we overload it to 
-operate over sets of nodes too, i.e.\ 
+operate over sets of nodes too, i.e., 
 $\DF(S) = \bigcup_{s\in S} \DF(s)$.
-The \textit{iterated dominance frontier} $\iDF(S)$,\index{iterated dominance frontier, \iDF}
-is the limit $DF_{i\rightarrow\infty}(S)$
+The \textit{iterated dominance frontier} $\iDF(S)$\index{iterated dominance 
+frontier, \iDF} is obtained by iterating the computation of $\DF$ until 
+reaching a fixed point, i.e., it is the limit 
+$DF_{i\rightarrow\infty}(S)$
 of the sequence:
 $$\begin{array}{lll}
 \DF_1(S) & = & \DF(S)\\
 \DF_{i+1}(S) & = & \DF\left(S\cup \DF_i(S)\right)
 \end{array}$$
+
 
 Construction of minimal SSA 
 requires for each variable $v$ the insertion of \phifuns\ at $\join(\defsv)$,
@@ -154,12 +163,12 @@ The original construction algorithm
 for SSA form uses the iterated dominance frontier $\iDF(\defsv)$.
 This is an over-approximation of join set, since
 $\iDF(S)=\join(S\cup \{r\})$,
-i.e.\ the original algorithm assumes an \emph{implicit} definition of every
+i.e., the original algorithm assumes an \emph{implicit} definition of every
 variable at the entry node $r$.
 
 
-\subsubsection*{\phifun\ Insertion}
-\label{sec:classical_construction_algorithm:phiinsertion}
+\subsection{\phifun\ Insertion}
+
 This concept of dominance frontiers 
 naturally leads to a
 straightforward approach that places \phifuns\
@@ -168,22 +177,30 @@ For a given variable $v$, we place \phifuns\ at the
 iterated dominance frontier $\iDF(\defsv)$ where
 $\defsv$ is the set of nodes containing definitions of $v$.
 This leads to the construction of SSA form that has 
-the dominance property\index{dominance property}, i.e.\ where each 
-renamed variable's definition dominates its entire live-range.
+the dominance property\index{dominance property}, i.e., where each the 
+definition of each renamed variable dominates its entire live-range.
 
 Consider again our running example from Figure~\ref{fig:classical_construction_algorithm:examplecfg}. The set of nodes containing definitions
 of variable
-$x$ is $\{ B,C,D \}$. The iterated dominance frontier of this set
-is $\{ A, D, E \}$. Hence we need to insert 
+$x$ is $\{ B,C,D \}$. The iterated dominance frontier of this set 
+is $\{ A, D, E \}$ (it is also the $\DF$, no iteration needed here). Hence we need to insert 
 \phifuns\ for $x$ at the beginning of nodes $A$, $D$, and $E$.
 Figure~\ref{fig:classical_construction_algorithm:examplecfg_varx} shows the example CFG program
 with \phifuns\ for $x$ inserted.
+
+\begin{figure}
+  \includegraphics[scale=0.9]{initial2.pdf}
+\caption{\label{fig:classical_construction_algorithm:examplecfg_varx}Example control flow graph, including
+inserted \phifuns\ for variable $x$.
+}
+\end{figure}
 
 
 
 As far as the actual algorithm for \phifuns\ insertion
 is concerned, we will assume that the dominance
-frontier of each CFG node is pre-computed and that the iterated dominance frontier is computed just-in-time, as the algorithm proceeds.
+frontier of each CFG node is pre-computed and that the iterated dominance 
+frontier is computed on the fly, as the algorithm proceeds.
 The algorithm works by inserting \phifuns\ iteratively
 using a worklist of definition points, and flags (to avoid multiple
 insertions). The corresponding pseudo-code for
@@ -192,38 +209,42 @@ Algorithm~\ref{alg:classical_construction:phi_insertion}.
 %
 The worklist of nodes $W$ is used to record definition points that the
 algorithm
-has not yet processed, i.e.\ it has not yet inserted \phifuns\ at their dominance
+has not yet processed, i.e., it has not yet inserted \phifuns\ at their dominance
 frontiers.
 Because a \phifun\ is itself a 
 definition, it may require further \phifuns\ to be inserted.
 This is the cause of node insertions into the worklist $W$ during
 iterations of the inner loop in Algorithm 
 \ref{alg:classical_construction:phi_insertion}.
-Effectively, this is just-in-time calculation of
-the iterated dominance frontier.
+Effectively, we compute the iterated dominance frontier on the fly.
 %
-The flags array $F$ is used to avoid repeated insertion of \phifuns\
-at a single node. Dominance
+The set $F$ is used to avoid repeated insertion of \phifuns\
+on a single block. Dominance
 frontiers
-of distinct nodes may intersect, e.g.\ in the example CFG in Figure~\ref{fig:classical_construction_algorithm:examplecfg},
-$\DF(B)$ and $\DF(C)$ both contain $D$. 
-Once a \phifun\ for a particular variable has been
+of distinct nodes may intersect, e.g., in the example CFG in Figure
+\ref{fig:classical_construction_algorithm:examplecfg},
+$\DF(B)$ and $\DF(C)$ both contain $D$, but
+once a \phifun\ for a particular variable has been
 inserted at a node,
 there is no need to insert another, since a single \phifun\ per
 variable handles all incoming definitions of that variable to that node.
 
+
+%%%
+%  Seems there is a problem, F should be emptied for a new v
+%%%
 \begin{algorithm}[h]
 \Begin{
- $W \leftarrow \{ \}$ : set of basic blocks\;
- $F \leftarrow \{ \}$ : set of basic blocks\;
- \For{$v$ : variable names in original program}{
+ $W \leftarrow \{ \}$: set of basic blocks\;
+ $F \leftarrow \{ \}$: set of basic blocks where $\phi$ is added\;
+ \For{$v$: variable names in original program}{
   \For{$d \in \defsv$ }{
     \textbf{let} $B$ be the basic block containing $d$\;
      $W \leftarrow W \cup \{ B \}$\;
   }
   \While{$W \neq \{\}$}{
    remove a basic block $X$ from $W$\;
-   \For{$Y : \mbox{basic block} \in \mathrm{DF}(X)$}{
+   \For{$Y$: $\mbox{basic block} \in \mathrm{DF}(X)$}{
     \If{$Y \not\in F$}{
         add $v \leftarrow \phi(...)$ at entry of $Y$\;
         $F \leftarrow F \cup \{ Y \}$\;
@@ -235,14 +256,15 @@ variable handles all incoming definitions of that variable to that node.
   }
 }
 }
-\caption{\label{alg:classical_construction:phi_insertion}Standard algorithm for inserting $\phi$-functions for  a variable $v$}
+\caption{\label{alg:classical_construction:phi_insertion}Standard algorithm for 
+inserting $\phi$-functions for  a variable $v$.}
 \end{algorithm}
 
-Table~\ref{table:classical_construction:walkthru} 
-gives a walk-through example of Algorithm 
-\ref{alg:classical_construction:phi_insertion}.
+We give gives a walk-through example of 
+Algorithm~\ref{alg:classical_construction:phi_insertion} in
+Table~\ref{table:classical_construction:walkthru}. 
 It shows the stages of execution for a single iteration of
-the outermost for loop, which is inserting \phifuns\
+the outermost for loop, inserting \phifuns\
 for variable $x$.
 Each row represents a single iteration of the while loop
 that iterates over the worklist $W$. The table shows the values
@@ -267,25 +289,20 @@ been placed, then the CFG looks like Figure~\ref{fig:classical_construction_algo
 \end{tabular}
 \end{center}
 \caption{\label{table:classical_construction:walkthru}Walk-through of
-  placement of \phifuns\ for variable $x$ in example CFG}
+  placement of \phifuns\ for variable $x$ in example CFG.}
 \end{table}
 
-\begin{figure}
-  \includegraphics[scale=0.9]{initial2.pdf}
-\caption{\label{fig:classical_construction_algorithm:examplecfg_varx}Example control flow graph, including
-inserted \phifuns\ for variable $x$
-}
-\end{figure}
 
-Providing the dominator tree is given, the computation of the dominance frontier is quite straightforward. As illustrated by Figure~\ref{fig:classical_construction_algorithm:iDF}, this can be understood using the \DJ-graph notation. The skeleton of the \DJ-graph\index{\DJ-graph} is the dominator tree of the CFG that makes the D-edges\index{dominance edge, D-edge}. This is augmented with J-edges (join edges)\index{join edge, J-edge} that correspond to all edges of the CFG whose source does not strictly dominate its destination. A \DF-edge (dominance frontier edge)\index{dominance frontier edge, DF-edge} is an edge whose destination is in the dominance frontier of its source. By definition, there is a \DF-edge $(a,b)$ between every CFG nodes $a$, $b$ such that $a$ dominates a predecessor of $b$, but does not strictly dominate $b$. 
+Providing the dominator tree is given, the computation of the dominance frontier is quite straightforward. As illustrated by Figure~\ref{fig:classical_construction_algorithm:iDF}, this can be understood using the DJ-graph notation. The skeleton of the DJ-graph\index{DJ-graph} is the dominator tree of the CFG that makes the D-edges\index{dominance edge, D-edge} (dominance edges). This is augmented with J-edges (join edges)\index{join edge, J-edge} that correspond to all edges of the CFG whose source does not strictly dominate its destination. A \DF-edge (dominance frontier edge)\index{dominance frontier edge, DF-edge} is an edge whose destination is in the dominance frontier of its source. By definition, there is a \DF-edge $(a,b)$ between every CFG nodes $a$, $b$ such that $a$ dominates a predecessor of $b$, but does not strictly dominate $b$. 
 In other-words, for each  $J$-edge $(a,b)$, all ancestors of $a$ (including
 $a$) that do not strictly dominate $b$ have $b$ in their dominance
 frontier. For example, in Figure~\ref{fig:classical_construction_algorithm:iDF}, $(F,G)$ is a J-edge, so $\{(F,G),\ (E,G),\ (B,G)\}$ are \DF-edges. This leads to the pseudo-code given in
-Algorithm~\ref{alg:classical_construction:df}.
-%
+Algorithm~\ref{alg:classical_construction:df}, where we visit all ancestors of 
+$a$ to add $b$ to their dominance frontier.
+ 
 Since the iterated dominance frontier is simply the transitive closure
 of the dominance frontier, then we can define the \iDF-graph as the transitive closure of the \DF-graph. In our example, as $\{(C,E),\ (E,G)\}$ are \DF-edges, $(C,G)$ is a \iDF-edge. Hence, a definition of $x$ in $C$ will lead to inserting \phifuns in $E$ and $G$.
-We can compute the iterated dominance frontier for each variable independently, as outlined in this chapter, or `cache' it to avoid repeated computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chapter:alternative_ssa_construction_algorithms}.
+We can compute the iterated dominance frontier for each variable independently, as outlined in this chapter, or ``cache'' it to avoid repeated computation of the iterated dominance frontier of the same node. This leads to more sophisticated algorithms detailed in Chapter~\ref{chapter:alternative_ssa_construction_algorithms}.
 
 \begin{figure}
   \subfloat[CFG]{
@@ -300,29 +317,31 @@ We can compute the iterated dominance frontier for each variable independently, 
   \subfloat[\iDF-graph]{
     \includegraphics[scale=0.7]{iDF-iDF.pdf}
   }
-\caption{\label{fig:classical_construction_algorithm:iDF}An example CFG and it corresponding \DJ-graph ($D$-edges are highlighted), \DF-graph and \iDF-graph. $\iDF(C)=\{E,G\}$}
+\caption{\label{fig:classical_construction_algorithm:iDF}An example CFG and its 
+corresponding DJ-graph ($D$-edges are top-down), \DF-graph and \iDF-graph.}
 \end{figure}
 
 \begin{algorithm}
 \Begin{
- \For{$(a,b) \in \mathrm{cfgEdges}$}{
-  \While{a does not strictly dominate b}{
-     $\DF(a) \leftarrow \DF(a) \cup b$\;
-     $a \leftarrow \mathrm{iDom}(a)$\;
+ \For{$(a,b) \in \mathrm{CFG\ edges}$}{
+  $x \leftarrow a$\;
+  \While{x does not strictly dominate b}{
+     $\DF(x) \leftarrow \DF(x) \cup b$\;
+     $x \leftarrow \mathrm{immediate\ dominator}(x)$\;
   }
  }
 }
-\caption{\label{alg:classical_construction:df}Algorithm for computing the dominance frontier of each CFG node}\index{dominance frontier, construction}
+\caption{\label{alg:classical_construction:df}Algorithm for computing the 
+dominance frontier of each CFG node.}\index{dominance frontier, construction}
 \end{algorithm}
 
 
 
-Once \phifuns\ have been inserted using this algorithm, the program may
-still contain several definitions per variable, however now there is a
-single definition statement 
-in the CFG that reaches each use. 
-It is conventional to treat each variable use in a \phifun\
-as if it actually occurs on the corresponding incoming edge or at the end of the
+Once \phifuns\ have been inserted using this algorithm, the program usually
+still contains several definitions per variable, however, now there is a
+single definition statement in the CFG that reaches each use.  
+For each variable use in a \phifun, it is conventional to treat them as if the 
+use actually occurs on the corresponding incoming edge or at the end of the
 corresponding predecessor node.
 If we follow this convention,  
 % Moreover, with the following semantics for \phifuns\ where its
@@ -332,7 +351,7 @@ then def-use chains\index{def-use chains} are aligned with the CFG dominator tre
 In other words,
 \emph{the single definition that reaches each use dominates that use}.
 
-\subsubsection*{Variable Renaming}
+\subsection{Variable Renaming}
 \index{renaming, of variables}
 \newcommand\reachingDef[1]{#1.\mathrm{reachingDef}}
 To obtain the desired property of a static single assignment per variable,
@@ -341,14 +360,14 @@ is the second phase in the SSA construction process.
 \phifun\ insertions have the effect of splitting the live-range(s)\index{live-range splitting} of
 each original variable into pieces. The variable renaming phase
 associates to each individual live-range a new variable name, also
-called a \emph{version}\index{version, variable's}\index{name, variable's}.
-Algorithm~\ref{alg:classical:renaming} presents the pseudo-code
-for this process.
+called a \emph{version}.\index{variable!version}\index{variable!name}
+The pseudo-code for this process is presented in 
+Algorithm~\ref{alg:classical:renaming}.
 Because of the dominance property outlined above,
 it is straightforward to rename variables
 using a depth-first traversal of the dominator tree.
 During the traversal, for each variable $v$, it is necessary to
-remember its unique reaching version's definition at some point $p$ in
+remember the version of its unique reaching definition at some point $p$ in
 the graph. This corresponds to the closest definition that dominates $p$.
 In Algorithm~\ref{alg:classical:renaming}, we compute and cache the 
 reaching definition for $v$ in the per-variable slot $\reachingDef{v}$
@@ -392,7 +411,7 @@ variable at the same point in the un-renamed program.
 }
 }
 \caption{\label{alg:classical:renaming}Renaming algorithm for second
-  phase of SSA construction}\index{renaming, of variables}
+  phase of SSA construction}\index{renaming, of variable.}
 \end{algorithm}
 
 The variable renaming algorithm translates our running example 
@@ -434,7 +453,8 @@ $E$ & def at $l_7$ & $x_5$ then $x_6$\\
 $E$ & use at $l_8$ & $x_6$\\ \hline
 \end{tabular}\label{table:classical_construction_algorithm:renaming}
 }
-\caption{SSA form of the example of Figure~\ref{fig:classical_construction_algorithm:examplecfg}}
+\caption{SSA form of the example of 
+Figure~\ref{fig:classical_construction_algorithm:examplecfg}.}
 \end{figure}
 
 
@@ -452,7 +472,8 @@ $E$ & use at $l_8$ & $x_6$\\ \hline
   $\reachingDef{v} \leftarrow r$\;
 }
 \caption{updateReachingDef(v,i) Utility
-  function for SSA renaming\label{alg:classical:updateRD}}\index{reaching definition}
+  function for SSA renaming\label{alg:classical:updateRD}}\index{reaching 
+  definition.}
 \end{procedure}
 
 % Some paragraphs summarizing similarities / diffs between this
@@ -474,7 +495,7 @@ before we read from it).
 %
 While the slot-based algorithm requires more memory, it can take advantage of an existing variable's working field, and be more efficient in practice. 
 
-\subsubsection*{Summary}
+\subsection{Summary}
 
 Now let us review the flavour of SSA form that this simple
 construction algorithm produces. We refer back to several
@@ -489,7 +510,7 @@ number of inserted \phifuns\ to achieve the property that exactly
 one definition of each variable $v$ reaches every point in the graph.
 \item It is \textit{not pruned}, see Section~\ref{sec-prop-pruned}.\index{pruned SSA form}
 Some of the inserted \phifuns\
-may be dead(e.g. $y_5$ in Figure~\ref{fig:classical_construction_algorithm:renaming}), i.e.\ there is no explicit use of the variable subsequent
+may be dead(e.g., $y_5$ in Figure~\ref{fig:classical_construction_algorithm:renaming}), i.e., there is no explicit use of the variable subsequent
 to the \phifun.
 \item It is \textit{conventional}, see Section~\ref{sec-prop-conventional}.\index{conventional SSA form, CSSA}
 The transformation that renames all $\phi$-related variables into a
@@ -563,7 +584,8 @@ Algorithm~\ref{alg:ssadestruction:find-webs}.
   }
 }
 }
-\caption{\label{alg:ssadestruction:find-webs}The \phiwebs discovery algorithm, based on the union-find pattern}\index{\phiweb, discovery}
+\caption{\label{alg:ssadestruction:find-webs}The \phiwebs discovery algorithm, 
+based on the union-find pattern}\index{\phiweb, discovery.}
 \end{algorithm}
 
 
@@ -624,7 +646,7 @@ line~\ref{line:api} and line~\ref{line:removephi}.
 
 We stress that the above destruction technique has several drawbacks: first because of specific architectural constraints, region boundaries, or exception handling code, the compiler might not permit the splitting of a given edge\index{edge splitting}; second, the resulting code contains many temporary-to-temporary copy operations. In theory, reducing the frequency of these copies is the role of the coalescing during the register allocation phase. A few memory- and time-consuming coalescing heuristics mentioned in Chapter~\ref{chapter:register_allocation} can handle the removal of these copies effectively. Coalescing can also, with less effort, be performed prior to the register allocation phase. As opposed to a (so-called conservative) coalescing\index{conservative coalescing} during register allocation\index{register allocation}, this \emph{aggressive} coalescing\index{aggressive coalescing} would not cope with the interference graph colorability. Further, the process of copy insertion itself might take a substantial amount of time and might not be suitable for dynamic compilation. The goal of Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} is to cope both with non-splittable edges and difficulties related to SSA destruction at machine code level, but also aggressive coalescing in the context of resource constrained compilation.
 
-Once \phifuns\ have been replaced by parallel copies, we need to sequentialize the parallel copies, i.e.\ replace them by a sequence of simple copies. This phase can be performed immediately after SSA destruction or later on, perhaps even after register allocation (see Chapter~\ref{chapter:register_allocation}). It might be useful to postpone the copy sequentialization since it introduces arbitrary interference between variables. As an example, $a_1\gets a_2\ \parallel\ b_1\gets b_2$ (where $\textit{inst}_1\ \parallel\ \textit{inst}_2$ represents two instructions $\textit{inst}_1$ and~$\textit{inst}_2$ to be executed simultaneously) can be sequentialized into $a_1\gets a_2;\ b_1\gets b_2$ which would make $b_2$ interfere with $a_1$ while the other way round $b_1\gets b_2;\ a_1\gets a_2$ would make $a_2$ interfere with $b_1$ instead.
+Once \phifuns\ have been replaced by parallel copies, we need to sequentialize the parallel copies, i.e., replace them by a sequence of simple copies. This phase can be performed immediately after SSA destruction or later on, perhaps even after register allocation (see Chapter~\ref{chapter:register_allocation}). It might be useful to postpone the copy sequentialization since it introduces arbitrary interference between variables. As an example, $a_1\gets a_2\ \parallel\ b_1\gets b_2$ (where $\textit{inst}_1\ \parallel\ \textit{inst}_2$ represents two instructions $\textit{inst}_1$ and~$\textit{inst}_2$ to be executed simultaneously) can be sequentialized into $a_1\gets a_2;\ b_1\gets b_2$ which would make $b_2$ interfere with $a_1$ while the other way round $b_1\gets b_2;\ a_1\gets a_2$ would make $a_2$ interfere with $b_1$ instead.
 
 If we still decide to replace parallel copies into a sequence of
 simple copies immediately after SSA destruction, this can be done as
@@ -666,7 +688,7 @@ into the desired flavor.
 %
 Making SSA \emph{conventional}\index{conventional, making SSA} corresponds exactly to the first phase of SSA destruction (described in Section~\ref{sec:classical_construction_algorithm:destruction}) that splits critical edges and introduces parallel copies (sequentialized later in bulk or on-demand) around \phifuns. As already discussed, this straightforward algorithm has several drawbacks addressed in Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}.
 
-Making SSA \emph{strict}, i.e.\ fulfill \emph{the dominance property},\index{strict, making SSA} is as `hard' as constructing SSA. Of course, a pre-pass through the graph can detect the offending variables that have definitions that do not dominate their uses. Then there are several possible single-variable \phifun\ insertion algorithms (see Chapter~\ref{chapter:alternative_ssa_construction_algorithms}) that can be used to patch up the SSA, by restricting attention to the set of non-conforming variables. The renaming phase can also be applied with the same filtering process. As the number of variables requiring repair might be a small proportion of all variables, a costly traversal of the whole program can be avoided by building the def-use chains (for non-conforming variables) during the detection pre-pass. Renaming can then be done on a per-variable basis or better (if pruned SSA is preferred) the reconstruction algorithm presented in Chapter~\ref{chapter:repair_maintain_ssa_after_optimization} can be used for both \phifuns\ placement and renaming.
+Making SSA \emph{strict}, i.e., fulfill \emph{the dominance property},\index{strict, making SSA} is as `hard' as constructing SSA. Of course, a pre-pass through the graph can detect the offending variables that have definitions that do not dominate their uses. Then there are several possible single-variable \phifun\ insertion algorithms (see Chapter~\ref{chapter:alternative_ssa_construction_algorithms}) that can be used to patch up the SSA, by restricting attention to the set of non-conforming variables. The renaming phase can also be applied with the same filtering process. As the number of variables requiring repair might be a small proportion of all variables, a costly traversal of the whole program can be avoided by building the def-use chains (for non-conforming variables) during the detection pre-pass. Renaming can then be done on a per-variable basis or better (if pruned SSA is preferred) the reconstruction algorithm presented in Chapter~\ref{chapter:repair_maintain_ssa_after_optimization} can be used for both \phifuns\ placement and renaming.
 
 
 The construction algorithm described above does not
@@ -714,7 +736,7 @@ $\textit{stack} \leftarrow ()$\;
 }
 }
 \caption{\label{alg:classical_construction_algorithm:pruning}
-\phifun\ pruning algorithm
+\phifun\ pruning algorithm.
 }
 \end{algorithm}
 
@@ -734,7 +756,7 @@ can be filtered out: minimal SSA form restricted to the remaining variables give
 
 
 
-\subsubsection*{Pessimistic \phifun\ Insertion}
+\subsection{Pessimistic \phifun\ Insertion}
 
 Construction of minimal SSA,
 as outlined in Section~\ref{sec:classical_construction}, 
@@ -753,7 +775,7 @@ the resulting SSA will not be pruned.
 When a pessimistic approach is used, many inserted \phifuns\ are
 redundant. 
 Code transformations such as code motion, or other CFG modifications, 
-can also introduce redundant \phifuns, i.e.\
+can also introduce redundant \phifuns, i.e.,
 make a minimal SSA program become non-minimal.\index{minimal, making SSA non-}
 
 The application of \emph{copy propagation}\index{copy-propagation} and rule-based \phifun\ rewriting,
@@ -803,7 +825,8 @@ To be precise, we can simplify an SSA program as follows:
 \begin{figure}
   \includegraphics[scale=0.9]{t1_t2_transforms.pdf}
   \caption{\label{fig:t1t2transforms}\emph{T1} and \emph{T2} rewrite
-  rules for graph reduction, applied to def-use relations between SSA variables}
+  rules for graph reduction, applied to def-use relations between SSA 
+  variables.}
 \end{figure}
 
 This approach can be implemented using a worklist, 
@@ -843,7 +866,7 @@ $W \leftarrow ()$ \;
 }
 }
 \caption{\label{alg:classical_construction_algorithm:pessimistic}
-Removal of redundant \phifuns using rewriting rules and work queue}
+Removal of redundant \phifuns using rewriting rules and work queue.}
 \end{algorithm}
 
 This algorithm is guaranteed to terminate in a fixed number of steps.
