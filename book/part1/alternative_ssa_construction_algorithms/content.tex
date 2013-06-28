@@ -14,6 +14,7 @@
 \def\level{\textit{level}}
 
 \def\p{$\phi$}
+\def\iDFac{\iDF\!\!_{\textit{ac}}}
 
 
 \section{Introduction}
@@ -26,6 +27,10 @@ In the rest of this chapter we will present three different approaches  for plac
 at appropriate merge nodes. Recall that SSA construction falls into two phases of $\phi$-placement and variable renaming. Here we present different approaches for the first phase for minimal SSA form. We first present Sreedhar and Gao's algorithm for
 placing \phifuns using the \DJ-graph\index{\DJ-graph} representation of a CFG.
 Then we will discuss the notions of merge set and merge relation, and present Das and Ramakrishna's algorithm for placing \phifuns based on merge relation and using \DJ-graph. Finally we describe another approach for placing \phifuns based on the loop nesting forest\index{loop nesting forest} proposed by Ramalingam.
+
+Please note that although all these algorithms claim to be better than the original algorithm by Cyton et al., they are difficult to compare due to the unavailability of these algorithms in a common compiler framework. 
+
+
 
 \section{Basic Algorithm}
 The original algorithm for placing $\phi$-functions
@@ -74,7 +79,7 @@ compute the \DF of a node $x$ using:
 
     \begin{figure}[htb]
     \centerline{\includegraphics[scale=0.4]{cfglive_new.pdf}}
-    \caption{A Motivating Example (a) CFG (b) \DJ-graph}
+    \caption{A Motivating Example (a) CFG (b) \DJ-graph.}
     \label{fig:cfg}
     \end{figure} 
 
@@ -115,70 +120,66 @@ sets \textit{OrderedBucket}, and two functions defined over this array of sets:
 (1) InsertNode($n$) that inserts the node $n$ in the set 
 $\textit{OrderedBucket}[n.\level]$, and
 (2) GetDeepestNode() that returns a node from the \textit{OrderedBucket} with the deepest level number. 
-The complete algorithm is shown in Figure~\ref{F:IDFMain}.
 
-\begin{figure}[!ht]
-\centering
-\begin{minipage}[t]{5in}
-\noindent{\bf Input:} A \DJ-graph representation of a program and $\Defs{x}$.
-\noindent{\bf Output:} The set $\iDF(\Defs{x})$.
+\begin{algorithm}
+  \caption{Sreedhar and Gao's algorithm for computing \iDF set.}
+  \label{algo:IDFMain}
 
-Procedure IDFMain(Set $\Defs{x}$) 
-\{
-\begin{code}
-\x1 $\iDF = \{ \}$;
-\x1 {\bf foreach} (node $x \in  \Defs{x}$) {\bf do}
-\x2    InsertNode($x$);
-\x2    $x.\textit{visited} = \false $;
-\x1 {\bf end for}
-\x1 {\bf while} (($z = \textit{GetDeepestNode}()) \neq \nullprog$)  \label{C:get} // Get node from the deepest level
-\x2   $\textit{currentRoot} = z$;
-\x2  $z.\textit{visited} = \true$ ;
- \x2  Visit($z$);  // Find $\DF(z)$
-\x1 {\bf end while}
-\end{code}
-\} 
+  \KwIn{\DJ-graph representation of a program}
+  \KwIn{$\Defs{x}$: nodes that define $x$}
+  \KwOut{$\iDF(\Defs{x})$}
 
-Procedure Visit($x$)
-\{
-\begin{code}
-  \x1 {\bf foreach} (node $y \in \textit{Succ}(x)$) {\bf do}
-\x2  {\bf if} ($x \st{} y$ is a  J edge) {\bf then}
-\x3   {\bf if} ($y.\level \leq \textit{currentRoot}.\level$) {\bf then}
+  $\iDF \gets \emptyset$\;
+  \ForEach{node $x \in  \mbox{\Defs{x}}$}{
+    InsertNode($x$)\;
+    $x.\textit{visited} \gets \false $\;
+  }
+  \While(\tcc*[f]{Get node from the deepest level}){$z \gets \textit{GetDeepestNode}()$}{  \label{C:get} 
+    $\textit{currentRoot} \gets z$\;
+    $z.\textit{visited} \gets \true$\;
+    Visit($z$)\tcc*[r]{Find $\DF(z)$}
+  }
+\end{algorithm}
 
-\x4     {\bf if} ($y \not \in \iDF$) {\bf then}
-\x5        $\iDF = \iDF \cup {y}$;   \label{C:idf}
-\x5        {\bf if} ($y \not  \in \Defs{x}$) {\bf then}
-\x6          InsertNode($y$); \label{C:insert}
-\x5        {\bf endif}
-\x4     {\bf end if}
-\x3  {\bf end if}
-\x2 {\bf else} // visit D edges 
-\x3   {\bf if} ($y.\textit{visited} == \false $) {\bf then}
-\x4    $y.\textit{visited} = \true$;
-\x4    // if($y.\textit{boundary} == \false$)   \label{C:cached} // See the section on Further Reading for details
-\x5     Visit($y$); \label{C:dedges}
-%\x4     Visit($y$); \label{C:dedges}
-\x4 // {\bf end if}
-\x3   {\bf end if}
-\x2  {\bf end if}
-\x1 {\bf end for}
-\end{code}
-\} 
-\end{minipage}
-\caption{Sreedhar and Gao's algorithm for computing \iDF set.}
-\label{F:IDFMain}
-\end{figure}
 
-In IDFMain() at first we insert all nodes belonging to $\Defs{x}$ in the 
+\begin{procedure}
+  \caption{Visit(x)}
+  \label{proc:visit}
+  \ForEach{node $y \in \textit{Succ}(x)$}{
+    \If{$x \st{} y$ is a  J edge}{
+      \If{$y.\level \leq \textit{currentRoot}.\level$}{
+        \If{$y \not \in \iDF$}{
+          $\iDF \gets \iDF \cup {y}$\;   \label{C:idf}
+          \lIf{$y \not  \in \Defs{x}$}{
+            InsertNode($y$); \label{C:insert}
+          }
+        }
+      }
+    }
+    \Else(\tcc*[f]{visit D edges}){
+    \If{$y.\textit{visited} = \false $}{
+      $y.\textit{visited} \gets \true$\;
+      \tcc{if($y.\textit{boundary} = \false$)   \label{C:cached} // See the section on Further Reading for details}
+      Visit($y$)\; \label{C:dedges}
+      }
+    }
+  }
+\end{procedure}
+
+In Algorithm~\ref{algo:IDFMain}, at first we insert all nodes belonging to $\Defs{x}$ in the 
 \textit{OrderedBucket}. Then the nodes are processed
 in a bottom-up fashion over the \DJ-graph from deepest node level to least node level
-(Line~\ref{C:get}) by calling Visit($x$). The procedure Visit($x$) essentially 
+by calling \ref{proc:visit}($x$). The procedure \ref{proc:visit}($x$) essentially 
 walks top-down in the  \DJ-graph avoiding already visited nodes. During this 
 traversal it also peeks at destination nodes of J edges. Whenever it notices 
 that the level number of the destination node of a J edge is less than or equal 
-to the level number of the $\textit{currentRoot}$, the destination node is added to the $\iDF$ set(Line \ref{C:idf}) if it is not present in \iDF already. Notice that at Line \ref{C:insert} the destination node is also inserted in the {\it OrderedBucket} if it was never inserted before. Finally at Line \ref{C:dedges} we continue to process the nodes in the sub-tree by visiting over the D edges. When the algorithm terminates the 
-set $\iDF$ will contain the iterated dominance frontier for the initial $\Defs{x}$.
+to the level number of the $\textit{currentRoot}$, the destination node is 
+added to the $\iDF$ set (Line~\ref{C:idf}) if it is not present in \iDF already. 
+Notice that at Line~\ref{C:insert} the destination node is also inserted in the 
+{\it OrderedBucket} if it was never inserted before. Finally at Line 
+\ref{C:dedges} we continue to process the nodes in the sub-tree by visiting 
+over the D edges. When the algorithm terminates the 
+set $\iDF$ contains the iterated dominance frontier for the initial $\Defs{x}$.
 
     \begin{figure}[htb]
     \centerline{\includegraphics[scale=0.3]{sreedhargao.pdf}}
@@ -246,7 +247,7 @@ following the \DF edges. Similarly, for node~8, $M(8) = \{2,5,6,8\}$ due to thes
 
     \begin{figure}[htb]
     \centerline{\includegraphics[scale=0.4]{mgraph_1.pdf}}
-    \caption{\DF-graph and M sets}
+    \caption{\DF-graph and M sets.}
     \label{fig:mgraph}
     \end{figure} 
 
@@ -413,147 +414,197 @@ Procedure $\phi$-placement for $\Defs{x}$
 \end{code}
 \}
 \end{minipage}
-\caption{$\phi$-placement using $Merge$ sets}
+\caption{$\phi$-placement using $Merge$ sets.}
 \label{F:phip}
 \end{figure} 
 
 
 \section{Computing Iterated Dominance Frontier Using Loop Nesting Forests}
 \label{section:alternative_ssa_construction_algorithms:loop}
-This section illustrates the use of {\bf loop nesting forests} for construction of the iterated dominance frontier (\iDF) of a set of vertices in a CFG, which may contain reducible as well as
-irreducible loops. The algorithm is based on Ramalingam's work.
+This section illustrates the use of \emph{loop nesting forests} to construct 
+the iterated dominance frontier (\iDF) of a set of vertices in a CFG. This 
+method works with reducible as well as irreducible loops and is based on 
+Ramalingam's work.
 
-    \subsection{Loop nesting forest}
-     A loop nesting forest is a data structure that represents the loops in a CFG and the containment relation between them. In the example shown in Figure~\ref{fig:lnf}(a) the loops with backedges $11 \rightarrow 9$ and $12 \rightarrow 2$ are both reducible loops. The corresponding loop nesting forest is shown in Figure~\ref{fig:lnf}(b) and consists of two loops whose header nodes are $2$ and $9$. The loop with header node $2$ contains the loop with header node $9$.
+\subsection{Loop nesting forest}
+A loop nesting forest is a data structure that represents the loops in a CFG 
+and the containment relation between them. In the example shown in 
+Figure~\ref{fig:lnf}(a) the loops with back edges $11 \rightarrow 9$ and $12 \rightarrow 2$ are both reducible loops. The corresponding loop nesting forest is shown in Figure~\ref{fig:lnf}(b) and consists of two loops whose header nodes are $2$ and $9$. The loop with header node $2$ contains the loop with header node $9$.
 
     \begin{figure}[htb]
     \centerline{\includegraphics[scale=0.3]{lnfred.pdf}}
-    \caption{An example (a) CFG and (b) Loop Nesting Forest }
+    \caption{An example (a) CFG and (b) Loop Nesting Forest.}
     \label{fig:lnf}
     \end{figure} 
 
 
-    \subsection{Main Algorithm}
+\subsection{Main Algorithm}
+
+The idea is to use an acyclic version of the control flow graph (i.e., without 
+back edge) and construct the \iDF for a variable in this context: whenever two 
+definitions reach a join point, it belongs to the \iDF. Then, we take into 
+account the back edges using the loop nesting forest: if a loop contains a 
+definition, its header also belongs to the \iDF.
+
+\medskip
     
-Let us say that a definition node $d$ ``reaches'' another node $u$ if there is a path in the graph from $d$ to $u$ which does not contain any definition node other than $d$ (for a variable $v$) . If at least two definitions reach a node $u$, then $u$ belongs to $\iDF(X)$ where $X$ consists of these definition nodes. This suggests the algorithm in Figure~\ref{F:ramaIDF}. According to the algorithm, for a given $\Defs{x}$, we can compute $\iDF(\Defs{x})$ as follows:
+A definition node $d$ ``reaches'' another node $u$ if there is a path in the 
+graph from $d$ to $u$ which does not contain any re-definition. If at least two 
+definitions reach a node $u$, then $u$ belongs to $\iDF(X)$ where $X$ consists 
+of these definition nodes. This suggests the Algorithm~\ref{algo:ramaIDF} which 
+works for \emph{acyclic} graphs.
+For a given $\Defs{x}$, we can compute $\iDF(\Defs{x})$ as follows:
 \begin{itemize}
 \item { Initialize \iDF to the empty set };
 \item { Using a topological order, compute the subset of $\iDF(\Defs{x})$ that can reach a node using forward dataflow analysis };
 {\item} {Add a node to \iDF if it is reachable from multiple nodes};
 \end{itemize}  
 
-    For Figure~\ref{fig:lnf}, the acyclic version of the graph $G$, termed $G_{ac}$, is formed by dropping the backedges $11 \rightarrow 9$ and $12 \rightarrow 2$. Also, $entry(G) = \{entry\}$ where $entry$ is a specially designated node that is the root of the CFG. For the definitions of $v$ in nodes $4,5,7$ and $12$ in Figure~\ref{fig:lnf}, the subsequent nodes reached by multiple definitions turn out to be at $6$ and $8$. Node $6$ can be reached by any one of two definitions in nodes $4$ or $5$. For node $8$, it can be either the definition from node $7$ or one of $4$ or $5$. Note that the backedges do not exist in the acyclic graph and hence node~2 is not part of the \iDF set. We will see later how the \iDF set for the entire graph is computed by considering the contribution of the backedges. 
+For Figure~\ref{fig:lnf}, the acyclic version of the graph $G$, termed 
+$G_{\textit{ac}}$, is formed by dropping the back edges $11 \rightarrow 9$ and $12 
+\rightarrow 2$. Also, $\textit{entry}(G) = \{\textit{entry}\}$ where 
+$\textit{entry}$ is a specially designated node that is the root of the 
+CFG. For the definitions of $v$ in nodes $4,5,7$ and $12$ in 
+Figure~\ref{fig:lnf}, the subsequent nodes reached by multiple definitions 
+are $6$ and $8$: node $6$ can be reached by any one of two definitions in 
+nodes $4$ or $5$, and node $8$ by either the definition from node 
+$7$ or one of $4$ or $5$. Note that the back edges do not exist in the 
+acyclic graph and hence node~$2$ is not part of the \iDF set. We will see 
+later how the \iDF set for the entire graph is computed by considering the 
+contribution of the back edges. 
 
 
 
-    %\begin{figure}[htb]
-    %\centerline{\includegraphics[scale=0.3]{idfcode.pdf}}
-    %\caption{Pseudocode for computing \iDF of an acyclic graph }
-    %\label{fig:idfcode}
-    %\end{figure}  
-    
-   \begin{figure}[!ht]
-   \centering
-  \begin{minipage}[t]{5in}
-  \noindent{\bf Input:} An acyclic CFG $G_{ac}$, $X$: subset of $V(G)$.
-  \noindent{\bf Output:} The set $\iDF(X)$.
-  \setcounter{linectr}{0}
+%\begin{figure}[htb]
+%\centerline{\includegraphics[scale=0.3]{idfcode.pdf}}
+%\caption{Pseudocode for computing \iDF of an acyclic graph }
+%\label{fig:idfcode}
+%\end{figure}  
 
-    Procedure ComputeIteratedDominanceFrontier($G_{ac}$:Acyclic graph, $X$: subset of $V(G)$)
-    \{
-    \begin{code}
+\begin{algorithm}
+  \KwIn{$G_{\textit{ac}}$: acyclic CFG}
+  \KwIn{$X$: subset of nodes}
+  \KwOut{$\iDF(X)$}
+  \caption{%ComputeIteratedDominanceFrontier($G_{\textit{ac}}$, $X$)
+  Ramalingam's algorithm for \iDF in an acyclic graph.}
+  \label{algo:ramaIDF}
 
-    \x1 $\iDF = \{\}$; 
-    \x1 $\forall$ $node$ of $V(G)$, $UniqueReachingDefs(node)$ = \{entry\};
-    \x1 {\bf for} ($\forall u$ of $V(G) - entry(G)$ in topological sort order) {\bf do}
-    \x2    $ReachingDefs = \{\}$; 
-    \x2    {\bf for} ($\forall$ predecessor $v$ of $u$) {\bf do}
-    \x3      {\bf if} ($v \in$ ($\iDF \cup X \cup entry(G)$)) {\bf then} 
-    \x4         $ReachingDefs = ReachingDefs \cup \{v\}$; \label{C:rdf}
-    \x3      {\bf else} 
-    \x4         $ReachingDefs = ReachingDefs \cup UniqueReachingDefs(v)$; \label{C:urdf}
-    \x3      {\bf end if} 
-    \x2   {\bf end for} 
-    \x2   {\bf if} ($\|ReachingDefs\|$ == 1) {\bf then} \label{C:onerd}
-    \x3      $UniqueReachingDefs(u)$ = $ReachingDefs$; 
-    \x2   {\bf else} 
-    \x3       $\iDF = \iDF \cup \{u\}$; \label{C:ridf}
-    \x2   {\bf end if}    
-    \x1 {\bf end for} 
-    \x1 {\bf return} $\iDF$;   
-     
-    \end{code}
-    \}
- 
-  \end{minipage}
-  \caption{Ramalingam's algorithm for computing the \iDF of an acyclic graph.}
-  \label{F:ramaIDF}
-  \end{figure}
+  $\iDF \gets \emptyset$\;
+  \lForEach{node $n$}{
+    $\textit{UniqueReachingDef}(n) \gets \{\textit{entry}\}$\;
+  }
+  \ForEach{node $u \neq \textit{entry}$ in topological order}{
+    $\textit{ReachingDefs} \gets \emptyset$\; 
+    \ForEach{$v$ predecessor of $u$}{
+      \If{$v \in \iDF \cup X \cup \textit{entry}$}{
+      $\textit{ReachingDefs} \gets \textit{ReachingDefs} \cup \{v\}$; \label{C:rdf}
+      }
+      \Else{
+      $\textit{ReachingDefs} \gets \textit{ReachingDefs} \cup 
+      \textit{UniqueReachingDef}(v)$; \label{C:urdf}
+      }
+    }
+    \If{$|\textit{ReachingDefs}| = 1$}{  \label{C:onerd}
+      $\textit{UniqueReachingDef}(u) \gets \textit{ReachingDefs}$; 
+    }
+    \Else{
+      $\iDF \gets \iDF \cup \{u\}$; \label{C:ridf}
+    }
+  } 
+  \Return{$\iDF$}   
+\end{algorithm}
 
-    We will walk through some of the steps of this algorithm for computing $\iDF(\{4,5,7,12\})$. We will start at vertex 4. For this vertex, $\textit{predecessors} = \{3\}$. But as $3 \notin \iDF \cup X \cup \{entry\}$, $\textit{ReachingDefs} = \textit{UniqueReachingDefs}(3)$ according to Line~\ref{C:urdf}. Hence, 
-$\textit{ReachingDefs} = \{entry\}$. As $\|\textit{ReachingDefs}\|$ equals 1, $\textit{UniqueReachingDefs}(4) = \{entry\}$. The same logic applies for vertices 5 and 7, and so,  $\textit{UniqueReachingDefs}(5) = \textit{UniqueReachingDefs}(7) = \{entry\}$.
-    For vertex 6, $\textit{predecessors} = \{4,5\}$.
-    Since both vertices 4 and 5 belong to $X$, according to Line~\ref{C:rdf}, 
-    $\textit{ReachingDefs} = \{4,5\}$.
-    As $\|\textit{ReachingDefs}\| \neq 1$, according to Line~\ref{C:ridf}, $\iDF = \{6\}$.
-    Following similar arguments, $\iDF = \{6,8\}$, when node~8 is visited. When the rest of the vertices
-    are visited, the \iDF set remains unchanged. 
+Let us walk through this algorithm computing \iDF for variable $v$, i.e., $X = \{4,5,7,12\}$. The 
+nodes in Figure~\ref{fig:lnf} are already numbered in topological order. Nodes~1 to~5 
+have only one predecessor, none of them being in $X$, so their 
+\textit{UniqueReachingDef} stays \textit{entry}, and \iDF is still empty. For 
+node~6, its two predecessor belong to $X$, hence $\textit{ReachingDefs} = 
+\{4,5\}$, and 6 is added to \iDF. Nothing changes for 7, then for 8 its 
+predecessors 6 and 7 are respectively in \iDF and $X$: they are added to 
+\textit{ReachingDefs}, and 8 is then added to \iDF. Finally, for nodes 8 to 12, 
+their \textit{UniqueReachingDef} will be updated to node~8, but this will not 
+change \iDF anymore which will end up being $\{6,8\}$.
 
-    How can the algorithm to find the \iDF for acyclic graphs be extended to handle reducible graphs? 
-    A reducible graph can be
-    decomposed into an acyclic graph and a set of backedges. The contribution of backedges to the
-    iterated dominance frontier can be identified by using the loop nesting forest. If a vertex $u$
-    is contained in a loop then $\iDF(u)$ will contain the loop header. For any vertex $u$, let $HLC(u)$
-    denote the set of loop headers of the loops containing $u$. Given a set of vertices $X$, it turns
-    out that $\iDF(X) = HLC(X) \cup \iDF_{ac}(X \cup HLC(X))$ where $\iDF(X)$ and $\iDF_{ac}$
-    denote the \iDF over the original graph $G$ and the acyclic graph $G_{ac}$ respectively. Reverting
-    back to Figure~\ref{fig:lnf} we see that in order to find the $\iDF$ for the nodes where the variable 
-    $v$ is defined, we need to evaluate $\iDF(\{4,5,7,12\})$. Firstly, we would need to evaluate 
-    $\iDF_{ac}(\{4,5,7,12\} \cup HLC(\{4,5,7,12\}))$. $HLC(\{4,5,7,12\}) = \{2\}$ as all these nodes are contained 
-    in a single loop with header $2$. Hence, we would need to find $\iDF_{ac}(\{2,4,5,7,12\})$ which turns
-    out to be the set $\{6,8\}$. Finally, $\iDF(\{4,5,7,12\}) = HLC(\{4,5,7,12\}) \cup \{6,8\} = \{2,6,8\}$.
- 
-    %\noindent
-    \begin{figure}[htb]
-    \centerline{\includegraphics[scale=0.3]{irred.pdf}}
-    \caption{(a) An irreducible graph (b) The Loop Nesting Forest (c) The acyclic subgraph (c) Transformed
-    graph}
-    \label{fig:irred}
-    \end{figure} 
- 
-    Now that we have shown how \iDF can be computed for graphs with reducible loops using 
-    loop nesting forests, we will briefly touch
-    upon how graphs containing irreducible loops can be handled. The insight behind the implementation
-    is to transform the irreducible loop in such a way that an acyclic graph is created from the loop
-    without changing the dominance properties of the nodes. Referring to Figure~\ref{fig:irred}, we see 
-    that the irreducible loop comprising of nodes $v$ and $w$ in (a) can be transformed to the acyclic
-    graph in (c) by removing the edges between nodes $v$ and $w$ that create the irreducible loop. 
-    We can now create a new dummy node $\theta$ and add edges from the predecessor of all
-    the header nodes of the cycles of the irreducible graph to $\theta$, 
-    as well as add edges from $\theta$ to all the 
-    header nodes. This results in additional edges from $u$ and $s$ which are the predecessors of the
-    header nodes $v$ and $w$ respectively to $\theta$. In addition, extra edges are added from $\theta$
-    to the header nodes $v$ and $w$. The transformed graph is shown in (d). Following this transformation, 
-    computing the \iDF for the nodes 
-    in the original irreducible graph translates to computing \iDF for the transformed graph. Since this
-    graph is acyclic, the algorithm depicted in Figure~\ref{F:ramaIDF} can be applied by noting the
-    loop nesting forest structure as shown in (b). The crucial observation that allows this transformation 
-    to create an equivalent acyclic
-    graph is the fact that the dominator tree of the transformed graph remains identical to the
-    original graph containing an irreducible cycle. One of the drawbacks of the transformation is the
-    possible explosion in the number of dummy nodes and edges for graphs with many irreducible cycles as
-    a unique dummy node needs to be created for each irreducible loop. However, such cases may be rare
-    for practical applications.
 
-    \section{Summary}
-    This chapter provides an overview of some advanced construction algorithms 
-    for SSA. These include the first  linear-time algorithm by Sreedhar using 
-    the concept of \DJ-graphs, the merge relation by Pingali and 
-    Bilardi~\cite{bilardi}, a \DJ-graph and merge set based algorithm by Das and Ramakrishna and finally an algorithm by Ramalingam based on the concept of loop nesting forests. Though all these algorithms claim to be better than the original algorithm by Cyton et al., they are difficult to compare due to the unavailability of these algorithms in a common compiler framework. 
+\paragraph{\iDF on reducible graphs}
+
+{\def\HLC{\mbox{HLC}}
+A reducible graph can be decomposed into an acyclic graph and a set of back 
+edges. The contribution of back edges to the iterated dominance frontier can be 
+identified by using the loop nesting forest. If a vertex $u$ is contained in a 
+loop, then $\iDF(u)$ will contain the loop header. For any vertex $u$, let 
+$\HLC(u)$ denote the set of loop headers of the loops containing $u$. Given a 
+set of vertices $X$, it turns out that $\iDF(X) = \HLC(X) \cup 
+\iDFac(X \cup 
+\HLC(X))$ where $\iDFac$ denote the \iDF restricted to the 
+acyclic graph $G_{\textit{ac}}$.
+
+Reverting back 
+to Figure~\ref{fig:lnf}, we see that in order to find the $\iDF$ for the nodes 
+defining $v$, we need to evaluate $\iDFac(\{4,5,7,12\} \cup 
+\HLC(\{4,5,7,12\}))$. As all these nodes are contained in a single loop with 
+header $2$ $\HLC(\{4,5,7,12\}) = \{2\}$.
+Computing $\iDF\!ac(\{2,4,5,7,12\})$ gives us $\{6,8\}$, and finally, 
+$\iDF(\{4,5,7,12\}) = \HLC(\{4,5,7,12\}) \cup \{6,8\} = \{2,6,8\}$.  
+}
+
+\paragraph{\iDF on irreducible graphs}
+
+%\noindent
+\begin{figure}[t]
+  \centerline{\includegraphics[scale=0.3]{irred.pdf}}
+  \caption{(a) An irreducible graph (b) The Loop Nesting Forest (c) The acyclic subgraph (c) Transformed
+  graph.}
+  \label{fig:irred}
+\end{figure} 
+
+
+
+We will now briefly explain how graphs containing irreducible loops can be 
+handled. The insight behind the implementation is to transform the irreducible 
+loop in such a way that an acyclic graph is created from the loop without 
+changing the dominance properties of the nodes.
+
+\todo{subfigure}
+The loop in the graph of Figure~\ref{fig:irred}(a) is irreducible as it has two 
+headers, $v$ and $w$.
+It can be transformed to the acyclic graph (c) by removing 
+the edges between nodes $v$ and $w$ that create the irreducible loop.
+We create a dummy node, $\theta$, to which we connect all predecessors of the 
+headers ($u$ and $s$), and that we connect to all the headers of the loop 
+($v$ and $w$), creating graph (d).
+
+Following this transformation, the graph is now acyclic, and
+computing the \iDF for the nodes in the original 
+irreducible graph translates to computing \iDF using the transformed graph to 
+get $\iDFac$ and using the loop forest of the original graph (b).
+
+The 
+crucial observation that allows this transformation to create an equivalent 
+acyclic graph is the fact that the dominator tree of the transformed graph 
+remains identical to the original graph containing an irreducible cycle. One of 
+the drawbacks of the transformation is the possible explosion in the number of 
+dummy nodes and edges for graphs with many irreducible cycles as a unique dummy 
+node needs to be created for each irreducible loop.
+
 
 \section{Further Reading}
+
 Cytron's approach for $\phi$-placement involves a fully eager approach of constructing the entire \DF-graph. On the other hand Sreedhar and Gao's approach is a fully lazy approach as it constructs \DF on-the-fly only when a query is encountered.
-Pingali and Bilardi \cite{bilardi} suggested a middle-ground by combining both approaches. They proposed a new representation called ADT (Augmented Dominator Tree). The ADT representation can be thought as a \DJ-graph, where the \DF sets are pre-computed for certain nodes called ``boundary nodes'' using an eager approach. For the rest of the nodes, termed ``interior nodes'', the \DF needs to be computed on-the-fly as in the Sreedhar-Gao algorithm. The nodes which act as ``boundary nodes'' are detected in a separate pass. A factor $\beta$ is used to determine the partitioning of the nodes of a CFG into boundary or interior nodes by dividing the CFG into zones. $\beta$ is a number that represents space/query-time tradeoff. $\beta << 1$ denotes a fully eager approach where storage requirement for \DF is maximum but query-time is faster while $\beta >> 1$ denotes a fully lazy approach where storage requirement is zero but query is slower. 
+Pingali and Bilardi \cite{bilardi} suggested a middle-ground by combining both 
+approaches. They proposed a new representation called ADT (Augmented Dominator 
+Tree). The ADT representation can be thought as a \DJ-graph, where the \DF sets 
+are pre-computed for certain nodes called ``boundary nodes'' using an eager 
+approach. For the rest of the nodes, termed ``interior nodes,'' the \DF needs 
+to be computed on-the-fly as in the Sreedhar-Gao algorithm. The nodes which act 
+as ``boundary nodes'' are detected in a separate pass. A factor $\beta$ is used 
+to determine the partitioning of the nodes of a CFG into boundary or interior 
+nodes by dividing the CFG into zones. $\beta$ is a number that represents 
+space/query-time tradeoff. $\beta <\!\!< 1$ denotes a fully eager approach where 
+storage requirement for \DF is maximum but query-time is faster while 
+$\beta >\!\!> 1$ denotes a fully lazy approach where storage requirement is zero but 
+query is 
+slower. 
 
 Given the ADT of a control flow graph, it is straight forward to 
 modify  Sreedhar and Gao's algorithm for computing $\phi$-functions in linear time. The only modification that is needed is to ensure that we need not visit all the nodes of a sub-tree rooted at a node $y$ when $y$ is a boundary node whose \DF set is already known. This change is reflected in Line \ref{C:cached} of Figure~\ref{F:IDFMain}, where a subtree rooted at $y$ is visited or not visited based on whether it is a boundary node or not.
