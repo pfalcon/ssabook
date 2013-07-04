@@ -47,7 +47,7 @@ This example shows that maintaining SSA also involves placing new \phifuns.
 		\label{sfig:recons}
                 \tikzsubfigure[3]{spill}
 	}
-	\caption{Adding a second definition.}
+	\caption{Adding a second definition as a side-effect of spilling.}
 	\label{fig:ex1}
 \end{figure}
 
@@ -60,47 +60,51 @@ correct redirection of the uses of the variable.
 
 Jump threading is a transformation performed by many popular compilers such as GCC and LLVM.
 It partially evaluates branch targets to save branches and provide more context to other optimizations.
-Consider following situation:
-A block contains a conditional branch that depends on some variable \var x.
+Consider the situation where
+a block contains a conditional branch that depends on some variable \var x.
 In the example shown in Figure~\ref{fig:threading}, the conditional branch tests if $\var x> 0$.
+
 Assume that the block containing that conditional branch has multiple predecessors and \var x can be proven constant for one of the predecessors.
-In the example below, this is shown by the assignment $\var x_1\gets~0$. 
+In our example, this is shown by the assignment $\var x_1\gets~0$. 
 Jump threading now partially evaluates the conditional branch by directly making the corresponding successor of the branch block a successor of the \emph{predecessor} of the branch.
 To this end, the code of the branch block is duplicated and attached to the predecessor. 
 This also duplicates potential definitions of variables in the branch block.
 Hence, SSA is destroyed for those variables and has to be reconstructed. 
-However, in contrast to the examples above, the control flow has changed which poses an additional challenge for an efficient SSA reconstruction algorithm. 
+However, in contrast to the previous spill example, the control flow has 
+changed which poses an additional challenge for an efficient SSA reconstruction 
+algorithm. 
+
 \begin{figure}[htbp]
-	\begin{center}
-		\subfloat[Original program] {
-			\includegraphics{jump_thread_orig.pdf}
-		}
-		\hfill
-		\subfloat[Jump threaded, SSA broken] {
-			\includegraphics{jump_thread_broken.pdf}
-		}
-		\hfill
-		\subfloat[SSA reconstructed] {
-			\includegraphics{jump_thread_repair.pdf}
-		}
-	\end{center}
-	\caption{Jump Threading}
-	\label{fig:threading}
+  \begin{center}
+    \subfloat[Original program]{
+    \tikzsubfigure[1]{jump_threading}
+    }
+    \hfill
+    \subfloat[Jump threaded]{
+    \tikzsubfigure[2]{jump_threading}
+    }
+    \hfill
+    \subfloat[SSA reconstructed]{
+    \tikzsubfigure[3]{jump_threading}
+    }
+  \end{center}
+  \caption{Jump Threading can break SSA, which has to be reconstructed.}
+  \label{fig:threading}
 \end{figure}
 
 
 \section{General Considerations}
-In the following, we will discuss two algorithms.
+In this chapter, we will discuss two algorithms.
 The first is an adoption of the classical dominance-frontier based algorithm.
-The second performs a search from the variables' uses to the definition and places \phifuns on demand at appropriate places. 
-In contrast to the first, the second algorithm might not construct minimal SSA form in general.
+The second performs a search from the uses of the variables to the definition and places \phifuns on demand at appropriate places. 
+In contrast to the first, the second algorithm might not construct minimal SSA 
+form in general;
 However, it does not need to update its internal data structures when the CFG is modified. 
 
-We consider the following scenario:
-The program is represented as a control-flow graph (CFG) and is in SSA form and the dominance property holds.
+We consider the following scenario: The program is represented as a control flow graph (CFG) and is in SSA form with dominance property.
 For the sake of simplicity, we assume that each instruction in the program only writes to a single variable.
-Due to the single-assignment property of the SSA form, we can then identify the program point of the instruction and the variable. 
-An optimization or transformation now violates SSA by inserting additional definitions for an existing SSA variable, like in the examples above.
+%Due to the single assignment property of the SSA form, we can identify the program point of the instruction and the variable. 
+An optimization or transformation violates SSA by inserting additional definitions for an existing SSA variable, like in the examples above.
 The original variable and the additional definitions can be seen as a single non-SSA variable that has multiple definitions and uses.
 
 In the following, $v$ will be such a non-SSA variable.
