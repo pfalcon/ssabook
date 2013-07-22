@@ -137,71 +137,71 @@ The differences are described in the next two sections.
 	\caption{SSA Reconstruction Driver}
 	\label{alg:ssaconstr_driver}
 %proc ssa_reconstruct(variable v):
+\KwIn{$v$, a variable that breaks SSA property}
 \ForEach{$d \in v$.defs}{
+    create fresh variable $v'$ for $d$\;
     $b \gets d$.block\;
     insert $d$ in $b$.defs according to schedule\tcc*{latest def. is first in list}
   }
 
-  \ForEach{use $(u, \mbox{index})$ of $v$}{
-  $d \gets \mbox{None}$\;
-    \If{u is a \phifun}{
-      $b \gets u.\mbox{block}.\mbox{pred}(\textit{index})$\;
-      $d \gets \mbox{FindDefFromEnd}(b)$\;
+  \ForEach{use $(\textrm{inst}, \mbox{index})$ of $v$}{
+  \If{\textnormal{inst} is a \phifun}{
+      $b \gets \textrm{inst}.\mbox{block}.\mbox{pred}(\textit{index})$\;
+      $d \gets \textnormal{\ref{proc:find-def-from-end}}(v$, $b)$\;
     }
     \Else{
-      $b \gets u.\mbox{block}$\;
-      \ForEach{$l \in b.\mbox{defs}$ in order}{
-      \If{$l.\mbox{order} < u.\mbox{order}$}{\label{l:before-use}
+      $d \gets \bot$\;
+      $b \gets \textrm{inst}.\mbox{block}$\;
+      \ForEach(\tcc*[f]{from bottom to top}){$l \in b.\mbox{defs}$ in order}{
+      \If{$l$ is before $\textnormal{inst}$ in $b$}{\label{l:before-use}
           $d \gets l$\;
           break\;
         }
-          \tcc*[f]{no local def. found, searching in the predecessors}
-
       }
-      \If{not $d$}{
-          $d \gets \mbox{FindDefFromBegin}(b)$\;
+%          \tcc*[f]{no local def. found, searching in the predecessors}
+      \If(\tcc*[f]{no local def. found, searching in the preds}){$d = \bot$}{
+      $d \gets \textnormal{\ref{proc:find-def-from-begin}}(v$, $b)$\;
       }
     }
-
-    rewrite use at $u$ to $d$;
+    $v' \gets $ version of $v$ defined by $d$\;
+    rewrite use of $v$ at inst to $v'$;
   }
 \end{algorithm}
 
 \begin{procedure}
-  \caption{FindDefFromEnd($b$)}
+  \caption{FindDefFromEnd($v$, $b$)}
   \label{proc:find-def-from-end}
-  \KwIn{$b$, a basic block}
   \If{$b.\mbox{defs} \ne \emptyset$}{
-    \Return{b.defs[0]}
+  \Return{b.defs[0]}\tcc*[f]{$b$.defs[0] is the latest def. in $b$}
   }
   \Else{
-    \Return{\mbox{FindDefFromBegin}(b)}
+    \Return{\textnormal{\ref{proc:find-def-from-begin}}($v$, $b$)}
   }
 \end{procedure}
 
 %proposed by Sastry and Ju~\cite{sastry98}, 
 \section{Reconstruction based on the Dominance Frontier}
 This algorithm follows the same principles as the classical SSA construction algorithm by Cytron at al.~as described in Chapter~\ref{chapter:classical_construction_algorithm}.
-We first compute the iterated dominance frontier (IDF) of~$v$.
+We first compute the iterated dominance frontier (\iDF) of~$v$.
 This set is a sound approximation of the set where \phifuns must be placed---it might contain blocks where a \phifun would be dead.
 Then, we search for each use~$u$ the corresponding reaching definition.
 This search starts at the block of~$u$.
-If that block $b$ is in the IDF of~$v$, a \phifun needs to be placed at its entrance.
+If that block $b$ is in the \iDF of~$v$, a \phifun needs to be placed at its entrance.
 This \phifun becomes a new definition of $v$ and has to be inserted in $v.\textrm{defs}$ and in $b.\textrm{defs}$.
 The operands of the newly created \phifun will query their reaching definitions by recursive calls to \ref{proc:find-def-from-end} on predecessors of $b$.
 Because we inserted the \phifun into $b.\textrm{defs}$ \emph{before} searching for the arguments, no infinite recursion can occur (otherwise, it could happen for instance with a loop back edge).
 
-If the block is not in the IDF, the search continues in the immediate dominator of the block. 
+If the block is not in the \iDF, the search continues in the immediate dominator of the block. 
 This is because in SSA, every use of a variable must be dominated by its definition.\footnote{The definition of an operand of a \phifun has to dominate the corresponding predecessor block.}
 Therefore, the reaching definition is the same for all predecessors of the block, and hence for the immediate dominator of this block.
 
 \begin{procedure}
-  \caption{FindDefFromBegin($b$)}
+  \caption{FindDefFromBegin($v$, $b$)}
   \label{proc:def-from-end-ssaconstr}
   \tcc{SSA Reconstruction based on Dominance Frontiers}
-  \KwIn{$b$, a basic block}
-  \If{$b \in \textnormal{IDF}$}{
-    $d \gets \mbox{new\_phi}(b)$\;
+  \If{$b \in \textnormal{\iDF($v$.defs)}$}{
+    $v' \gets$ fresh variable\;
+    $d \gets $ new \phifun in $b$: $v' \gets \phi(\dots)$ \;
     append $d$ to $b.\mbox{defs}$\;
 %    $i \gets 0$\;
     \ForEach{$p \in b.\mbox{preds}$}{ 
@@ -254,7 +254,7 @@ In this version of function \ref{alg:ssaconstr_click}, this check is done by the
   \label{alg:ssaconstr_click}
   \tcc{Search-based SSA Reconstruction}
   \KwIn{$b$, a basic block}
-\If{$b.\textnormal{beg} \ne \mbox{None}$}{
+\If{$b.\textnormal{beg} \ne \bot$}{
     \Return{$b.\textnormal{beg}$}
   }
   \pendphi $\gets$ new \phifun in $b$\;
@@ -284,12 +284,12 @@ $\{v_\phi, \textrm{other}\}$}
 \KwIn{$v_\phi$, the variable defined by \pendphi}
 \KwIn{reaching\_defs, list of variables}
 \KwOut{$v_\phi$ if \pendphi is necessary, the variable to use instead otherwise}
-  $\textrm{other} \gets \textnormal{None}$\;
+  $\textrm{other} \gets \bot$\;
   \ForEach{$d \in \textrm{reaching\_defs}$}{
     \lIf{$d = v_\phi$}{
       continue\;
     }
-    \If{other = None}{
+    \If{other = $\bot$}{
       other $\gets d$
     }
     \ElseIf{$d \ne \textrm{other}$}{
@@ -298,7 +298,7 @@ $\{v_\phi, \textrm{other}\}$}
   }
   \tcc{this assertion is violated if reaching\_defs contains only pending\_$\phi$
   which never can happen}
-  assert ($\textrm{other} \ne \textrm{None}$)\;
+  assert ($\textrm{other} \ne \bot$)\;
   \Return{other}
 \end{procedure}
 
