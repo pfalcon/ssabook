@@ -108,9 +108,9 @@ For the sake of simplicity, we assume that each instruction in the program only 
 An optimization or transformation violates SSA by inserting additional definitions for an existing SSA variable, like in the examples above.
 The original variable and the additional definitions can be seen as a single non-SSA variable that has multiple definitions and uses.
 
+\todo{reprendre paragraphe}
 In the following, $v$ will be such a non-SSA variable.
-Before reconstructing SSA for~$v$, we number every definition of~$v$ to
-establish the single-assignment property. 
+When reconstructing SSA for~$v$, we will first create fresh variables for every definition of~$v$ to establish the single-assignment property. 
 What remains is associating every use of~$v$ with a suitable definition.
 In the algorithms, $v.\textrm{defs}$ denotes the set of all SSA variables that represent~$v$.
 A use of a variable is a pair consisting of a program point (an instruction) and an integer denoting the index of the operand at this instruction.
@@ -139,9 +139,11 @@ The differences are described in the next two sections.
 %proc ssa_reconstruct(variable v):
 \KwIn{$v$, a variable that breaks SSA property}
 \ForEach{$d \in v$.defs}{
-    create fresh variable $v'$ for $d$\;
+    create fresh variable $v'$\;
+    rewrite def of $v$ by $v'$ in $d$\;
     $b \gets d$.block\;
-    insert $d$ in $b$.defs according to schedule\tcc*{latest def. is first in list}
+    insert $d$ in $b$.defs\;
+%    according to schedule\tcc*{latest def. is first in list}
   }
 
   \ForEach{use $(\textrm{inst}, \mbox{index})$ of $v$}{
@@ -152,7 +154,7 @@ The differences are described in the next two sections.
     \Else{
       $d \gets \bot$\;
       $b \gets \textrm{inst}.\mbox{block}$\;
-      \ForEach(\tcc*[f]{from bottom to top}){$l \in b.\mbox{defs}$ in order}{
+      \ForEach{$l \in b.\mbox{defs}$ from bottom to top}{
       \If{$l$ is before $\textnormal{inst}$ in $b$}{\label{l:before-use}
           $d \gets l$\;
           break\;
@@ -164,7 +166,7 @@ The differences are described in the next two sections.
       }
     }
     $v' \gets $ version of $v$ defined by $d$\;
-    rewrite use of $v$ at inst to $v'$;
+    rewrite use of $v$ by $v'$ in inst\;
   }
 \end{algorithm}
 
@@ -172,10 +174,10 @@ The differences are described in the next two sections.
   \caption{FindDefFromEnd($v$, $b$)}
   \label{proc:find-def-from-end}
   \If{$b.\mbox{defs} \ne \emptyset$}{
-  \Return{b.defs[0]}\tcc*[f]{$b$.defs[0] is the latest def. in $b$}
+  \Return{latest element in $b$.defs}\;
   }
   \Else{
-    \Return{\textnormal{\ref{proc:find-def-from-begin}}($v$, $b$)}
+    \Return{\textnormal{\ref{proc:find-def-from-begin}}($v$, $b$)}\;
   }
 \end{procedure}
 
@@ -205,14 +207,15 @@ Therefore, the reaching definition is the same for all predecessors of the block
     append $d$ to $b.\mbox{defs}$\;
 %    $i \gets 0$\;
     \ForEach{$p \in b.\mbox{preds}$}{ 
-      $o \gets \mbox{FindDefFromEnd}(p)$\;
+      $o \gets \textnormal{\ref{proc:find-def-from-end}}(v$, $p)$\;
 %      set $i$-th operand of $d$ to $o$\;
-      set corresponding operand of $d$ to $o$\;
+      $v' \gets $ version of $v$ defined by $o$\;
+      set corresponding operand of $d$ to $v'$\;
 %      $i \gets i + 1$\;
     }
   }
   \Else{
-  $d \gets \mbox{FindDefFromEnd}(b.\mbox{idom})$\tcc*{search in immediate dominator}
+  $d \gets \textnormal{\ref{proc:find-def-from-end}}(v$, $b.\mbox{idom})$\tcc*{search in immediate dominator}
   }
   \Return{d}
 \end{procedure}
