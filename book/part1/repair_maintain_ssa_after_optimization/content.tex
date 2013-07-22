@@ -1,4 +1,4 @@
-% vim:spell:spelllang=en
+% vim:spell:spelllang=en:textwidth=0
 
 %\newcommand{\var}[1]{\ensuremath{\mathtt{#1}}}
 
@@ -8,7 +8,8 @@
 \label{chapter:repair_maintain_ssa_after_optimization}
 \graphicspath{{repair_maintain_ssa_after_optimization/}{part1/repair_maintain_ssa_after_optimization/}}
 
-
+{
+\def\pendphi{pending\_$\phi$\xspace}
 %Here the currssadir is \currentssadir.
 
 \section{Introduction}
@@ -108,218 +109,260 @@ An optimization or transformation violates SSA by inserting additional definitio
 The original variable and the additional definitions can be seen as a single non-SSA variable that has multiple definitions and uses.
 
 In the following, $v$ will be such a non-SSA variable.
-Before reconstructing SSA for~$v$, every definition of~$v$ is numbered. 
-This establishes the single-assignment property. 
+Before reconstructing SSA for~$v$, we number every definition of~$v$ to
+establish the single-assignment property. 
 What remains is associating every use of~$v$ with a suitable definition.
-In the pseudocode \verb|v.defs| denotes the set of all SSA variables that represent~$v$.
-A use of a variable is a pair consisting of a program point (a variable) and an integer denoting the index of the operand at the using instruction.
+In the algorithms, $v.\textrm{defs}$ denotes the set of all SSA variables that represent~$v$.
+A use of a variable is a pair consisting of a program point (an instruction) and an integer denoting the index of the operand at this instruction.
 
-Both algorithms presented in this chapter share the same driver routine (Algorithm~\ref{alg:ssaconstr_driver}).
-First, for every basic block~\verb|b| we compute a list~\verb|b.defs| that contains all instructions in the block which define one of the variables in~\verb|v.defs|.
-This list is sorted according to the schedule of the instructions in the block from back to front.
-Hence, the latest definition is the first in the list.
+Both algorithms presented in this chapter share the same driver routine 
+described in Algorithm~\ref{alg:ssaconstr_driver}.
+First, for every basic block $b$ we compute a list $b.\textrm{defs}$ that contains all instructions in the block which define one of the variables in $v.\textrm{defs}$.
+This list is sorted according to the schedule of the instructions in the block from back to front; Hence, the latest definition is the first in the list.
 
 Then, all uses of the variable~$v$ are scanned.
-Here we have to differentiate whether the user is a \phifun or not.
-If it is, the variable's use occurs at the end of the predecessor block that corresponds to the position of the variable in the $\phi$'s argument list.
-In that case, we start looking for the reaching definition at the end of that block.
-Otherwise, we scan the block's list backwards until we find the first definition in front of the use.
+Here we have to differentiate whether the use is in a \phifun or not.
+If so, the use occurs at the end of the predecessor block that corresponds to the position of the variable in the $\phi$'s argument list.
+In that case, we start looking for the reaching definition from the end of that block.
+Otherwise, we scan the instructions of  the block backwards until we reach the first definition that is before the use (Line~\ref{l:before-use}).
 If there is no such definition, we have to find one that reaches this block from \emph{outside.}
-We use two functions \verb|find_def_from_begin| and \verb|find_def_from_end| that find the reaching definition at the beginning and end of a block, respectively. 
-Algorithm~\ref{alg:ssaconstr_driver} shows that \verb|find_def_from_end| can be expressed in terms of \verb|find_def_from_begin|. 
-\verb|find_def_from_end| additionally considers definitions in the block, while \verb|find_def_from_begin| does not.
-Our two approaches only differ in the implementation of the function \verb|find_def_from_begin|.
+
+We use two functions, \ref{proc:find-def-from-begin} and \ref{proc:find-def-from-end} that search the reaching definition respectively from the beginning or the end of a block.
+\ref{proc:find-def-from-end} actually just returns the last definition in the block, or call \ref{proc:find-def-from-begin} if there is none.
+
+The two presented approaches to SSA repairing differ in the implementation of the function \ref{proc:find-def-from-begin}.
 The differences are described in the next two sections.
+
 \begin{algorithm}
 	\caption{SSA Reconstruction Driver}
 	\label{alg:ssaconstr_driver}
+%proc ssa_reconstruct(variable v):
+\ForEach{$d \in v$.defs}{
+    $b \gets d$.block\;
+    insert $d$ in $b$.defs according to schedule\tcc*{latest def. is first in list}
+  }
 
-\begin{verbatim}
-proc ssa_reconstruct(variable v):
-  for d in v.defs:
-    b = d.block
-    insert d in b.defs according to schedule
-    # latest definition is first in list
+  \ForEach{use $(u, \mbox{index})$ of $v$}{
+  $d \gets \mbox{None}$\;
+    $b \gets u.\mbox{block}$\;
+    \If{u is a \phifun}{
+      $b \gets u.\mbox{block}.\mbox{pred}(\textit{index})$\;
+      $d \gets \mbox{FindDefFromEnd}(b)$\;
+    }
+    \Else{
+      \ForEach{$l \in b.\mbox{defs}$ in order}{
+      \If{$l.\mbox{order} < u.\mbox{order}$}{\label{l:before-use}
+          $d \gets l$\;
+          break\;
+        }
+          \tcc*[f]{no local def. found, searching in the predecessors}
 
-  for each use (u, index) of v:
-    d = None
-    b = u.block
-    if u.is_phi():
-      b = u.block.pred(index)
-      d = find_def_from_end(b)
-    else:
-      for l in b.defs:
-        if l.order < u.order:
-          d = l
-          break
-      # no local definition was found, search in the predecessors
-      if not d:
-        d = find_def_from_begin(b)
+        \If{not $d$}{
+          $d \gets \mbox{FindDefFromBegin}(b)$\;
+        }
+      }
+    }
 
-    rewrite use at u to d
-
-proc find_def_from_end(block b):
-  if not b.defs.empty():
-    return b.defs[0]
-  return find_def_from_begin(b)
-\end{verbatim}
+    rewrite use at $u$ to $d$;
+  }
 \end{algorithm}
+
+\begin{procedure}
+  \caption{FindDefFromEnd($b$)}
+  \label{proc:find-def-from-end}
+  \KwIn{$b$, a basic block}
+  \If{$b.\mbox{defs} \ne \emptyset$}{
+    \Return{b.defs[0]}
+  }
+  \Else{
+    \Return{\mbox{FindDefFromBegin}(b)}
+  }
+\end{procedure}
+
 %proposed by Sastry and Ju~\cite{sastry98}, 
 \section{Reconstruction based on the Dominance Frontier}
-This algorithm follows the same principles as the classical SSA construction algorithm by Cytron at al.~as described in chapter~(TODO: reference to the chapter).
-We compute the iterated dominance frontier (IDF) of~$v$.
-This set is a sound approximation of the set where \phifuns must be placed (it might contain blocks where a \phifun would be dead).
+This algorithm follows the same principles as the classical SSA construction algorithm by Cytron at al.~as described in Chapter~\ref{chapter:classical_construction_algorithm}.
+We first compute the iterated dominance frontier (IDF) of~$v$.
+This set is a sound approximation of the set where \phifuns must be placed---it might contain blocks where a \phifun would be dead.
 Then, we search for each use~$u$ the corresponding reaching definition.
 This search starts at the block of~$u$.
-If that block is in the IDF of~$v$ a \phifun needs to be placed at its entrance.
-This \phifun has to be inserted into the list of definitions of~$v$ in that block.
-The operands of the newly created \phifun will query their reaching definitions by recursive calls to \verb|find_def_from_end|.
-The operands of that \phifun are then (recursively) searched in the predecessors of the block.
-Because we inserted the \phifun into the \verb|b.defs| \emph{before} searching for the arguments, no infinite recursion can occur.
-If the block is not in the IDF, the search continues in the block's immediate dominator. 
-This is because in SSA, every use of a variable must be dominated by its definition\footnote{The definition of an operand of a \phifun has to dominate the according predecessor block.}.
-Therefore, the reaching definition is the same for all predecessors and hence for the immediate dominator of this block.
-Algorithm~\ref{alg:ssaconstr} shows this procedure in pseudo-code.
+If that block $b$ is in the IDF of~$v$, a \phifun needs to be placed at its entrance.
+This \phifun becomes a new definition of $v$ and has to be inserted in $v.\textrm{defs}$ and in $b.\textrm{defs}$.
+The operands of the newly created \phifun will query their reaching definitions by recursive calls to \ref{proc:find-def-from-end} on predecessors of $b$.
+Because we inserted the \phifun into $b.\textrm{defs}$ \emph{before} searching for the arguments, no infinite recursion can occur (otherwise, it could happen for instance with a loop back edge).
 
-\begin{algorithm}
-  \caption{SSA Reconstruction based on Dominance Frontiers}
-  \label{alg:ssaconstr}
-\begin{verbatim}
-proc find_def_from_begin(block b):
-  if b in IDF:
-    d = new_phi(b)
-    b.defs.append(d)
-    i = 0
-    for p in b.preds: 
-      o = find_def_from_end(p, IDF)
-      set i-th operand of d to o
-      i = i + 1
-  else:
-    d = find_def_from_end(b.idom)
-  return d
-\end{verbatim}
-\end{algorithm}
+If the block is not in the IDF, the search continues in the immediate dominator of the block. 
+This is because in SSA, every use of a variable must be dominated by its definition.\footnote{The definition of an operand of a \phifun has to dominate the corresponding predecessor block.}
+Therefore, the reaching definition is the same for all predecessors of the block, and hence for the immediate dominator of this block.
+
+\begin{procedure}
+  \caption{FindDefFromBegin($b$)}
+  \label{proc:def-from-end-ssaconstr}
+  \tcc{SSA Reconstruction based on Dominance Frontiers}
+  \KwIn{$b$, a basic block}
+  \If{$b \in \textnormal{IDF}$}{
+    $d \gets \mbox{new\_phi}(b)$\;
+    append $d$ to $b.\mbox{defs}$\;
+%    $i \gets 0$\;
+    \ForEach{$p \in b.\mbox{preds}$}{ 
+      $o \gets \mbox{FindDefFromEnd}(p)$\;
+%      set $i$-th operand of $d$ to $o$\;
+      set corresponding operand of $d$ to $o$\;
+%      $i \gets i + 1$\;
+    }
+  }
+  \Else{
+  $d \gets \mbox{FindDefFromEnd}(b.\mbox{idom})$\tcc*{search in immediate dominator}
+  }
+  \Return{d}
+\end{procedure}
 
 \section{Search-based Reconstruction}
 
-The second algorithm we present here is similar to the construction algorithm that Click describes in his thesis~\cite{click:thesis}.
-Although his algorithm is designed to construct SSA from the abstract syntax tree, it also works well on control flow graphs.
+
+The second algorithm presented here is adapted from an algorithm designed to construct SSA from the abstract syntax tree, but it also works well on control flow graphs.
 Its major advantage over the algorithm presented in the last section is that it does neither require dominance information nor dominance frontiers.
 Thus it is well suited to be used in transformations that change the control flow graph.
 Its disadvantage is that potentially more blocks have to be visited during the reconstruction.
-The principle idea is to start a search from every use to find the corresponding definition, inserting \phifuns on the fly, while caching the found definitions at the basic blocks.
+The principle idea is to start a search from every use to find the corresponding definition, inserting \phifuns on the fly while caching the SSA variable alive at the beginning of basic blocks.
 As in the last section, we only consider the reconstruction for a single variable called~$v$ in the following.
 If multiple variables have to be reconstructed, the algorithm can be applied to each variable separately.
 
-We perform a backward depth-first search in the CFG to collect the reaching definitions of the variable in question at each block.
-We record the SSA variable that corresponds to the reaching definition of~$v$ at the end of the block in the field \verb|def| of the block.
-If the CFG is a DAG, all predecessors of a block can be visited before the block itself is processed (post-order traversal).
-Hence, all definitions that reach~\verb|b| can be computed before we decide whether to place a \phifun in~\verb|b| or not.
-If more than one definition reaches the block, we need to place a \phifun.
+\paragraph{Search on an acyclic CFG.}
+The algorithm performs a backward depth-first search in the CFG to collect the reaching definitions of $v$ in question at each block,
+recording the SSA variable that is alive at the beginning of a block in the ``beg'' field of this block.
+If the CFG is an acyclic graph (DAG), all predecessors of a block can be visited before the block itself is processed, as we are using a post-order traversal following edges backward.
+Hence, we know all the definitions that reach a block $b$: if there is more than one definition, we need to place a \phifun in $b$, otherwise it is not necessary.
 
-If the CFG has loops, there are blocks for which not all reaching definitions can be computed before we can decide whether a \phifun has to be placed.
-Recursively computing the reaching definitions for a block~\verb|b| can end up at~\verb|b| itself.
-To avoid infinite recursion, we create a \phifun \verb|phi| without operands in the block before descending to the predecessors. 
-Hence, if a variable has no definition in a loop, the \phifun placed in the header eventually reaches itself (and can later be eliminated). 
-When we return to~\verb|b| we decide whether a \phifun has to be placed in~\verb|b| by looking at the reaching definition for every predecessor.
-If the set of reaching definitions is a subset of $\{w,x\}$ where~$x$ is the \phifun inserted at~\verb|b| and~$w$ some other variable, then the \phifun is not necessary and we can propagate~$w$ further downwards.
-In Algorithm~\ref{alg:ssaconstr_click}, this check is done by the function \verb|phi_necessary|.
+\paragraph{Search on a general CFG.}
+If the CFG has loops, there are blocks for which not all reaching definitions can be computed before we can decide whether a \phifun has to be placed or not.
+In a loop, recursively computing the reaching definitions for a block $b$ will end up at $b$ itself.
+To avoid infinite recursion, when we enter a block during the traversal, we first create a \phifun without arguments, ``\pendphi.''
+This creates a new definition for $v$, $v\_\phi$, which is the variable alive at the beginning of this block.
 
-\begin{algorithm}
-	\caption{Search-based SSA Reconstruction}
-	\label{alg:ssaconstr_click}
 
-\begin{verbatim}
-proc find_def_from_begin(block b):
-  if b.def != None:
-    return b.def
-  pending = make_phi()
-  reaching_defs = []
-  for p in b.preds:
-    reaching_defs += find_def_from_end(p)
-  definite = phi_necessary(pending, reaching_defs)
-  if pending == definite:
-    set_arguments(definite, reaching_defs)
-  b.def = definite
-  return definite
+When we return to $b$ after traversing the rest of the CFG, we decide whether a \phifun has to be placed in $b$ by looking at the reaching definition for every predecessor.
+These reaching definitions can be either $v_\phi$ itself (loop in the CFG without a definition of $v$), or some other definitions of $v$.
+If there is only one such other definition, say $w$, then this definition cannot be in a loop around $b$ or the program would not be strict.
+In that case, it means \pendphi is not necessary and we can remove it, propagating $w$ downward instead of $v_\phi$. Otherwise, we keep \pendphi and fill its missing operands with the reaching definitions.
 
-# checks, if the parameter list in reaching_defs makes a phi function 
-# necessary. This is the case if it is a subset of { other, pending_phi }
-proc phi_necessary(variable pending_phi, list of variables reaching_defs):
-  other = None
-  for d in reaching_defs:
-    if d == pending_phi:
-      continue
-    if other == None:
-      other = d
-    elif other != d:
-      return pending_phi
-  # this assertion is violated if reaching_defs only contains pending_phi
-  # which never can happen
-  assert other != None
-  return other
-  
-\end{verbatim}
-\end{algorithm}
+In this version of function \ref{alg:ssaconstr_click}, this check is done by the function \ref{proc:phi-necessary}.
 
-In programs with loops, it can be the case that the local optimization which Algorithm~\ref{alg:ssaconstr_click} performs by calling \verb|phi_necessary| does not remove all unnecessary \phifuns. 
+\begin{procedure}
+  \caption{FindDefFromBegin($b$)}
+  \label{proc:find-def-from-begin}
+  \label{alg:ssaconstr_click}
+  \tcc{Search-based SSA Reconstruction}
+  \KwIn{$b$, a basic block}
+\If{$b.\textnormal{beg} \ne \mbox{None}$}{
+    \Return{$b.\textnormal{beg}$}
+  }
+  \pendphi $\gets$ new \phifun in $b$\;
+  $v_\phi$ $\gets$ result of \pendphi\;
+  $b.\mbox{beg} \gets v_\phi$\;
+  reaching\_defs $\gets []$\;
+  \ForEach{$p \in b.\textrm{preds}$}{
+    reaching\_defs $\gets$ reaching\_defs $\cup$ FindDefFromEnd$(p)$
+  }
+  $v_\textrm{def}$ $\gets$ \ref{proc:phi-necessary}($v_\phi$, reaching\_defs)\;
+  \If{$v_\textnormal{def}\, = v_\phi$}{
+    set arguments of \pendphi to reaching\_defs\;
+  }
+  \Else{
+    remove \pendphi\;
+    $b.\mbox{beg} \gets v_\textrm{def}$\;
+  }
+  \Return{$v_\textnormal{def}$}
+\end{procedure}
+
+\begin{procedure}
+  \caption{Phi-Necessary($v_\phi$, reaching\_defs)}
+  \label{proc:phi-necessary}
+\tcc{Checks if the parameter list in reaching\_defs makes
+\pendphi necessary. This is the case if it is a subset of
+$\{v_\phi, \textrm{other}\}$}
+\KwIn{$v_\phi$, the variable defined by \pendphi}
+\KwIn{reaching\_defs, list of variables}
+\KwOut{$v_\phi$ if \pendphi is necessary, the variable to use instead otherwise}
+  $\textrm{other} \gets \textnormal{None}$\;
+  \ForEach{$d \in \textrm{reaching\_defs}$}{
+    \lIf{$d = v_\phi$}{
+      continue\;
+    }
+    \If{other = None}{
+      other $\gets d$
+    }
+    \ElseIf{$d \ne \textrm{other}$}{
+      \Return{$v_\phi$}
+    } 
+  }
+  \tcc{this assertion is violated if reaching\_defs contains only pending\_$\phi$
+  which never can happen}
+  assert ($\textrm{other} \ne \textrm{None}$)\;
+  \Return{other}
+\end{procedure}
+
+\paragraph{Removing unnecessary \phifuns.}
+
+In programs with loops, it can be the case that the local optimization performed when function \ref{alg:ssaconstr_click} calls \ref{proc:phi-necessary} does not remove all unnecessary \phifuns. 
 This can happen in loops where \phifuns can become unnecessary because other \phifuns are optimized away. 
 Consider the example in Figure~\ref{fig:phiopt}.
 \begin{figure}[htbp]
 	\begin{center}
 		\subfloat[Original program] {
-			\includegraphics{phi_opt_orig.pdf}
+                  \tikzsubfigure[1]{phi-opt}
 		}
 		\qquad
-		\subfloat[Unnecessary \phifuns placed] {
+		\subfloat[Unnecessary \phifuns] {
 			\label{fig:unn_phi_left}
-			\includegraphics{phi_opt_unn.pdf}
+                  \tikzsubfigure[2]{phi-opt}
 		}
 	\end{center}
-	\caption{Removal of unnecessary \phifuns}
+	\caption{Removal of unnecessary \phifuns.}
 	\label{fig:phiopt}
 \end{figure}
 We look for a definition of $\var x$ from block~$E$.
-If Algorithm~\ref{alg:ssaconstr_click} considers the blocks in a unfavorable order, e.g.~$D,C,B,A,D,C$, some unnecessary \phifuns can not be removed by \verb|phi_necessary|, as shown in Figure~\ref{fig:unn_phi_left}.
-While the \phifun in block~$C$ can be eliminated by the local criterion applied by \verb|phi_necessary|, the \phifun in block~$B$ remains. 
-This is, because the depth-first search carried out by \verb|find_def_from_begin| will not visit block~$B$ a second time.
+If Algorithm~\ref{alg:ssaconstr_click} considers the blocks in a unfavorable order, e.g., $E,D,C,B,A,D,C$, some unnecessary \phifuns can not be removed by \ref{proc:phi-necessary}, as shown in Figure~\ref{fig:unn_phi_left}.
+While the \phifun in block~$C$ can be eliminated by the local criterion applied by \ref{proc:phi-necessary}, the \phifun in block~$B$ remains. 
+This is because the depth-first search carried out by \ref{proc:find-def-from-begin} will not visit block~$B$ a second time.
 To remove the remaining \phifuns, the local criterion can be iteratively applied to all placed \phifuns until a fixpoint is reached. 
 For reducible control flow, this then produces the minimal number of placed \phifuns. 
 The classical $(\ast)$-graph in Figure~\ref{fig:astgraph} illustrates that this does not hold for the irreducible case:
-\begin{figure}[htbp]
-	\begin{center}
-		\includegraphics{ast_graph.pdf}
-		\caption{The irreducible $(\ast)$-Graph}
-		\label{fig:astgraph}
-	\end{center}
+
+\begin{figure}
+    \hfil\tikzfigure{ast-graph}\hfil\strut
+    \caption{The irreducible $(\ast)$-Graph.}
+    \label{fig:astgraph}
 \end{figure}
 
 
 \section{Conclusions}
 
-Some optimizations, such as loop unrolling or live-range splitting destroy the single-assignment property of the SSA form.
-In this chapter we presented two generic algorithms to reconstruct SSA.
-The algorithms are independent of the transformation that violated SSA and can be used as a black box:
+
+The algorithms presented in this chapter are independent of the transformation that violated SSA and can be used as a black box:
 For every variable for which SSA was violated, a routine is called that restores SSA.
-Both algorithms rely on computed def-use chains because they traverse all uses from a SSA variable to find suitable definitions.
-However, both algorithms differ in their prerequisites and their runtime behavior:
-\begin{enumerate}
-	\item 
-		The first one~\cite{Choi:1996ji} is based on the iterated dominance frontiers like the classical SSA construction algorithm by Cytron et al.~\cite{cytron:1991:ssa}.
+Both algorithms rely on computed def-use chains because they traverse all uses from a SSA variable to find suitable definitions;
+However, they differ in their prerequisites and their runtime behavior:
+\begin{description}
+	\item[First algorithm.]
+		Choi et al.~\cite{Choi:1996ji} based this algorithm on the iterated dominance frontiers like the classical SSA construction algorithm by Cytron et al.~\cite{cytron:1991:ssa}.
 		Hence, it is less suited for optimizations that also change the flow of control since that would require recomputing the iterated dominance frontiers.
 		On the other hand, by using the iterated dominance frontiers, the algorithm can find the reaching definitions quickly by scanning the dominance tree upwards.
 		Furthermore, one could also envision applying incremental algorithms to construct the dominance tree~\cite{Ramalingam:1994iq,Sreedhar:1995:ICD:202529.202531} and the dominance frontier~\cite{Sreedhar:1996:NFE:231379.231434} to account for changes in the control flow. 
-		this has not yet been done and no practical experiences have been reported so far.
-	\item 
-		The second algorithm does not depend on additional analysis information such as iterated dominance frontiers or the dominance tree.
-		Thus, it is well suited for transformations that change the CFG because no information needs to be recomputed.
-		On the other hand, it might find the reaching definitions slower than the first one because they are searched by a depth-first search in the CFG.
-\end{enumerate}
-Both approaches construct \emph{pruned} SSA (TODO: cite other chapter), i.e., no \phifun is dead. 
-The first approach produces minimal SSA by the very same arguments Cytron et al.~\cite{cytron:1991:ssa} give.
-The second one does only produce minimal SSA (in the sense of Cytron) in the case of reducible control flow. 
-This follows from the iterative application of the function \verb|phi_necessary| which implements the two simplification rules presented by Aycock and Horspool~\cite{Aycock_Horspool_2000}.
-They show that the iterative application of both rules yields minimal SSA on reducible graphs. 
-These two local rules can be extended to a non-local one which then has to find strongly connected $\phi$-components that all refer to the same exterior variable.
-Such a non-local check also eliminates unnecessary \phifuns in the irreducible case.
+		This has not yet been done and no practical experiences have been reported so far.
 
+	\item[Second algorithm.] 
+		It does not depend on additional analysis information such as iterated dominance frontiers or the dominance tree.
+		Thus, it is well suited for transformations that change the CFG because no information needs to be recomputed.
+		On the other hand, it might be slower to find the reaching definitions because they are searched by a depth-first search in the CFG.
+\end{description}
+
+Both approaches construct \emph{pruned} SSA, i.e., they do not add dead \phifuns.
+The first approach produces minimal SSA by the very same arguments Cytron et al.~\cite{cytron:1991:ssa} give.
+The second is similar to the construction algorithm that Click describes in his thesis~\cite{click:thesis} to construct SSA from an abstract syntax tree, and only produce minimal SSA (in the sense of Cytron) in the case of reducible control flow. 
+This follows from the iterative application of the function \ref{proc:phi-necessary} which implements the two simplification rules presented by Aycock and Horspool~\cite{Aycock_Horspool_2000}, 
+who showed that their iterative application yields minimal SSA on reducible graphs. 
+These two local rules can be extended to a non-local one which has to find strongly connected $\phi$-components that all refer to the same exterior variable.
+Such a non-local check also eliminates unnecessary \phifuns in the irreducible case.\todo{citation?}
+
+}
