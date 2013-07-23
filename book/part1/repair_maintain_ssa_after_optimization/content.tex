@@ -112,13 +112,14 @@ The original variable and the additional definitions can be seen as a single non
 In the following, $v$ will be such a non-SSA variable.
 When reconstructing SSA for~$v$, we will first create fresh variables for every definition of~$v$ to establish the single-assignment property. 
 What remains is associating every use of~$v$ with a suitable definition.
-In the algorithms, $v.\textrm{defs}$ denotes the set of all SSA variables that represent~$v$.
+In the algorithms, $v.\textrm{defs}$ denotes the set of all instructions that define $v$.
 A use of a variable is a pair consisting of a program point (an instruction) and an integer denoting the index of the operand at this instruction.
 
 Both algorithms presented in this chapter share the same driver routine 
 described in Algorithm~\ref{alg:ssaconstr_driver}.
-First, for every basic block $b$ we compute a list $b.\textrm{defs}$ that contains all instructions in the block which define one of the variables in $v.\textrm{defs}$.
-This list is sorted according to the schedule of the instructions in the block from back to front; Hence, the latest definition is the first in the list.
+First, we scan all definitions of $v$ so that
+for every basic block $b$ we have the list $b.\textrm{defs}$ that contains all instructions in the block which define one of the variables in $v.\textrm{defs}$.
+It is best to sort this according to the schedule of the instructions in the block from back to front, making, the latest definition the first in the list.
 
 Then, all uses of the variable~$v$ are scanned.
 Here we have to differentiate whether the use is in a \phifun or not.
@@ -171,10 +172,10 @@ The differences are described in the next two sections.
 \end{algorithm}
 
 \begin{procedure}
-  \caption{FindDefFromEnd($v$, $b$)}
+  \caption{FindDefFromBottom($v$, $b$)}
   \label{proc:find-def-from-end}
   \If{$b.\mbox{defs} \ne \emptyset$}{
-  \Return{latest element in $b$.defs}\;
+  \Return{latest instruction in $b$.defs}\;
   }
   \Else{
     \Return{\textnormal{\ref{proc:find-def-from-begin}}($v$, $b$)}\;
@@ -198,7 +199,7 @@ This is because in SSA, every use of a variable must be dominated by its definit
 Therefore, the reaching definition is the same for all predecessors of the block, and hence for the immediate dominator of this block.
 
 \begin{procedure}
-  \caption{FindDefFromBegin($v$, $b$)}
+  \caption{FindDefFromTop($v$, $b$)}
   \label{proc:def-from-end-ssaconstr}
   \tcc{SSA Reconstruction based on Dominance Frontiers}
   \If{$b \in \textnormal{\iDF($v$.defs)}$}{
@@ -252,20 +253,20 @@ In that case, it means \pendphi is not necessary and we can remove it, propagati
 In this version of function \ref{alg:ssaconstr_click}, this check is done by the function \ref{proc:phi-necessary}.
 
 \begin{procedure}
-  \caption{FindDefFromBegin($b$)}
+  \caption{FindDefFromTop($b$)}
   \label{proc:find-def-from-begin}
   \label{alg:ssaconstr_click}
   \tcc{Search-based SSA Reconstruction}
   \KwIn{$b$, a basic block}
-\If{$b.\textnormal{beg} \ne \bot$}{
-    \Return{$b.\textnormal{beg}$}
+\If{$b.\textnormal{top} \ne \bot$}{
+    \Return{$b.\textnormal{top}$}
   }
   \pendphi $\gets$ new \phifun in $b$\;
   $v_\phi$ $\gets$ result of \pendphi\;
-  $b.\mbox{beg} \gets v_\phi$\;
+  $b.\mbox{top} \gets v_\phi$\;
   reaching\_defs $\gets []$\;
   \ForEach{$p \in b.\textrm{preds}$}{
-    reaching\_defs $\gets$ reaching\_defs $\cup$ FindDefFromEnd$(p)$
+  reaching\_defs $\gets$ reaching\_defs $\cup$ \textnormal{\ref{proc:find-def-from-end}}$(v$, $p)$
   }
   $v_\textrm{def}$ $\gets$ \ref{proc:phi-necessary}($v_\phi$, reaching\_defs)\;
   \If{$v_\textnormal{def}\, = v_\phi$}{
@@ -273,7 +274,7 @@ In this version of function \ref{alg:ssaconstr_click}, this check is done by the
   }
   \Else{
     remove \pendphi\;
-    $b.\mbox{beg} \gets v_\textrm{def}$\;
+    $b.\mbox{top} \gets v_\textrm{def}$\;
   }
   \Return{$v_\textnormal{def}$}
 \end{procedure}
@@ -281,19 +282,19 @@ In this version of function \ref{alg:ssaconstr_click}, this check is done by the
 \begin{procedure}
   \caption{Phi-Necessary($v_\phi$, reaching\_defs)}
   \label{proc:phi-necessary}
-\tcc{Checks if the parameter list in reaching\_defs makes
+\tcc{Checks if the set reaching\_defs makes
 \pendphi necessary. This is the case if it is a subset of
 $\{v_\phi, \textrm{other}\}$}
 \KwIn{$v_\phi$, the variable defined by \pendphi}
 \KwIn{reaching\_defs, list of variables}
 \KwOut{$v_\phi$ if \pendphi is necessary, the variable to use instead otherwise}
   $\textrm{other} \gets \bot$\;
-  \ForEach{$d \in \textrm{reaching\_defs}$}{
-    \lIf{$d = v_\phi$}{
+  \ForEach{$v' \in \textrm{reaching\_defs}$}{
+    \lIf{$v' = v_\phi$}{
       continue\;
     }
     \If{other = $\bot$}{
-      other $\gets d$
+      other $\gets v'$
     }
     \ElseIf{$d \ne \textrm{other}$}{
       \Return{$v_\phi$}
@@ -305,7 +306,7 @@ $\{v_\phi, \textrm{other}\}$}
   \Return{other}
 \end{procedure}
 
-\paragraph{Removing unnecessary \phifuns.}
+\paragraph{Removing more unnecessary \phifuns.}
 
 In programs with loops, it can be the case that the local optimization performed when function \ref{alg:ssaconstr_click} calls \ref{proc:phi-necessary} does not remove all unnecessary \phifuns. 
 This can happen in loops where \phifuns can become unnecessary because other \phifuns are optimized away. 
@@ -330,7 +331,7 @@ While the \phifun in block~$C$ can be eliminated by the local criterion applied 
 This is because the depth-first search carried out by \ref{proc:find-def-from-begin} will not visit block~$B$ a second time.
 To remove the remaining \phifuns, the local criterion can be iteratively applied to all placed \phifuns until a fixpoint is reached. 
 For reducible control flow, this then produces the minimal number of placed \phifuns. 
-The classical $(\ast)$-graph in Figure~\ref{fig:astgraph} illustrates that this does not hold for the irreducible case:
+The classical $(\ast)$-graph in Figure~\ref{fig:astgraph} illustrates that this does not hold for the irreducible case.
 
 \begin{figure}
     \hfil\tikzfigure{ast-graph}\hfil\strut
