@@ -1,11 +1,13 @@
 #!/usr/bin/perl
 
-$bookdir = "/home/frastell/ssabook/book/";
 open GREP, "find . -name '*.tex' -exec grep -HE 'index\{.+\}' {} \\;|";
 my %indexes = ();
 
 while (my $indexref=<GREP>) {
     next if ($indexref =~ /\/Springer\//);
+    if ($indexref =~ s/^\.\/back\///) {
+      next ;
+    }
     if ($indexref =~ s/^\.\/(part\d)\/([^\/]+)\/.+://) {
 	($part,$section)=($1,$2);
     } else { die "pb parsing grep".$indexref; }

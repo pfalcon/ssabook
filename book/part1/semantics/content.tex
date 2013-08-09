@@ -4,6 +4,12 @@
 \label{chapter:semantics}
 \graphicspath{{img/}{semantics/img/}{part1/semantics/img/}}
 
+{
+
+\let\oldmathtt=\mathtt
+%\def\mathtt#1{{\bf \oldmathtt{#1}}}
+\let\mathtt=\mathbf
+
 \newcommand{\pdec}[3]{\ensuremath{\mathtt{proc}\ } {#1}\ \mathtt{(}{#2}\mathtt{)\ =} \ {#3}}
 \newcommand{\letin}[3]{\ensuremath{\mathtt{let}\ {#1}\ \mathtt{=}\ {#2}\ 
                        \mathtt{in}\ {#3}\ \mathtt{end}}}
@@ -28,6 +34,21 @@
 \newcommand{\param}[1]{\ensuremath{\overrightarrow{p_{#1}}}}
 \newcommand{\loopfun}{\ensuremath{\mathit{loop}}}
 
+\newenvironment{functional}{%
+  \begin{equation}%
+    \small%
+    }{%
+  \end{equation}%
+}
+\newenvironment{functional*}{%
+  \begin{equation*}%
+    \small%
+    }{%
+  \end{equation*}%
+}
+
+
+
 %\section{Functional interpretations}
 %\label{section:Part1:Semantics:FunctionalLanguages}
 
@@ -41,37 +62,38 @@ syntactic scope that subsequently extends to numerous aspects of
 control and data flow structure.
 
 The development of functional representations of SSA is motivated by
-the following considerations.
+the following considerations:
 
 \begin{enumerate}
-\item relating the core ideas of SSA to concepts from other
+\item Relating the core ideas of SSA to concepts from other
 areas of compiler and programming language research provides
 conceptual insight into the SSA discipline and thus contributes to a
 better understanding of the practical appeal of SSA to compiler
 writers;
 
 \item
-reformulating SSA as a functional program makes explicit some of the
+Reformulating SSA as a functional program makes explicit some of the
 syntactic conditions and semantic invariants that are implicit in
 the definition and use of SSA. Indeed, the introduction of
 SSA itself was motivated by a similar goal: to represent aspects of
-program structure, namely the def-use\index{def-use chains} relationships,
-explicitly in syntax, by enforcing a particular naming discipline. In
+program structure---namely the def-use\index{def-use chains} 
+relationships---explicitly in syntax, by enforcing a particular naming 
+discipline. In
 a similar way, functional representations directly enforce
 invariants such as ``all $\phi$-functions in a block must be of the
-same arity'', ``the variables assigned to by these $\phi$-functions
-must be distinct'', ``$\phi$-functions are only allowed to occur at
-the beginning of a basic block'', or ``each use of a variable should
-be dominated by its (unique) definition''. Constraints such as these
+same arity,'' ``the variables assigned to by these $\phi$-functions
+must be distinct,'' ``$\phi$-functions are only allowed to occur at
+the beginning of a basic block,'' or ``each use of a variable should
+be dominated by its (unique) definition.'' Constraints such as these
 would typically have to be validated or (re-)established after each
 optimization phase of an SSA-based compiler, but are typically
 enforced \emph{by construction} if a functional representation is
-chosen. Consequently, less code code is required, improving the
+chosen. Consequently, less code is required, improving the
 compiler's robustness, maintainability, and code readability;
 
-\item the intuitive meaning of ``unimplementable'' $\phi$-instructions is
+\item The intuitive meaning of ``unimplementable'' $\phi$-instructions is
 complemented by a concrete execution model, facilitating the rapid
-implementation of interpreters. This enables the compiler developer to
+implementation of interpreters. This enables the compiler developers to
 experimentally validate SSA-based analyses and transformations at
 their genuine language level, without requiring SSA
 destruction. Indeed, functional intermediate code can often be
@@ -81,7 +103,7 @@ and compilation frameworks. Thus, rapid prototyping is supported and
 high-level evaluation of design decisions is enabled;
 
 \item 
-formal frameworks of program analysis that exist for functional
+Formal frameworks of program analysis that exist for functional
 languages become applicable. Type systems provide a particularly
 attractive formalism due to their declarativeness and compositional
 nature. As type systems for functional languages typically support
@@ -89,10 +111,10 @@ higher-order functions, they can be expected to generalize more easily
 to interprocedural analyses than other static analysis formalisms;
 
 \item  
-a formal basis for comparing variants of SSA -- such as the variants
-discussed elsewhere in this book --, for translating between these
-variants, and for constructing and destructing SSA is
-obtained. Correctness criteria for program analyses and associated
+  We obtain a formal basis for comparing variants of SSA---such as the variants
+  discussed elsewhere in this book---, for translating between these
+variants, and for constructing and destructing SSA.
+Correctness criteria for program analyses and associated
 transformations can be stated in a uniform manner, and can be proved
 to be satisfied using well-established reasoning principles.
 
@@ -188,36 +210,42 @@ to be satisfied using well-established reasoning principles.
 Rather than discussing all these considerations in detail, the purpose
 of the present chapter is to informally highlight particular aspects
 of the correspondence and then point the reader to some more advanced
-material.
-
-\paragraph{Chapter outline}
-We start by discussing the fundamental observation that (imperative)
-points of definition correspond to sites of variable binding in
-functional languages. We then outline two low-level functional
-formats that may be used to represent SSA, namely
-\emph{continuation-passing} and \emph{direct} style. Armed with
-this background, we then discuss the relationship between SSA and
-functional forms in more detail by describing how various steps that
-occur during the construction and destruction of SSA mirror
-corresponding transformations on functional code.  Our exposition is
+material. Our exposition is
 example-driven but leads to the identification of concrete
 correspondence pairs between the imperative/SSA world and the
-functional world. We briefly discuss historical aspects, pointers to
-the original literature, and topics of current and future work, before
-concluding with some remarks on alternative representations of
-SSA that do not employ the terminology of functional languages.
+functional world.
 
 Like the remainder of the book, our discussion is restricted to code
 occurring in a single procedure.
+
+%% Giving the outline is useless
+%
+%\paragraph{Chapter outline}
+%We start by discussing the fundamental observation that (imperative)
+%points of definition correspond to sites of variable binding in
+%functional languages. We then outline two low-level functional
+%formats that may be used to represent SSA, namely
+%\emph{continuation-passing} and \emph{direct} style. Armed with
+%this background, we then discuss the relationship between SSA and
+%functional forms in more detail by describing how various steps that
+%occur during the construction and destruction of SSA mirror
+%corresponding transformations on functional code.  Our exposition is
+%example-driven but leads to the identification of concrete
+%correspondence pairs between the imperative/SSA world and the
+%functional world. We briefly discuss historical aspects, pointers to
+%the original literature, and topics of current and future work, before
+%concluding with some remarks on alternative representations of
+%SSA that do not employ the terminology of functional languages.
+
 
 \section{Low-level functional program representations}
 \label{section:Part1:Semantics:LowLevelReps}
 
 Functional languages represent code using declarations of the form
-\begin{equation}
+\begin{functional}
 \label{semantics:functiondeclaration}
 \mathtt{function}\ f(x_0, \ldots, x_n) = e
-\end{equation} 
+\end{functional}%
 where the syntactic category of expressions $e$ conflates the notions
 of expressions and commands of imperative languages. Typically, $e$
 may contain further nested or (mutually) recursive function
@@ -228,7 +256,7 @@ also the function name $f$ within $e$.
 \subsection{Variable assignment versus binding}
 \label{section:Part1:Semantics:Binding}
 A language construct provided by almost all functional languages is
-the \emph{let-binding} $$\letin x {e_1} {e_2}.$$ The effect of this
+the \emph{let-binding} {\small $$\letin x {e_1} {e_2}.$$} The effect of this
 expression is to evaluate $e_1$ and bind the resulting value to
 variable $x$ for the duration of the evaluation of $e_2$.  The code
 affected by this binding, $e_2$, is called the \emph{static scope} of
@@ -238,7 +266,7 @@ variables that are in scope using subscripts.
 
 For example, the scope associated with the top-most binding of $v$ in
 code
-\begin{equation}
+\begin{functional}
 \label{FunctionalCodeExample1}
 \begin{array}{l}
 \mathtt{let}\ v = 3\ \mathtt{in}\\
@@ -251,7 +279,7 @@ code
 \mathtt{end}
 \end{array}
   \evenoddcheck{semantics:func-code-examples}
-\end{equation}
+\end{functional}
 spans the both inner let-bindings, the scopes of which are themselves
 not nested inside one other as the (inner) binding to $v$ occurs in
 the $e_1$ position of the let-binding for $y$.
@@ -299,7 +327,7 @@ the choice of $x$ as the variable holding the result of $e_1$ depends
 only on the free variables of $e_2$. For example, we may rename the
 inner $v$ in code (\ref{FunctionalCodeExample1}) to $z$ without
 altering the meaning of the code:
-\begin{equation}
+\begin{functional}
 \label{FunctionalCodeExample2}
 \begin{array}{l}
 \mathtt{let}\ v = 3\ \mathtt{in}\\
@@ -311,15 +339,15 @@ altering the meaning of the code:
 \end{array}$}_v\\
 \mathtt{end}
 \end{array}
-\end{equation}
+\end{functional}
 Note that this conversion formally makes the outer $v$ visible for the
 expression $4*z$, as indicated by the index $v,z$ decorating its
 surrounding box.
 
 In order to avoid altering the meaning of the program, the choice of
 the newly introduced variable has to be such that confusion with other
-variables is avoided. Formally, this means that a renaming $\letin x
-{e_1} {e_2}$ to $\letin y {e_1} {e_2[y/x]}$ can only be carried out if
+variables is avoided. Formally, this means that a renaming {\small $$\letin x
+{e_1} {e_2} \qquad \textrm{\normalsize to} \qquad \letin y {e_1} {e_2[y/x]}$$} can only be carried out if
 $y$ is not a \emph{free} variable of $e_2$. Moreover, in case that
 $e_2$ already contains some preexisting bindings to $y$, the
 \emph{substitution} of $x$ by $y$ in $e_2$ (denoted by $e_2[y/x]$
@@ -329,7 +357,7 @@ occurrences of $x$ or $y$ in $e_1$ refer to conceptually
 \emph{different} but identically named variables, but the static
 scoping discipline ensures these will never be confused with the
 variables involved in the renaming.
-%\begin{equation}
+%\begin{functional}
 %\label{FunctionalCodeExample3}
 %\begin{array}{l}
 %\mathtt{let}\ v = 3\ \mathtt{in}\\
@@ -342,7 +370,7 @@ variables involved in the renaming.
 %\mathtt{end}
 %\end{array}
 %  \evenoddcheck{semantics:func-code-examples}
-%\end{equation} 
+%\end{functional} 
 %that are obtained if we rename the bound variable 
 %
 % Code~(\ref{FunctionalCodeExample3})
@@ -410,7 +438,7 @@ execution should proceed once the evaluation of the current code
 fragment has terminated. Syntactically, continuations are expressions
 that may occur in functional position (i.e., are typically applied to
 argument expressions), as is the case for the variable $k$ in
-\begin{equation}
+\begin{functional}
 \label{ContinuationCode0}
 \begin{array}{l}
   \mathtt{let}\ v = 3\ \mathtt{in}\\
@@ -420,7 +448,7 @@ argument expressions), as is the case for the variable $k$ in
   \end{array}\\
   \mathtt{end}
   \end{array}.
-\end{equation}
+\end{functional}
 In effect, $k$ represents any function that may be applied to the
 result of expression~(\ref{FunctionalCodeExample1}).
 
@@ -436,7 +464,9 @@ client of the above code fragment wishing to multiply the fragment's
 result by $2$ may insert code (\ref{ContinuationCode0}) in the $e_2$
 position of a let-binding for $k$ that (in its $e_1$-position)
 contains $\lambda\, x .\, 2* x$, as in the following code:
-$$\begin{array}{l}
+
+\begin{functional}
+\begin{array}{l}
 \mathtt{let}\ k = \lambda\, x .\, 2* x\\ 
 \mathtt{in}\ 
   \begin{array}[t]{l}
@@ -449,7 +479,8 @@ $$\begin{array}{l}
   \end{array}\\ 
 \mathtt{end}
 \end{array}
-$$ 
+\end{functional}
+
 When the continuation $k$ is applied to the argument $y*v$, the
 (dynamic) value $y*v$ (i.e~72) is substituted for $x$ in the
 expression $2*x$, just like in an ordinary function application.
@@ -458,7 +489,7 @@ Alternatively, the client may wrap fragment (\ref{ContinuationCode0})
 in a function definition with formal argument $k$ and construct the
 continuation in the calling code, where he would be free to choose a
 different name for the continuation-representing variable:
-\begin{equation}
+\begin{functional}
 \label{ContinuationCode1}
 \begin{array}{l}
 \mathtt{function}\ f (k) =\\
@@ -477,21 +508,21 @@ different name for the continuation-representing variable:
   \end{array}\\
 \mathtt{end}.
 \end{array}
-\end{equation}
+\end{functional}
 
 %whose continuation argument $k$ represents a function that is applied
 %to the result of the function's body. Continuations are constructed by
 %the callers of $f$ prior to the function's invocation, as in
-%\begin{equation}
+%\begin{functional}
 %\label{ContinuationCode2}
 %\begin{array}{l}
 %\mathtt{let}\ k = \lambda\, x .\, 2* x\ \mathtt{in}\ f(k)\ \mathtt{end}
 %\end{array}
-%\end{equation}
+%\end{functional}
 %where 
 Typically, the caller of $f$ is itself parametric in \emph{its}
 continuation, as in
-\begin{equation}
+\begin{functional}
 \label{ContinuationCode3}
 \begin{array}{l}
 \mathtt{function}\ g (k) =\\
@@ -500,14 +531,14 @@ continuation, as in
 \mathtt{let}\ k' = \lambda\, x .\, k (2*x)\ \mathtt{in}\ f(k')\ \mathtt{end}.
 \end{array}
 \end{array}
-\end{equation}
+\end{functional}
 where $f$ is invoked with a newly constructed continuation $k'$ that
 applies the multiplication by $2$ to its formal
 argument $x$ (which at runtime will hold the result of $f$) before
 passing the resulting value on as an argument to the outer
 continuation $k$.
 In a similar way, the function
-\begin{equation}
+\begin{functional}
 \label{ContinuationCode4}
 \begin{array}{l}
 \mathtt{function}\ h (y, k) =\\
@@ -527,7 +558,7 @@ In a similar way, the function
     \mathtt{end}
   \end{array}
 \end{array}
-\end{equation}
+\end{functional}
 constructs from $k$ a continuation $k'$ that is invoked (with
 different arguments) in each branch of the conditional. In effect,
 the sharing of $k'$ amounts to the definition of a control flow merge
@@ -542,14 +573,14 @@ call.
 \begin{center}
 \includegraphics[scale=0.5]{FunctionalCode1CFG}
 \end{center}
-\caption{\label{FigureCFGForSharedContinuation} Control flow graph for code~(\ref{ContinuationCode4}) (left), and SSA representation (right)}
+\caption{\label{FigureCFGForSharedContinuation} Control flow graph for code~(\ref{ContinuationCode4}) (left), and SSA representation (right).}
 \end{figure}
 
 The SSA form of this CFG is shown in
 Figure~\ref{FigureCFGForSharedContinuation} on the right. If we apply
 similar renamings of $z$ to $z_1$ and $z_2$ in the two branches
 of~(\ref{ContinuationCode4}), we obtain
-\begin{equation}
+\begin{functional}
 \label{ContinuationCode5}
 \begin{array}{l}
 \mathtt{function}\ h (y, k) =\\
@@ -569,7 +600,7 @@ of~(\ref{ContinuationCode4}), we obtain
     \mathtt{end}
   \end{array}
 \end{array}
-\end{equation}
+\end{functional}
 We observe that the role of the formal parameter $z$ of continuation
 $k'$ is exactly that of a $\phi$-function: to unify the arguments
 stemming from various calls sites by binding them to a common name for
@@ -621,7 +652,7 @@ In direct style, no continuation terms are constructed dynamically and
 then passed as function arguments, and we hence exclusively employ
 $\lambda$-free function definitions in our representation. For
 example, code (\ref{ContinuationCode4}) may be represented as
-\begin{equation}
+\begin{functional}
 \label{DirectStyleCode1}
 \begin{array}{l}
 \mathtt{function}\ h (y) =\\
@@ -646,7 +677,7 @@ example, code (\ref{ContinuationCode4}) may be represented as
        \mathtt{end}
      \end{array}$}_{y, h}
 \end{array}
-\end{equation}
+\end{functional}
 where the local function $h'$ plays a similar role as the continuation
 $k'$ and is jointly called from both branches. In contrast to the CPS
 representation, however, the body of $h'$ returns its result directly
@@ -663,7 +694,7 @@ call instruction.
 
 A stricter format is obtained if the granularity of local functions is
 required to be that of basic blocks:
-\begin{equation}
+\begin{functional}
 \label{DirectStyleCode2}
 \begin{array}{l}
 \mathtt{function}\ h (y) =\\
@@ -693,7 +724,7 @@ required to be that of basic blocks:
     \mathtt{end}
   \end{array}
 \end{array}
-\end{equation} 
+\end{functional} 
 Now, function invocations correspond precisely to jumps, reflecting
 more directly the CFG from
 Figure~\ref{FigureCFGForSharedContinuation}.  
@@ -712,7 +743,7 @@ gist of the discussion applies equally well to CPS.
 Independent of the granularity level of local functions, the process
 of moving from the CFG to the SSA form is again captured by suitably
 $\alpha$-renaming the bindings of $z$ in $h_1$ and $h_2$:
-\begin{equation}
+\begin{functional}
 \label{DirectStyleCode3}
 \begin{array}{l}
 \mathtt{function}\ h (y) =\\
@@ -742,7 +773,7 @@ $\alpha$-renaming the bindings of $z$ in $h_1$ and $h_2$:
     \mathtt{end}
   \end{array}
 \end{array}
-\end{equation}
+\end{functional}
 Again, the role of the formal parameter $z$ of the control flow merge
 point function $h'$ is identical to that of a $\phi$-function. In
 accordance with the fact that the basic blocks representing the arms
@@ -767,13 +798,13 @@ then requires let-bindings to be of the form $\letin x a e$.  In
 particular, neither jumps (conditional or unconditional) nor
 let-bindings are primitive. Let-normalized form is obtained by
 repeatedly rewriting code of the form
-\begin{eqnarray*}
+\begin{functional*}
  \begin{array}{l}
    \mathtt{let}\ x = \letin y {e} {\fbox{$e'$}_y}\\
    \mathtt{in}\ {\fbox{$e''$}_{x}}\\ 
    \mathtt{end}
   \end{array}
-& \quad \textrm{into} \quad &
+ \qquad \textrm{ \normalsize into} \qquad 
   \begin{array}{l}
     \mathtt{let}\ y = e\\
     \mathtt{in}\ \fbox{$\begin{array}{l}
@@ -783,13 +814,13 @@ repeatedly rewriting code of the form
                         \end{array}$}_y\\
     \mathtt{end,}
   \end{array}
-\end{eqnarray*}
+\end{functional*}
 %$$\letin x {(\letin y {e_1} {\fbox{$e_2$}_y})} {\fbox{$e_3$}_{x}}$$
 %into $$\letin y {e_1} {\fbox{$\letin x {e_2} {\fbox{$e_3$}_{x,y}}$}_y},$$
 subject to the side condition that $y$ not be free in $e''$.
 For example, let-normalizing code~(\ref{FunctionalCodeExample2}) pulls the
 let-binding for $z$ to the outside of the binding for $y$, yielding
-\begin{equation}
+\begin{functional}
 \label{FunctionalCodeExample4}
 \begin{array}{l}
 \mathtt{let}\ v = 3\ \mathtt{in}\\
@@ -803,7 +834,7 @@ let-binding for $z$ to the outside of the binding for $y$, yielding
    \end{array}$}_{v}}\\
 \mathtt{end}
 \end{array}
-\end{equation}
+\end{functional}
 
 Programs in let-normal form thus do not contain let-bindings in the
 $e_1$-position of outer let-expressions. The stack discipline in which
@@ -822,7 +853,7 @@ chapter where the scope-identifying boxes (including their indices)
 are omitted and chains of let-normal bindings are abbreviated by
 single comma-separated (and ordered) let-blocks. Using this
 convention, code~(\ref{FunctionalCodeExample4}) becomes
-\begin{equation}
+\begin{functional}
 \label{FunctionalCodeExample5}
 \begin{array}{l}
 \mathtt{let}\, \begin{array}[t]{l}
@@ -832,7 +863,7 @@ convention, code~(\ref{FunctionalCodeExample4}) becomes
              \end{array}\\ 
 \mathtt{in}\ y*v\ \mathtt{end}
 \end{array}
-\end{equation}
+\end{functional}
 
 % As a consequence of these restrictions, the conversion of
 %unrestricted code into let-normal form fixes an evaluation order, in a
@@ -856,9 +887,8 @@ Table~\ref{tableFunctionalCorrespondencesZero} collects some
 correspondences between functional and imperative/SSA concepts.
 \begin{table}
 \begin{center}
-\begin{tabular}{|c|c|}
-  \hline Functional concept & Imperative/SSA concept\\ 
-  \hline \hline
+  \begin{tabular}{r@{\hbox to 3em{\leaders\hbox to 1.5ex{\hfil $\cdot$\hfil}\hss}}l}
+    \emph{Functional concept} & \emph{Imperative/SSA concept}\\[1ex]
   variable binding in let & assignment (point of definition)\\
   $\alpha$-renaming & variable renaming\\
   unique association of binding occurrences to uses & unique
@@ -866,11 +896,10 @@ correspondences between functional and imperative/SSA concepts.
   formal parameter of continuation/local function & 
     $\phi$-function (point of definition)\\ 
   lexical scope of bound variable & dominance region\\ 
-  \hline
 \end{tabular}
 \end{center}
 \caption{\label{tableFunctionalCorrespondencesZero}
-  Correspondence pairs between functional form and SSA (part I)}
+  Correspondence pairs between functional form and SSA (part I).}
 \end{table}
 
 \section{Functional construction and destruction of SSA}
@@ -885,9 +914,8 @@ example.
 
 \begin{table}
 \begin{center}
-\begin{tabular}{|c|c|}
-  \hline Functional concept & Imperative/SSA concept\\ 
-  \hline \hline
+  \begin{tabular}{r@{\hbox to 3em{\leaders\hbox to 1.5ex{\hfil $\cdot$\hfil}\hss}}l}
+    \emph{Functional concept} & \emph{Imperative/SSA concept}\\[1ex]
 %  name-binding in let & assignment (point of definition)\\
 %  name-binding in function parameter & assignment by $\phi$-function
 %  (point of definition)\\ 
@@ -913,11 +941,10 @@ example.
 %  nesting level & maximal
 %  level index in dominator tree\\
 %  conversion to GNF & out-of-SSA translation\\
-  \hline
 \end{tabular}
 \end{center}
 \caption{\label{tableFunctionalCorrespondencesI}
-  Correspondence pairs between functional form and SSA: program structure}
+  Correspondence pairs between functional form and SSA: program structure.}
 \end{table}
 
 %\begin{figure}
@@ -936,7 +963,7 @@ example.
 \begin{center}
 \includegraphics[scale=0.5]{SSAConstructionExample1}
 \end{center}
-\caption{\label{fig:FunctionalCorrespondenceRunningExampleGraphic} Functional construction of SSA: running example}
+\caption{\label{fig:FunctionalCorrespondenceRunningExampleGraphic} Functional construction of SSA: running example.}
 \end{figure}
 
 \subsection{Initial construction using liveness analysis}
@@ -953,7 +980,7 @@ the list of formal parameters in the declaration of the function
 $f_i$, and also as the list of actual arguments in calls to $f_i$. We
 collect all function definitions in a block of mutually tail-recursive
 functions at the top level:
-\begin{equation}
+\begin{functional}
 \label{FunctionalConstructionProgram1}
 \begin{array}{l}
   \begin{array}{ll}
@@ -972,7 +999,7 @@ functions at the top level:
     \mathtt{in}\ f_1()\ \mathtt{end}
   \end{array} 
 \end{array}
-\end{equation}
+\end{functional}
 The resulting program has the following properties:
 \begin{itemize}
 \item 
@@ -1007,7 +1034,7 @@ are all of the same arity, namely the number of call sites to $f_i$.
 In order to coordinate the relative positioning of the arguments of
 the $\phi$-functions, we choose an arbitrary enumeration of these call
 sites.
-\begin{equation}
+\begin{functional}
 \label{FunctionalConstructionProgram2}
 %\begin{array}{l}
 %  \begin{array}{ll}
@@ -1057,12 +1084,12 @@ sites.
   \end{array} 
 \end{array}
   \evenoddcheck{semantics:pruned-ssa}
-\end{equation}
+\end{functional}
 \begin{figure}
 \begin{center}
 \includegraphics[scale=0.4]{SSAConstructionExample2}
 \end{center}
-\caption{\label{fig:FunctionalCorrespondenceRunningExampleInitialSSA} Pruned (non-minimal) SSA form}
+\caption{\label{fig:FunctionalCorrespondenceRunningExampleInitialSSA} Pruned (non-minimal) SSA form.}
   \evenoddcheck{semantics:pruned-ssa}
 \end{figure}
 
@@ -1127,7 +1154,7 @@ $e_f$ refer.
 Applying this transformation to
 example~(\ref{FunctionalConstructionProgram1}) yields the following
 code:
-%\begin{equation}
+%\begin{functional}
 %\label{FunctionalConstructionProgram3}
 %\begin{array}{l}
 %  \begin{array}{lcl}\mathtt{function}\ f_1() & = & \end{array}\\
@@ -1156,8 +1183,8 @@ code:
 %  \mathtt{in}\ f_1()\ \mathtt{end}
 %\end{array} 
 %\end{array}
-%\end{equation}
-\begin{equation}
+%\end{functional}
+\begin{functional}
 \label{FunctionalConstructionProgram3}
 \begin{array}{l}
   \begin{array}{lcl}\mathtt{function}\ f_1() & = & \end{array}\\
@@ -1183,7 +1210,7 @@ code:
   \mathtt{in}\ f_1()\ \mathtt{end}
 \end{array} 
 \end{array}
-\end{equation}
+\end{functional}
 
 An alternative strategy is to insert $f$ near the end of its host
 function $g$, in the vicinity of the calls to $f$. This brings the
@@ -1192,7 +1219,7 @@ $e_g$. Again, referential transparency and preservation of semantics
 are respected as the declaration on $f$ is closed. In case of our
 example code, the alternative strategy would yield
 code~(\ref{FunctionalConstructionProgram4}).
-%\begin{equation}
+%\begin{functional}
 %\label{FunctionalConstructionProgram4}
 %\begin{array}{l}
 %\mathtt{function}\ f_1()\ = \\
@@ -1228,8 +1255,8 @@ code~(\ref{FunctionalConstructionProgram4}).
 %   \end{array}\\
 %\mathtt{in}\ f_1()\  \mathtt{end}
 %\end{array}
-%\end{equation}
-\begin{equation}
+%\end{functional}
+\begin{functional}
 \label{FunctionalConstructionProgram4}
 \begin{array}{l}
 \mathtt{function}\ f_1()\ = \\
@@ -1265,7 +1292,7 @@ code~(\ref{FunctionalConstructionProgram4}).
    \end{array}\\
 \mathtt{in}\ f_1()\  \mathtt{end}
 \end{array}
-\end{equation}
+\end{functional}
 In general, one would insert $f$ directly prior to its call if $g$
 contains only a single call site for $f$. In case that $g$ contains
 multiple call sites for $f$, these are (due to their tail-recursive
@@ -1305,17 +1332,17 @@ the \emph{declaration} site of $f_3$ are identical to those applicable
 at the \emph{call} to $f_3$.
 
 In general, we may drop a parameter $x$ from the declaration of a
-possibly recursive function $f$ if
+possibly recursive function $f$ if the following two conditions are met:
 \begin{enumerate}
 \item\label{ParameterDroppingConditionOne} the tightest scope for $x$
   enclosing the declaration of $f$ coincides with the tightest scope
   for $x$ surrounding each call site to $f$ outside $f$'s declaration;
-  and
 \item\label{ParameterDroppingConditionTwo} the tightest scope for $x$
   enclosing any recursive call to $f$ (i.e.~a call to $f$ in the body
   of $f$) is the one associated with the formal parameter $x$ in $f$'s
   declaration.
 \end{enumerate}
+
 Similarly, we may simultaneously drop a parameter $x$ occurring in
 \emph{all} declarations of a block of mutually recursive functions
 $f_1,\ldots,f_n$, if the scope for $x$ at the point of declaration of
@@ -1334,7 +1361,7 @@ also at its call site is the one rooted at the formal parameter $v$ of
 $f_2$. In case of $y$, the common scope is the one rooted at the
 let-binding for $y$ in the body of $f_2$. We thus obtain
 code~(\ref{FunctionalConstructionProgram5}).
-%\begin{equation}
+%\begin{functional}
 %\label{FunctionalConstructionProgram5}
 %\begin{array}{l}
 %\mathtt{function}\ f_1()\ = \\
@@ -1370,8 +1397,8 @@ code~(\ref{FunctionalConstructionProgram5}).
 %   \end{array}\\
 %\mathtt{in}\ f_1()\  \mathtt{end}
 %\end{array}
-%\end{equation}
-\begin{equation}
+%\end{functional}
+\begin{functional}
 \label{FunctionalConstructionProgram5}
 \begin{array}{l}
 \mathtt{function}\ f_1()\ = \\
@@ -1407,7 +1434,7 @@ code~(\ref{FunctionalConstructionProgram5}).
    \end{array}\\
 \mathtt{in}\ f_1()\ \mathtt{end}
 \end{array}
-\end{equation}
+\end{functional}
 Considering the recursive function $f_2$ next we observe that the
 recursive call is in the scope of the let-binding for $y$ in $f_2$'s
 body, preventing us from removing $y$.  In contrast, neither $v$ nor
@@ -1416,7 +1443,7 @@ applicable at the external call site to $f_2$ coincide with those
 applicable at its site of declaration and are given by the scopes
 rooted in the let-bindings for $v$ and $z$. Thus, parameters $v$ and
 $z$ may be removed from $f_2$:
-%\begin{equation}
+%\begin{functional}
 %\label{FunctionalConstructionProgram6}
 %\begin{array}{l}
 %\mathtt{function}\ f_1()\ = \\
@@ -1452,8 +1479,8 @@ $z$ may be removed from $f_2$:
 %   \end{array}\\
 %\mathtt{in}\ f_1()\  \mathtt{end}
 %\end{array}
-%\end{equation}
-\begin{equation}
+%\end{functional}
+\begin{functional}
 \label{FunctionalConstructionProgram6}
 \begin{array}{l}
 \mathtt{function}\ f_1()\ = \\
@@ -1489,7 +1516,7 @@ $z$ may be removed from $f_2$:
    \end{array}\\
 \mathtt{in}\ f_1()\  \mathtt{end}
 \end{array}
-\end{equation}
+\end{functional}
 Interpreting the uniquely-renamed variant
 of~(\ref{FunctionalConstructionProgram6}) back in SSA yields the
 desired minimal code with a single $\phi$-function, for variable $y$
@@ -1499,7 +1526,7 @@ Figure~\ref{fig:FunctionalCorrespondenceSSAofLambdaDroppedCode}.
 \begin{center}
 \includegraphics[scale=0.4]{SSAConstructionExample3}
 \end{center}
-\caption{\label{fig:FunctionalCorrespondenceSSAofLambdaDroppedCode} SSA code after $\lambda$-dropping}
+\caption{\label{fig:FunctionalCorrespondenceSSAofLambdaDroppedCode} SSA code after $\lambda$-dropping.}
 \end{figure}
 The reason that this $\phi$-function can't be eliminated (the fact
 that $y$ is redefined in the loop) is precisely the reason why $y$
@@ -1565,7 +1592,7 @@ beginning of the loop headers.  Other functions are placed at the end
 of their hosts. Applying this policy to our original
 program~(\ref{FunctionalConstructionProgram1})
 yields~(\ref{FunctionalConstructionProgramLC1}).
-%\begin{equation}
+%\begin{functional}
 %\label{FunctionalConstructionProgramLC1}
 %\begin{array}{l}
 %\mathtt{function}\ f_1()\ = \\
@@ -1596,8 +1623,8 @@ yields~(\ref{FunctionalConstructionProgramLC1}).
 %  \end{array}\\
 %  \mathtt{in}\ f_1()\ \mathtt{end}
 %\end{array}
-%\end{equation}
-\begin{equation}
+%\end{functional}
+\begin{functional}
 \label{FunctionalConstructionProgramLC1}
 \begin{array}{l}
 \mathtt{function}\ f_1()\ = \\
@@ -1628,11 +1655,11 @@ yields~(\ref{FunctionalConstructionProgramLC1}).
   \end{array}\\
   \mathtt{in}\ f_1()\ \mathtt{end}
 \end{array}
-\end{equation}
+\end{functional}
 We may now drop $v$ (but not $y$) from the parameter list of $f_3$,
 and $v$ and $z$ from $f_2$, to obtain
 code~(\ref{FunctionalConstructionProgramLCDropped}).
-%\begin{equation}
+%\begin{functional}
 %\label{FunctionalConstructionProgramLCDropped}
 %\begin{array}{l}
 %\mathtt{function}\ f_1()\ = \\
@@ -1663,8 +1690,8 @@ code~(\ref{FunctionalConstructionProgramLCDropped}).
 %  \end{array}\\
 %  \mathtt{in}\ f_1()\ \mathtt{end}
 %\end{array}
-%\end{equation}
-\begin{equation}
+%\end{functional}
+\begin{functional}
 \label{FunctionalConstructionProgramLCDropped}
 \begin{array}{l}
 \mathtt{function}\ f_1()\ = \\
@@ -1695,7 +1722,7 @@ code~(\ref{FunctionalConstructionProgramLCDropped}).
   \end{array}\\
   \mathtt{in}\ f_1()\ \mathtt{end}
 \end{array}
-\end{equation}
+\end{functional}
 \begin{figure}
 \begin{center}
 \includegraphics[scale=0.4]{SSAConstructionExample6}
@@ -1717,7 +1744,7 @@ loop-closed SSA form.
 
 We unroll the loop by duplicating the body of $f_2$, \emph{without
 duplicating the declaration of $f_3$}:
-%\begin{equation}
+%\begin{functional}
 %\label{FunctionalConstructionProgramLCUnrolled}
 %\begin{array}{l}
 %\mathtt{function}\ f_1()\ = \\
@@ -1760,8 +1787,8 @@ duplicating the declaration of $f_3$}:
 %  \end{array}\\
 %  \mathtt{in}\ \call{f_1} {}\ \mathtt{end}
 %\end{array}
-%\end{equation}
-\begin{equation}
+%\end{functional}
+\begin{functional}
 \label{FunctionalConstructionProgramLCUnrolled}
 \begin{array}{l}
 \mathtt{function}\ f_1()\ = \\
@@ -1804,7 +1831,7 @@ duplicating the declaration of $f_3$}:
   \end{array}\\
   \mathtt{in}\ \call{f_1} {}\ \mathtt{end}
 \end{array}
-\end{equation}
+\end{functional}
 Both calls to $f_3$ are in the scope of the declaration of $f_3$ and
 contain the appropriate loop-closing arguments. In the SSA reading of
 this code -- shown in
@@ -1867,7 +1894,7 @@ governed by the dominance relation between basic blocks. Thus, a
 typical dominance tree with root $b$ and subtrees rooted at
 $b_1,\ldots,b_n$ is most naturally represented as a block of function
 declarations for the $f_i$, nested inside the declaration of $f$:
-\begin{equation}
+\begin{functional}
 \label{sec:SSA:functiondeclarationblock}
 \begin{array}{l}
   \mathtt{function}\ f (\ldots)= 
@@ -1886,7 +1913,7 @@ declarations for the $f_i$, nested inside the declaration of $f$:
             \ldots\ \mathtt{end}
         \end{array}
   \end{array}
-\end{equation}
+\end{functional}
 By exploiting additional control flow structure between the $b_i$, it
 is, however, possible to obtain refined placements, namely placements
 that correspond to notions of \emph{loop nesting forests} that have
@@ -1909,7 +1936,7 @@ the resulting order.
 \caption{\label{FigShortLoopAnalysis1ReducibleGraph} Example placement
   for reducible flow graphs. (a) control flow graph (b) overlay of CFG
   (dashed edges) arcs between dominatees onto dominance graph (solid
-  edges) }
+  edges).}
 \end{figure}
 As an example, consider the CFG in
 Figure~\ref{FigShortLoopAnalysis1ReducibleGraph}(a) and its enriched
@@ -1917,7 +1944,7 @@ dominance tree shown in
 Figure\ref{FigShortLoopAnalysis1ReducibleGraph}(b). A possible (but
 not unique) ordering of $b$'s children is $[b_5,b_1,b_3,b_2,b_4]$,
 resulting in the nesting shown in code~(\ref{FunctionalCascadeFun}).
-\begin{equation}
+\begin{functional}
 \label{FunctionalCascadeFun}
 \begin{array}{l}
   \mathtt{function}\ f (\ldots)= 
@@ -1958,7 +1985,7 @@ resulting in the nesting shown in code~(\ref{FunctionalCascadeFun}).
           \end{array}
         \end{array}
   \end{array}
-\end{equation}
+\end{functional}
 The code respects the dominance relationship in much the same way as
 the naive placement, but additionally makes $f_1$ inacessible
 from within $e_5$, and makes $f_3$ inaccessible from within $f_1$ or
@@ -1982,7 +2009,7 @@ $\mathtt{let}$/$\mathtt{letrec}$ binding with pattern matching, if we
 insert the shared declaration of $f_3$
 \emph{between} the declaration of the names $f_2$ and $f_4$ and the
 $\lambda$-bindings of their formal parameters $p_i$:
-\begin{equation}
+\begin{functional}
 \label{FuntionalCascadeFunLambda}
 \begin{array}{l}
   \mathtt{letrec}\ f = \lambda\; p.\;
@@ -2027,7 +2054,7 @@ $\lambda$-bindings of their formal parameters $p_i$:
           \end{array}
         \end{array}
   \end{array}
-\end{equation}
+\end{functional}
 The recursiveness of $f_4$ is inherited by the function pair
 $(f_2,f_4)$ but $f_3$ remains non-recursive. In general, the role of
 $f_3$ is played by any merge point $b_i$ that is not directly called
@@ -2110,7 +2137,7 @@ nodes, and are nested in accordance with the containment relation $B_1
   non-headers $w$ and $x$.  Instead, the loop comprised of the latter
   nodes, $L_1$, is nested inside the definition of $L_0$, in
   accordance with the LNF.
-  \begin{equation}
+  \begin{functional}
     \label{FunctionalSteensgaard}
      \begin{array}{l}
        \mathtt{function}\ \entrynode (\ldots)=\\ 
@@ -2157,7 +2184,7 @@ nodes, and are nested in accordance with the containment relation $B_1
                           \mathit{to}\ u\ \mathit{and}\ v\ *) \ldots
          \end{array}
        \end{array}
-  \end{equation} 
+  \end{functional} 
 
   By placing $L_1$ inside $L_0$ according to the scheme from
   code~(\ref{FuntionalCascadeFunLambda}) and making $\exitnode$
@@ -2316,7 +2343,7 @@ analyses. Indeed, as functional languages treat code and data in an
 integrated fashion, type-based analyses provide a natural setting for
 developing extensions of (SSA-based) program analyses to
 inter-procedural analyses. For additional pointers on type-based
-program analysis, see~\cite{Palsberg:2001:TAA:379605.379635}.
+program analysis, see Palsberg's article~\cite{Palsberg:2001:TAA:379605.379635}.
 %
 % of higher-order functions and . For this reason, The fact that
 %they also treat functions like data (as ``first class citizens'') when
@@ -2726,3 +2753,5 @@ Chapter~\ref{chapter:loop_tree}.
 
 %\bibliographystyle{alpha}
 %\bibliography{chapter}
+
+}
