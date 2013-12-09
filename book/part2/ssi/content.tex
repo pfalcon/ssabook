@@ -2,7 +2,8 @@
 \inputprogress
 \label{chapter:ssi}
 
-\graphicspath{{img/}{ssi/img/}{part2/ssi/img/}}
+\graphicspath{{img/}{ssi/img/}{part2/ssi/img/}{tikz/}{ssi/tikz/}{part2/ssi/tikz/}}
+\inputpath{{tikz/}{ssi/tikz/}{part2/ssi/tikz/}}
 
 \section{Introduction}
 \label{sec:ssi:pereira:intro}
@@ -70,7 +71,7 @@ This sparse framework is very broad: many well-known data-flow problems are part
 Traditionally, non relational data-flow analyses bind information to pairs formed by a variable and a program point.
 Let's consider, as an example, the problem of estimating the interval of values that any integer variable may assume throughout the execution of a program.
 An algorithm that solves this problem is called a {\em range analysis}.
-A traditional implementation of this analysis would find, for each pair formed by a variable $v$ plus a program point $i$, the interval of possible values that $v$ might assume at $i$.
+A traditional implementation of this analysis would find, for each pair formed by a variable $v$ plus a program point $p$, the interval of possible values that $v$ might assume at $p$.
 Figure~\ref{fig:rangeAnalysis} illustrates this analysis with an example.
 In this case we call a program point any region between two consecutive
 instructions and we let $[v]$ denote the abstract information that is associated
@@ -79,7 +80,39 @@ Because this approach keeps information at each program point, we call it {\em d
 
 \begin{figure}[t!]
 \centering
-\includegraphics[width=\linewidth]{ProgramPoint}
+%\includegraphics[width=\linewidth]{ProgramPoint}
+\begin{minipage}[b]{0.2\textwidth}%
+\begin{equation*}
+\begin{array}[b]{l}
+i=0;\\
+s=0;\\
+\whilett (i<100)\\
+\quad i=i+1;\\
+\quad s=s+i;\\
+\returntt
+\end{array}
+\end{equation*}
+\vspace{1cm}
+\end{minipage}
+\begin{minipage}[b]{0.4\textwidth}%
+\tikzfigure{range}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.35\textwidth}
+\begin{equation*}
+\begin{array}[b]{c|l|l}
+\textit{prog. point} & [i] & [s]\\ \hline
+0 & \top & \top\\
+1 & [0,0] & \top\\
+2 & [0,0] & [0,0]\\
+3 & [0,100] & [0, +\infty[\\
+4 & [100,100] & [0,+\infty[\\
+5 & [0,99] & [0,+\infty[\\
+6 & [0,100] & [0,+\infty[\\
+7 & [0,100] & [0,+\infty[\\
+\end{array}
+\end{equation*}
+\vspace{1cm}
+\end{minipage}
 \caption{An example of a dense data-flow analysis that finds the range of
 possible values associated with each variable at each program point.}
 \label{fig:rangeAnalysis}
@@ -87,13 +120,13 @@ possible values associated with each variable at each program point.}
 
 The dense approach might keep more redundant information during the
 data-flow analysis.
-For instance, if we let $[v]^i$ denote the abstract state of variable
-$v$ at program point $i$, then we have that, in our example, $[i]^1 = [i]^2$,
-$[s]^3 = [s]^4$ and $[i]^4 = [i]^5$.
+For instance, if we let $[v]^p$ denote the abstract state of variable
+$v$ at program point $p$, then we have that, in our example, $[i]^1 = [i]^2$,
+$[s]^5 = [s]^6$ and $[i]^6 = [i]^7$.
 This redundancy happens because some transfer functions are identities.
 For instance, in range analysis, an instruction that neither defines nor uses any variable is associated with an identity transfer function.
-The transfer function that updates the abstract state of $i$ at program point $p_2$ is an identity.
-Because the instruction immediately before $p_2$ does not add any new information to the abstract state of $i$, $[i]^2$ is updated with the information that flows directly from the predecessor point $p_1$.
+The transfer function that updates the abstract state of $i$ at program point $2$ is an identity.
+Because the instruction immediately before $2$ does not add any new information to the abstract state of $i$, $[i]^2$ is updated with the information that flows directly from the predecessor point $1$.
 
 The goal of sparse data-flow analysis is to shortcut the identity transfer functions, a task that we accomplish by grouping contiguous program points bound to identities into larger regions.
 Solving a data-flow analysis sparsely has many advantages over doing it densely: because we do not need to keep bitvectors associated with each program point, the sparse solution tends to be more economical in terms of space and time.
@@ -101,53 +134,28 @@ Going back to our example, a given variable $v$ may be mapped to the same interv
 Furthermore, if the information associated with a variable is invariant along its
 entire live range, then we can bind this information to the variable itself.
 In other words, we can replace all the constraint variables
-$[v]^i$ by a single constraint variable $[v]$, for each variable $v$
+$[v]^p$ by a single constraint variable $[v]$, for each variable $v$
 and every $i\in \textrm{live}(v)$.
 Not every data-flow problem can be easily solved sparsely; however, many of them can, as they fit into the family of PVL problems that we describe in the next section.
 
 \subsection{Partitioned Variable Lattice (PVL) Data-Flow Problems}
 \label{sec:ssi:pereira:pvpPvl}
 
-There exists a class of data-flow problems that can be naturally solved via sparse data-flow analyses.
-These problems are called {\em Partitioned Data-flow Analyses} (PDA).
-These analyses, which include live variables, reaching definitions and forward/backward printing, can be decomposed into a set of sparse data-flow problems -- usually one per variable -- each independent on the other.
-We define the PDA family of data-flow problems as the sum of two notions: Partitioned Variable Problem (PVP) and Partitioned Variable Lattice (PVL).
-A typical example in the PVP category is the well-known liveness analysis.
-Among the many examples of PVL - but not PVP - problems, we cite range analysis.
-After defining these concepts formally, we discuss these two examples.
+The class of non-relational data flow analysis problems we are interested in are the ones that bind information to pairs of program variables and program points.
+We design this class of problems as \emph{Partitioned Variable Lattice} problems that we formally describe as follow.
 
-\begin{definition}[PVP/PVL]
-\label{pro:pvp}
-\textsc{Partitioned Data-Flow Problem}:\\Let ${\cal V}=\{v_1,\dots,v_n\}$ be the set of program variables.
-We consider, without loss of generality, a forward data-flow analysis.
-This data-flow analysis is an equation system that associates, with each program point $i$, an element of a lattice ${\cal L}$, given by the equation $x^i = \bigwedge_{s \in \textit{pred}(i)} F^s(x^s)$, where $x^i$ denotes the abstract state associated  with program point $i$, and $F^s$ is the transfer function associated with $s$, one of the control flow predecessors of $i$.
-The analysis can be written\footnote{As far as we are concerned with finding its maximum solution. See for example Section~1.3.2 of~\cite{Nielson05}.} as a constraint system that binds to each program point $i$ and each $s\in \textit{pred}(i)$ the equation $x^i = x^i \wedge  F^s(x^s)$ or, equivalently, the inequation $x^i \sqsubseteq  F^s(x^s)$.
-The corresponding Maximum Fixed Point (MFP) problem is said to be a \emph{Partitioned Variable Lattice Problem} iff:
-\begin{description}
-\item {\bf [PVL]:} $\cal L$ can be decomposed into the product of ${\cal L}_{v_1}\times \dots \times {\cal L}_{v_n}$ where each ${\cal L}_{v_i}$ is the lattice associated with program variable $v_i$.
-\end{description}
-A PVL problem is said to be a \emph{Partitioned Variable Problem} iff:
-\begin{description}
-\item {\bf [PVP]:} each transfer function $F^s$ can also be decomposed into a product $F_{v_1}^s\times F_{v_2}^s \times \dots \times F_{v_n}^s$ where $F_{v_j}^s$ is a function from ${\cal L}_{v_j}$ to ${\cal L}_{v_j}$.
-\end{description}
+\begin{definition}[PVL]
+Let ${\cal V}=\{v_1,\dots,v_n\}$ be the set of program variables.
+Let us consider, without loss of generality, a forward data-flow analysis.
+This data-flow analysis can be written as an equation system that associates, with each program point $p$, an element of a lattice ${\cal L}$, given by the equation $x^p = \bigwedge_{s \in \textit{preds}(p)} F^{s,p}(x^s)$, where $x^p$ denotes the abstract state associated  with program point $p$, and $F^{s,p}$ is the transfer function associated with $s$, one of the control flow predecessors of $p$.
+The analysis can alternatively be written\footnote{As far as we are concerned with finding its maximum solution. See for example Section~1.3.2 of~\cite{Nielson05}.} as a constraint system that binds to each program point $p$ and each $s\in \textit{preds}(p)$ the equation $x^p = x^p \wedge  F^{s,p}(x^s)$ or, equivalently, the inequation $x^p \sqsubseteq  F^{s,p}(x^s)$.
+The corresponding Maximum Fixed Point (MFP) problem is said to be a \emph{Partitioned Variable Lattice Problem} iff $\cal L$ can be decomposed into the product of ${\cal L}_{v_1}\times \dots \times {\cal L}_{v_n}$ where each ${\cal L}_{v_i}$ is the lattice associated with program variable $v_i$. In other words $x^s$ can be writen as $([v_1]^s,\dots,[v_n]^s)$. $F^{s,p}$ can thus be decomposed into the product of $F^{s,p}_{v_1}\times \dots\times F^{s,p}_{v_n}$ and the constraint system decomposed into the inequalities $[v_i]^p\sqsubseteq  F^{s,p}_{v_i}([v_1]^s,\dots,[v_n]^s)$.
 \end{definition}
 
-Liveness analysis is a partitioned variable problem. 
-The liveness information can be computed for each \emph{individual} variable \emph{independently}. 
-At each program point we are interested in computing the set of variables alive at that point.
-The information related to each variable belongs to a lattice of Boolean values ${\cal B}$.
-The abstract states associated with all the variables at each program point can be written as the cross product ${\cal L}={\cal B}^n$.
-For a given variable $v$ its liveness information at program point $i$, e.g., $[v]^i$, can be expressed in term of its state at the successors $s$ of $i$,
-$[v]^i = [v]^i \wedge F_v^s([v]^s)$ with $F_v^s$ from $\cal B$ to $\cal B$.
-This information does not depend on any program variable other than $v$ itself.
-
-Contrary to liveness analysis, most of the data-flow analyses do not provide the PVP property.
-However, a large number of them \emph{do} fulfill the PVL property.
-Going back to range analysis, if we denote by $\cal I$ the lattice of integer intervals, then the overall lattice can be written as ${\cal L}={\cal I}^n$, where $n$ is the number of variables (PVL property).
-As opposed to liveness information, the range interval of some variable $v$ at program point $i$ has to be expressed in term of the intervals associated with \emph{some other} variables (not only $v$) at the predecessors $S$ of $i$.
-In other words,  $[v]^i = [v]^i \wedge  F_v^s([v_1]^s,\dots,[v_n]^s)$ with $F_v^s$ from $\cal L$ to $\cal I$ (and not from $\cal I$ to $\cal I$).
-
-
+Going back to range analysis, if we denote by $\cal I$ the lattice of integer intervals, then the overall lattice can be written as ${\cal L}={\cal I}^n$, where $n$ is the number of variables.
+%
+Note that the class of PVL problems include a smaller class of problems called {\em Partitioned Data-flow Analyses} (PDA).
+These analyses, which include live variables, reaching definitions and forward/backward printing, can be decomposed into a set of sparse data-flow problems -- usually one per variable -- each independent on the other.
 
 \subsection{The Static Single Information Property}
 \label{sec:ssi:pereira:singProp}
@@ -155,25 +163,25 @@ In other words,  $[v]^i = [v]^i \wedge  F_v^s([v_1]^s,\dots,[v_n]^s)$ with $F_v^
 If the information associated with a variable is invariant along its
 entire live range, then we can bind this information to the variable itself.
 In other words, we can replace all the constraint variables
-$[v]^i$ by a single constraint variable $[v]$, for each variable $v$
-and every $i\in \textrm{live}(v)$. 
+$[v]^p$ by a single constraint variable $[v]$, for each variable $v$
+and every $p\in \textrm{live}(v)$. 
 Consider the problem of range analysis again. There are two types of program points associated with non-identity transfer functions: definitions and conditionals:
 (1) at the definition point of variable $v$, $F_v$ simplifies to a function that depends only on some $[u]$ where each $u$ is an argument of the instruction defining $v$;
 (2) at the conditional tests that use a variable $v$, $F_v$ can be simplified to a function that uses $[v]$ and possibly other variables that appear in the test.
-The other programs points can be ignored, because they are associated with the transfer function  $[v]^i = [v]^i \wedge F_v^s([v_1]^s, \dots, [v_n]^s)$ which simplifies to  $[v]^i = [v]^i$. 
+The other programs points are associated with an identity transfer function and can thus be ignored:  $[v]^p =[v]^p \wedge F_v^{s,p}([v_1]^s, \dots, [v_n]^s)$ simplifies to  $[v]^p = [v]^p \wedge [v]^p$ i.e. $[v]^p = [v]^p$. 
 This gives the intuition on why a propagation engine along the def-use chains of a SSA-form program can be used to solve the constant propagation problem in an equivalent, yet ``sparser'', manner.
 This also paves the way toward a formal definition of the Static Single Information property.
 
 \begin{property}[SSI]
-\label{pro:ssi}\textsc{Static Single Information:} Consider a forward (resp. backward) monotone PVL problem $E_{dense}$ stated as a set of constraints $[v]^i \sqsubseteq F_v^s([v_1]^s,\dots,[v_n]^s)$ for every variable $v$, each program point $i$, and each $s \in \textit{pred}(i)$ (resp. $s\in \textit{succ}(i)$).
+\label{pro:ssi}\textsc{Static Single Information:} Consider a forward (resp. backward) monotone PVL problem $E_\textit{dense}$ stated as a set of constraints $[v]^p \sqsubseteq F_v^{s,p}([v_1]^s,\dots,[v_n]^s)$ for every variable $v$, each program point $p$, and each $s \in \textit{preds}(p)$ (resp. $s\in \textit{succs}(p)$).
 A program representation fulfills the Static Single Information property iff:\begin{description}
-\item {\bf [SPLIT]:} let $s$ be the unique predecessor (resp. successor) of a program point $i$ where a variable $v$ is live and such that $F_v^s\neq \lambda x.\bot$ is non-trivial, i.e. is not the simple projection on ${\cal L}_v$, then $s$ should contain a definition (resp. last use) of $v$; 
-Let $(Y_v^i)_{(v,i)\in variables\times prog\_points}$ be a maximum solution to $E_{dense}$. 
-Each node $i$ that has several predecessors (resp. successors), and for which $F_v^s(Y_{v_1}^s,\dots,Y_{v_n}^s)$ has different values on its incoming edges $(s,i)$ (resp. outgoing edges $(i,s)$) should have a \phifun at the entry of $i$ (resp. \sigmafun at the exit of $i$) for $v$
+\item {\bf [SPLIT]:} let $s$ be the unique predecessor (resp. successor) of a program point where a variable $v$ is live and such that $F_v^{s,p}\neq \lambda x.\bot$ is non-trivial, i.e. is not the simple projection on ${\cal L}_v$, then $s$ should contain a definition (resp. last use) of $v$; 
+Let $(Y_v^p)_{(v,p)\in \textit{variables}\times \textit{progPoints}}$ be a maximum solution to $E_\textit{dense}$. 
+Each node $p$ that has several predecessors (resp. successors), and for which $F_v^{s,p}(Y_{v_1}^s,\dots,Y_{v_n}^s)$ has different values on its incoming edges $(s,p)$ (resp. outgoing edges $(p,s)$) should have a \phifun at the entry of $p$ (resp. \sigmafun at the exit of $p$) for $v$
 as defined in Section~\ref{sub:ssi:split}.
-\item {\bf [INFO]:} each program point $i\not\in \textrm{live}(v)$ should be bound to an undefined  transfer function, i.e., $F_v^i=\lambda x.\bot$.
-\item {\bf [LINK]:} each instruction {\em inst} for which $F_v^{inst}$ depends on some $[u]^s$ should contain an use (resp. def) of $u$ live-out (resp. live-in) at
-{\em inst}.
+\item {\bf [INFO]:} each program point $i$ such that $v\not\in \textrm{live-out}(i)$ (resp. $v\not\in \textrm{live-in}(i))$)  should be bound to an undefined  transfer function, i.e., $F_v^i=\lambda x.\bot$.
+\item {\bf [LINK]:} each instruction \textit{inst} for which $F_v^{\textit{inst}}$ depends on some $[u]^s$ should contain an use (resp. def) of $u$ live-in (resp. live-out) at
+\textit{inst}.
 \item {\bf [VERSION]:} for each variable $v$, $\textrm{live}(v)$ is a connected component of the CFG.
 \end{description}
 \end{property}
@@ -200,12 +208,12 @@ These notations are important elements of the propagation engine described in th
 In short, a \sigmafun (for a branch point) is the dual of a \phifun (for a join point), and a parallel copy is a copy that \emph{must} be done in parallel with another instruction.
 Each of these special instructions, \phifun, \sigmafuns, and parallel copies split live ranges at different kinds of program points: interior nodes, branches and joins.
 
-{\em Interior nodes} are program points that have a unique predecessor and a unique successor.
+\emph{Interior nodes} are program points that have a unique predecessor and a unique successor.
 At these points we perform live range splitting via copies.
 If the program point already contains another instruction, then this copy \emph{must} be done \emph{in parallel} with the existing instruction.
-The notation, \[inst \ \parallel\  v_1=v'_1 \ \parallel\  \dots \ \parallel\  v_m=v'_m\] denotes $m$ copies $v_i=v'_i$ performed in parallel with
-instruction $inst$.
-This means that all the uses of $inst$ plus all right-hand variables $v'_i$ are read simultaneously, then $inst$ is computed, then all definitions of $inst$ plus all left-hand variables $v_i$ are written simultaneously.
+The notation, \[\textit{inst} \ \parallel\  v_1=v'_1 \ \parallel\  \dots \ \parallel\  v_m=v'_m\] denotes $m$ copies $v_i=v'_i$ performed in parallel with
+instruction \textit{inst}.
+This means that all the uses of \textit{inst} plus all right-hand variables $v'_i$ are read simultaneously, then \textit{inst} is computed, then all definitions of \textit{inst} plus all left-hand variables $v_i$ are written simultaneously.
 The null pointer analysis example of Figure~\ref{fig:ssi:nullAnalysis}(d), that we will explain later, uses parallel copies at nodes $l_4$ and $l_6$.
 
 
@@ -221,7 +229,7 @@ To ensure Property~\ref{pro:ssi}, the use that reaches the definition of a
 variable must be unique, in the same way that in a SSA-form program the definition that reaches a use is unique.
 We ensure this property via special instructions called \sigmafuns.
 The \sigmafuns are the dual of \phifuns, performing a parallel assignment depending on the execution path taken.
-The assignment \[(v_1^1:l^1, \ldots, v_1^q:l^q) = \sigma(v_1) \ \parallel\  \dots \ \parallel\  (v_m^1:l^1, \ldots, v_m^q:l^q) = \sigma(v_m)\] represents $m$ \sigmafuns that assign to each variable $v_i^j$ the value in $v_i$ if control flows into block $l^j$.
+The assignment \[(l^1:v_1^1, \ldots, l^q:v_1^q) = \sigma(v_1) \ \parallel\  \dots \ \parallel\  (l^1:v_m^1, \ldots, l^q:v_m^q) = \sigma(v_m)\] represents $m$ \sigmafuns that assign to each variable $v_i^j$ the value in $v_i$ if control flows into block $l^j$.
 These assignments happen in parallel, i.e., the $m$ \sigmafuns encapsulate $m$ parallel copies.
 Also, notice that variables live in different branch targets are given
 different names by the \sigmafun that ends that basic block.
@@ -230,21 +238,21 @@ different names by the \sigmafun that ends that basic block.
 \subsection{Propagating Information Forwardly and Backwardly}
 \label{sec:ssi:pereira:engine}
 
-Let us consider a unidirectional forward (resp. backward) PVL problem $E^{ssi}_{\textit{dense}}$ stated as a set of equations $[v]^i \sqsubseteq  F_v^s([v_1]^s, \dots, [v_n]^s)$ (or equivalently $[v]^i = [v]^i \wedge    F_v^s([v_1]^s, \dots, [v_n]^s$) for every variable $v$, each program point $i$, and each $s \in \textit{pred}(i)$ (resp. $s \in \textit{succ}(i)$). 
+Let us consider a unidirectional forward (resp. backward) PVL problem $E^{\textit{ssi}}_{\textit{dense}}$ stated as a set of equations $[v]^p \sqsubseteq  F_v^{s,p}([v_1]^s, \dots, [v_n]^s)$ (or equivalently $[v]^p = [v]^p \wedge    F_v^{s,p}([v_1]^s, \dots, [v_n]^s$) for every variable $v$, each program point $p$, and each $s \in \textit{preds}(p)$ (resp. $s \in \textit{succs}(p)$). 
 To simplify the discussion, any \phifun (resp. \sigmafun) is seen as a set of copies, one per predecessor (resp. successor), which leads to as many constraints.
-In other words, a \phifun such as $a=\phi(a_1:l^1,\dots,a_m:l^m)$, gives us $n$ constraints such as $[a]^i \sqsubseteq  F_v^{l^j}([v_1]^{l^j}, \dots, [v_n]^{l^j})$, which usually simplifies into $[a]^i \sqsubseteq [a_j]^{l^j}$. This last can be written equivalently into the classical meet $[a]^i \sqsubseteq \bigwedge_{l^j \in \textit{pred}(i)} [a_j]^{l^j}$ used in Chapter~\ref{chapter:constant_propagation_is_easier}.
-Similarly, a \sigmafun $(l^1:a_1,\dots,l^m:a_m)=\sigma(a)$ at program point $i$ yields $n$ constraints such as $[a_j]^{l_j} \sqsubseteq  F_v^{l^j}([v_1]^{l^j}, \dots, [v_n]^{l^j})$, which usually simplifies into $[a_j]^{l_j} \sqsubseteq [a]^i$.
-Given a program that fulfills the SSI property for $E^{ssi}_{\textit{dense}}$ and the set of transfer functions $F_v^s$, we show here how to build an equivalent sparse constrained system.  
+In other words, a \phifun such as $p:a=\phi(a_1:l^1,\dots,a_m:l^m)$, gives us $n$ constraints such as $[a]^p \sqsubseteq  F_v^{l^j,p}([a_1]^{l^j}, \dots, [a_n]^{l^j})$, which usually simplifies into $[a]^p \sqsubseteq [a_j]^{l^j}$. This last can be written equivalently into the classical meet $[a]^p \sqsubseteq \bigwedge_{l^j \in \textit{preds}(p)} [a_j]^{l^j}$ used in Chapter~\ref{chapter:constant_propagation_is_easier}.
+Similarly, a \sigmafun $(l^1:a_1,\dots,l^m:a_m)=\sigma(p:a)$ after program point $p$ yields $n$ constraints such as $[a_j]^{l_j} \sqsubseteq  F_v^{p,l^j}([a_1]^p, \dots, [a_n]^p)$, which usually simplifies into $[a_j]^{l_j} \sqsubseteq [a]^p$.
+Given a program that fulfills the SSI property for $E^{\textit{ssi}}_{\textit{dense}}$ and the set of transfer functions $F_v^s$, we show here how to build an equivalent sparse constrained system.  
 
 \begin{definition}[SSI constrained system]
 \label{def:ssi_eq}
-Consider that a program in SSI form gives us a constraint system that associates with each variable $v$ the constraints $[v]^i \sqsubseteq  F_v^s([v_1]^s, \dots, [v_n]^s)$. We define a system of sparse equations $E^{ssi}_{sparse}$ as follows:
+Consider that a program in SSI form gives us a constraint system that associates with each variable $v$ the constraints $[v]^p \sqsubseteq  F_v^{s,p}([v_1]^s, \dots, [v_n]^s)$. We define a system of sparse equations $E^{\textit{ssi}}_{\textit{sparse}}$ as follows:
 
 \begin{itemize}
 
-\item For each instruction at a program point $i$ that defines (resp. uses) a variable $v$, we let $a \dots z$ be its set of used (resp. defined) variables. Because of the LINK property, $F^i_v$ depends only on some $[a]^i \dots [z]^i$.
-Thus, there exists a function $G^i_v$ defined as the restriction of $F^i_v$ on ${\cal L}_a\times \dots \times{\cal L}_z$, i.e. $G^i_v([a], \dots, [z]) = F^i_v([v_1],\dots, [v_n])$.
-
+\item For each instruction at a program point $i$ that defines (resp. uses) a variable $v$, we let $a \dots z$ be its set of used (resp. defined) variables. Because of the LINK property, $F^{s,p}_v$ (that we will denote $F^i_v$ from now) depends only on some $[a]^s \dots [z]^s$.
+Thus, there exists a function $G^i_v$ defined as the restriction of $F^i_v$ on ${\cal L}_a\times \dots \times{\cal L}_z$, i.e. informally ``$G^i_v([a], \dots, [z]) = F^i_v([v_1],\dots, [v_n])$''.
+% FAB: I do not like much this in,formal notation
 \item The sparse constrained system associates with each variable $v$, and each definition (resp. use) point $i$ of $v$, the corresponding constraint $[v]  \sqsubseteq G_v^i([a], \ldots, [z])$ where $a,\dots, z$ are used (resp. defined) at $i$.
 \end{itemize}
 
@@ -319,6 +327,7 @@ The dead-code elimination problem illustrates well this point:
 for a program under SSA form, replacing $G_v^i$ in Algorithm~\ref{alg:ssi:propback} by ``\emph{i is a useful instruction or one of its definitions is marked as useful}'' leads to the standard SSA-based dead-code elimination algorithm.
 The sparse constraint system does have several equations (one per variable use) for the same left-hand-side (one for each variable).
 It is not necessary to enforce the SSU property in this instance of dead-code elimination, and doing so would lead to a less efficient solution, in terms of compilation time and memory consumption.
+In other words, a code under SSA form fulfills the SSI property for dead-code elimination.
 
 
 \subsection{Examples of sparse data-flow analyses}
@@ -343,7 +352,26 @@ This solution assigns to each variable a unique range interval.
 
 \begin{figure}[t!]
 \centering
-\includegraphics[width=\linewidth]{RangeAnalysis}
+\tikzfigure{range-ssi}\hfill
+\begin{minipage}[b]{0.4\textwidth}
+\begin{equation*}
+\begin{array}[b]{ll}
+[i_1] = [i_1] \cup [0,0] &= [0,0]\\
+
+[s_1] = [s_1] \cup [0,0] &= [0,0]\\
+
+[i_2] = [i_2] \cup [i_1] \cup [i_4] &= [0,100]\\
+
+[s_2] = [s_2] \cup [s_1] \cup [s_3] &= [0,+\infty[\\
+
+[i_3] = [i_3] \cup \left([i_2] \cap \left]-\infty,99\right]\right) &= [0,99]\\
+
+[i_4] = [i_4] \cup \left([i_3] + 1\right) &= [1,100]\\ 
+
+[s_3] = [s_3] \cup \left([s_2] + [i_4]\right) &= [1,+\infty[\\~\\\\
+\end{array}
+\end{equation*}
+\end{minipage}
 \caption{(a) The example from Figure~\ref{fig:rangeAnalysis} after live range splitting.
 (b) A solution to this instance of the range analysis problem.}
 \label{fig:rangeAnalysis-sparse}
@@ -365,8 +393,46 @@ A fix-point to this constraint system is a solution to our data-flow problem.
 This instance of class inference is a Partitioned Variable Problem~(PVP)~\footnote{Actually class inference is no more a PVP as soon as we want to propagate the information through copies.}, because the data-flow information associated with a variable $v$ can be computed independently from the other variables.
 
 \begin{figure}[t!]
-\centering
-\includegraphics[width=\linewidth]{classInference}
+%\includegraphics[width=\linewidth]{classInference}
+%\tikzfigure{class-inference}
+\includegraphics[scale=0.85]{class-inference}
+\hfill
+%\tikzfigure{class-inference-ssi}
+\includegraphics[scale=0.85]{class-inference-ssi}\\
+~\\
+\begin{minipage}[b]{0.35\textwidth}
+\begin{equation*}
+\begin{array}[b]{c|l}
+\textit{prog. point} & [v]\\ \hline
+1 & \{m_1, m_3\}\\
+2 & \{m_1, m_3\}\\
+3 & \{m_1, m_3\}\\
+4 & \{m_3\}\\
+5 & \top\\
+6 & \{m_2, m_3\}\\
+7 & \{m_3\}
+\end{array}
+\end{equation*}
+\end{minipage}\hfill
+\begin{minipage}[b]{0.5\textwidth}
+$$
+\begin{array}[b]{lll}
+[v_6] &=& [v_6] \wedge \{ m_3 \} = \{ m_3 \}\\
+
+[v_5] &=& [v_5] \wedge [v_6] = \{m_3\}\\
+
+[v_4] &=& [v_4] \wedge [v_6] = \{m_3\}\\
+
+[v_2] &=& [v_2] \wedge \left(\{m_1\} \wedge [v_4]\right) = \{m_1,m_3\}\\
+
+[v_3] &=& [v_3] \wedge \left(\{m_2\} \wedge [v_4]\right) = \{m_2,m_3\}\\
+
+[v_1] &=& [v_1] \wedge [v_2] = \{m_1,m_3\}\\
+
+[v_1] &=& [v_1] \wedge [v_7] = \{m_1,m_3\}
+\end{array}
+$$
+\end{minipage}
 \caption{Class inference analysis as an example of backward data-flow analysis that takes information from the uses of variables.}
 \label{fig:classInference}
 %TODO FAB: virer les new dans la figure. Virer les points de programme qui ne servent à rien en (d) (car erreur sur l7)
@@ -382,9 +448,23 @@ On the other hand, in Figure~\ref{fig:ssi:nullAnalysis}(c) we notice that the st
 
 
 \begin{figure}[t!]
-\centering
-\includegraphics[width=\linewidth]{nullAnalysis}
-\caption{Null pointer analysis as an example of forward data-flow analysis that takes information from the definitions and uses of variables.} \label{fig:ssi:nullAnalysis}
+\hspace{-1cm}\tikzfigure{null-pointer}
+\hspace{-0.4cm}\tikzfigure{null-pointer-ssi}
+\begin{minipage}[b]{0.24\textwidth}
+\begin{equation*}
+\begin{array}{l}
+[v_1] = [v_1] \wedge 0 = 0\\
+
+[v_2] = [v_2] \wedge \nonnull = \nonnull\\
+
+[v_3] = [v_3] \wedge \nonnull = \nonnull\\
+
+[v_4] = [v_4] \wedge \left([v_3] \wedge [v_1]\right) = 0
+\end{array}
+\end{equation*}
+\vspace{1cm}
+\end{minipage}
+\caption{Null pointer analysis as an example of forward data-flow analysis that takes information from the definitions and uses of variables ($0$ represents the fact that the pointer is possibly null, $\nonnull$ if it cannot be).} \label{fig:ssi:nullAnalysis}
 %TODO: add [v4]=possibly null
 \end{figure}
 
@@ -502,15 +582,15 @@ $\SS_v = I_\downarrow \cup I_\uparrow$)\\
 $_2$&\1 ``compute the set of split points"\\
 $_3$&\1$S_\uparrow = \emptyset$\\
 $_4$&\1\Foreach $i \in I_\uparrow$:\\
-$_5$&\1\1 \If $i.is\_join$:\\
-$_6$&\1  \2 \Foreach $e\in incoming\_edges(i)$:\\
+$_5$&\1\1 \If $i.\textrm{is\_join}$:\\
+$_6$&\1  \2 \Foreach $e\in \textit{incoming\_edges}(i)$:\\
 $_7$&\1     \3  $S_\uparrow = S_\uparrow \bigcup \Out(pDF^+(e))$\\
 $_8$&\1\1 \Else:\\
 $_9$&\1  \2 $S_\uparrow = S_\uparrow \bigcup \Out(pDF^+(i))$\\
 $_{10}$&\1$S_\downarrow = \emptyset$\\
 $_{11}$&\1\Foreach $i \in S_\uparrow \bigcup \Defs(v) \bigcup I_\downarrow$:\\
-$_{12}$&\1\1 \If $i.is\_branch$:\\
-$_{13}$&\1  \2 \Foreach $e \in outgoing\_edges(i)$\\
+$_{12}$&\1\1 \If $i.\textrm{is\_branch}$:\\
+$_{13}$&\1  \2 \Foreach $e \in \textit{outgoing\_edges}(i)$\\
 $_{14}$&\1      \3 $S_\downarrow = S_\downarrow \bigcup \In(DF^+(e))$\\
 $_{15}$&\1\1 \Else:\\
 $_{16}$&\1  \2 $S_\downarrow = S_\downarrow \bigcup \In(DF^+(i))$\\
@@ -518,8 +598,8 @@ $_{17}$&\1$S = \SS_v \bigcup S_\uparrow \bigcup S_\downarrow$\\
 $_{18}$&\1 ``Split live range of $v$ by inserting $\phi$, $\sigma$, and copies"\\
 $_{19}$&\1\Foreach  $i \in S$:\\
 $_{20}$&\1\1 \If $i$ does not already contain any definition of $v$:\\
-$_{21}$&\1   \2  \If $i.is\_join$: insert ``$v=\phi(v,...,v)$" at $i$\\
-$_{22}$&\1   \2  \Else \If $i.is\_branch$: insert ``$(v,...,v)= \sigma(v)$" at  $i$\\
+$_{21}$&\1   \2  \If $i.\textrm{is\_join}$: insert ``$v=\phi(v,...,v)$" at $i$\\
+$_{22}$&\1   \2  \Else \If $i.\textrm{is\_branch}$: insert ``$(v,...,v)= \sigma(v)$" at  $i$\\
 $_{23}$&\1   \2 else: insert a copy ``$v=v$" at $i$\\
 \end{tabular}
 \caption{\label{fig:Spliting} Live range splitting. We use $\In(l)$ to denote a program point immediately before $l$, and $\Out(l)$ to denote a program point immediately after $l$.} 
@@ -662,16 +742,16 @@ Finally every useless $\phi$, $\sigma$, or copy functions are removed by lines~1
 The most straightforward way to implement \sigmafuns, in a compiler that already supports the SSA form, is to represent them by \phifuns.
 In this case, the \sigmafuns can be implemented as single arity \phifuns.
 As an example, Figure~\ref{fig:sigImpl}(a) shows how we would represent the \sigmafuns of Figure~\ref{fig:classInference}(d). 
-If $l$ is a branch point with $n$ successors that would contain a \sigmafun $(v_1:l^1, \ldots, v_n:l^n) =\sigma(v)$, then, for each successor $l^j$ of $l$, we insert at the beginning of $l^j$ an instruction $v_j = \phi(v:l)$.
+If $l$ is a branch point with $n$ successors that would contain a \sigmafun $(l^1:v_1, \ldots, l^n:v_n) =\sigma(v)$, then, for each successor $l^j$ of $l$, we insert at the beginning of $l^j$ an instruction $v_j = \phi(l^j:v)$.
 Notice that it is possible that $l^j$ already contains a \phifun for $v$.
 This case happens when the control flow edge $l \rightarrow l^j$ is {\em critical}.
 A critical edge links a basic block with several successors to a basic block with several predecessors.
 If $l^j$ already contains a \phifun $v' = \phi(\ldots, v_j, \ldots)$, then we rename $v_j$ to $v$.
 
 \begin{figure}[t!]
-\centering
-\includegraphics[width=\textwidth]{sigImpl}
-\caption{(a) getting rid of copies and \sigmafuns; (b) implementing \sigmafuns via single arity \phifuns.}
+\hspace{-1.2cm}\tikzfigure{class-inference-ssi-out-1}\hspace{-0.6cm}
+\tikzfigure{class-inference-ssi-out-2}
+\caption{(a) implementing \sigmafuns via single arity \phifuns; (b) getting rid of copies and \sigmafuns.}
 \label{fig:sigImpl}
 \end{figure}
 
