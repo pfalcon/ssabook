@@ -1,0 +1,303 @@
+\RequirePackage{xkeyval}
+\RequirePackage{textcomp}
+%\usepackage{xkeyval}
+
+\usepackage{pgfplots}
+
+\usetikzlibrary{arrows,shapes}
+\usetikzlibrary{calc}
+\usetikzlibrary{fit}
+\usetikzlibrary{scopes}
+\usetikzlibrary{decorations}
+\usetikzlibrary{decorations.pathmorphing}
+\usetikzlibrary{decorations.pathreplacing}
+\usetikzlibrary{decorations.fractals}
+\usetikzlibrary{chains}
+\usetikzlibrary{positioning}
+\usetikzlibrary{shadows}
+\usetikzlibrary{matrix}
+
+%%%% some colors
+\tikzset{
+  base vertex/.style={
+    circle,minimum size=15pt,inner sep=0pt,
+    top color=white, % a shading that is white at the top...
+    bottom color=#1, % and something else at the bottom
+    draw=gray!50!black
+  },
+  vertex/.style={base vertex=gray},
+  vertb/.style={base vertex=blue},
+  vertg/.style={base vertex=green},
+  vertr/.style={base vertex=red},
+  vsimpl/.style={base vertex=gray!10},
+}
+\tikzset{
+  degree label/.style={
+    inner sep=1pt,
+    above,
+    rounded corners=1pt,
+    text opacity=1,
+    fill=#1,
+    fill opacity=.4,
+    font=\footnotesize
+  }
+}
+
+\pgfdeclarelayer{background}
+\pgfsetlayers{background,main}
+
+\tikzstyle{guide line} = [help lines,black!20]
+\tikzstyle{mybraces} = [draw,decorate,decoration={brace,mirror}]
+
+% tables
+\tikzstyle{npcomplete} = [fill=red!20,rounded corners]
+\tikzstyle{polynomial} = [fill=green!20,rounded corners]
+
+\tikzset{labeltoobj/.style={draw,dashed,-latex}}
+
+%\tikzstyle{mylabel} = [pos=0.5, anchor= south]
+\tikzstyle{mylabel} = [midway,above=-2pt,sloped]
+
+%% np-completeness proofs
+%\tikzstyle{point} = [draw,fill,circle,minimum size=\thetmpp pt,inner sep=0,outer sep=\thetmp]
+
+\tikzstyle{point} = [draw,fill,circle,inner sep=0,outer sep=0 pt,minimum size=6 pt]
+\tikzstyle{setpoint} = [draw,fill,circle,inner sep=0,outer sep=0 pt,minimum size=6 pt]
+
+\tikzstyle{myvariable} = [pos=0.5,outer sep=0,inner sep=0]
+\tikzstyle{set} = [draw,dashed]%,rounded corners=20]
+
+\tikzstyle{selected edge} = [draw,line width=5pt,-,red!50]
+
+%%%%%
+\newcommand{\@color}{black}%
+\define@key{mytikz}{color}{\renewcommand{\@color}{#1}}%
+\newcommand{\@pos}{.5}%
+\define@key{mytikz}{pos}{\renewcommand{\@pos}{#1}}%
+\newcommand{\@label}{}%
+\define@key{mytikz}{label}{\renewcommand{\@label}{#1}}%
+\newcommand{\@shape}{}%
+\define@key{mytikz}{shape}{\renewcommand{\@shape}{#1}}%
+
+\presetkeys
+        {mytikz}
+        {color=black,%
+         pos=.5,%
+         label=,%
+         shape=rectangle%
+        }
+        {}
+
+\newcommand\subpointcover[4][]{
+  \setkeys{mytikz}{#1}
+  \begin{scope}[color=\@color]
+    \ifthenelse{\equal{\@label}{}}{
+    \path[set]
+      ($ (#3) ! \dist ! -90:(#4) $) -- ($(#4) ! \dist ! 90:(#3)$);
+    }{
+    \path[set]
+    %($ (#3) ! \dist ! -90:(#4) $)--node[outer sep=0,inner sep=0,#1] {X} ($(#4) ! \dist ! 90:(#3)$);
+
+    ($ (#3) ! \dist ! -90:(#4) $) -- coordinate[pos=\@pos] (y) ($(#4) ! \dist 
+    ! 90:(#3)$) coordinate (z);
+
+    \node at ($(y) ! 20pt ! -90:(z)$) (x) {\@label};
+    \draw[-,\@color!50!white] (y) -- (x);
+    }
+
+    \path[clip,overlay] % does not count for the bounding box
+%    \path[draw,red]
+    (current bounding box.south west) rectangle (current bounding box.north east)
+    ($(#2) ! 3cm ! 90:(#3)$) --
+    ($(#2) ! \dist ! -90:(#3)$) --
+    ($(#3) ! \dist ! 90:(#2)$) --
+    ($ (#3) ! \dist ! -90:(#4) $) --
+    ($(#4) ! \dist ! 90:(#3)$) -- 
+    ($(#4) ! 3cm ! -90:(#3)$) -- 
+    cycle;
+
+    \path [set] (#3) circle (\dist);
+  \end{scope}
+}
+
+% arguments are: {set,of,nodes}{label}{place label before}
+%\newcommand\pointcover[4][.5]{
+\newcommand\pointcover[4][]{
+  \edef\prev{0}
+  \edef\curr{0}
+  \foreach \x in {#2} {
+    \xdef\prev{\curr}
+    \xdef\curr{\x}
+  }
+  \foreach \x in {#2} {
+    \ifthenelse{\x=#4} {
+    \subpointcover[#1,label=#3]{p\prev}{p\curr}{p\x}
+    }{
+      \subpointcover[#1]{p\prev}{p\curr}{p\x}{#1}
+    }
+    \xdef\prev{\curr}
+    \xdef\curr{\x}
+    %\breakforeach
+  }
+}
+
+
+
+% Interference graphs
+%
+
+
+\tikzstyle{pointnode}=[inner sep=0,minimum size=5pt,fill,circle]
+\tikzstyle{varnode}=[inner sep=1pt,minimum size=7pt,rectangle]
+\tikzstyle{interf} = [draw,semithick,-]
+\tikzstyle{affinity} = [draw,semithick,dashed,-]
+\tikzstyle{affinityr} = [selected edge]
+\tikzstyle{affinityg} = [selected edge,green!50!black]
+\newcounter{tmpcountp}
+\newcounter{nextstop}
+\newcounter{currentstop}
+
+\tikzstyle{interval} = [draw,line width=3pt,-,black!50]
+\tikzstyle{linking edge} = [draw,line width=2pt,dotted,-,red!50]
+\tikzset{
+  base interval/.style={
+  draw,draw=gray!50!black,top color=white,bottom color=#1,
+    to path={+(-7pt,0) rectangle ([xshift=7pt]\tikztotarget)}
+  },
+  chordal interval/.style={base interval=gray},
+  selected interval/.style={base interval=red},
+}
+
+\tikzset{
+  degree label/.style={
+    inner sep=1pt,
+    above,
+    rounded corners=1pt,
+    text opacity=1,
+    fill=#1,
+    fill opacity=.4,
+    font=\footnotesize
+  }
+}
+
+
+\newdimen\posx
+\newcount\animsteps
+\newcount\temp
+\newdimen\cwidth % coalesce width
+\newdimen\cheight% .. height
+\newdimen\bwidth % brute width
+\newdimen\bheight% .. height
+\newdimen\cbwidth % coalesce for brute width
+\newdimen\cbheight% .. height
+\newdimen\loopheight% .. height
+
+\newcount\currentstop
+\newcount\nextstop
+
+
+
+% make an affinity between nodes
+\newcommand{\mkaffinity}[3]{
+  \path[affinity] (#1) -- node[mylabel] {$#3$} (#2);
+}
+
+
+% make a "leads-to arrow" with comment explaining the modification
+\tikzstyle{changesinto} = [draw,-stealth,decorate,decoration={snake,amplitude=.8mm,segment length=2mm,post length=1mm}]
+
+\newcommand{\mkchangesinto}[3]{
+{
+\scriptsize
+  \path[changesinto] #1  -- #2 node[midway,below]{#3};
+}
+}
+
+\tikzstyle{liverange}=[draw,thick]
+\newcommand{\mkliverange}[3]{
+\path[liverange] #2 node[anchor=base,yshift=5pt] {#1} -- #3;
+}
+
+\tikzstyle{hole} = [draw,double,double distance=3pt]
+
+
+% Flow graphs
+\tikzstyle{flow} = [draw,-stealth]
+
+\tikzstyle{basicblock} = [text width=2cm,draw,rounded corners,anchor=north] {
+\newcommand{\mkbasicblock}[5]{
+\node[basicblock,text width=#3] (#1) at #2 {
+	#5
+	};
+        \node[xshift=-7,yshift=5] at (#1.north west) {#4};
+}
+
+
+%\newcommand{\color1}{red}
+%\newcommand{\color2}{blue}
+%\newcommand{\color3}{green}
+%\newcommand{\color4}{magenta}
+%\newcommand{\color5}{yellow}
+
+\newcommand{\mycol}[1]{%
+\ifcase#1\or red\or blue\or green\or magenta\or yellow\else\bad\fi!70!black%
+}
+
+%\newlength{dist}
+\newdimen\dist
+
+\newcounter{tmp}
+\newcounter{tmpp}
+\newcounter{xcount}
+\newcounter{ycount}
+\newcounter{step}
+\newcounter{mysep}
+\newcounter{angle}
+
+\newcounter{p1}
+\newcounter{p2}
+\newcounter{p3}
+\newcounter{p4}
+\newcounter{p5}
+\newcounter{p6}
+
+
+% My test
+
+
+
+
+%\presetkeys
+%        {mytest}
+%        {color=black}
+%        {}
+
+\newcommand\test[2][]{
+  \setkeys{mytikz}{#1}
+  \node[draw,color=\@color,\@shape] {#2};
+}
+
+\newcommand\dbbox[1][red]{%
+\path[overlay,draw,#1] let \p1 = (current bounding box.south west),
+           \p2 = (current bounding box.north east)
+           in
+
+  (\p1) rectangle (\p2)
+  (\p1) node[below right] {\p1}
+           let
+           \n1 = {\x2-\x1},
+           \n2 = {\y2-\y1}
+           in
+         (\p2) node[above left] {\x2,\y2, ++\n1,\n2}
+  ;
+%          (current bounding box.south west) rectangle (current bounding box.north east);%
+}
+
+
+\newif\ifsimplifying
+\newif\ifprintaffinitystatus
+
+\def\nbcol{3}
+\def\adddegree#1to #2.{
+\node[degree label=\ifnum#1<\nbcol green!80!blue\else red!80!magenta\fi] at (#2.north east) {#1};
+}

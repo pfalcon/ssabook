@@ -1,0 +1,179 @@
+#!/usr/bin/perl
+
+# generates figures for slides using comments in .fig
+
+#use strict;
+#use warnings;
+#use diagnostics;
+
+my(%slides);
+
+my($arg);
+foreach $arg (@ARGV) {
+#     while (length($arg=$ARGV[0]) && shift) {
+    $profondeurs{$arg}=1 if $arg =~ /^[0-9]+$/;
+}
+
+my($affiche) = 1;
+
+my $file = shift @ARGV ;
+my @lines = `cat  $file`;
+$file =~ s/\.fig$//;
+
+
+# first identify the required slides
+my $num = 0;
+foreach my $line (@lines) {
+  $num++;
+  next unless $line =~ /^# (\w+) <([^>]*)>/ ;
+#  print $line ;
+
+  my $name = $1;
+  my $sl = $2;
+
+  my $min = 1;
+  my $max = 0;
+
+  if( $sl =~ s/^(\d+)//) {
+    $min = $1 ;
+    $max = $1 ;
+  }
+  if ( $sl =~ /-(\d+)$/ ) {
+    $max = $1 ;
+  }
+
+  if ($max == 0) {
+    if ($min == 0) {
+#      print "Bad slide definition line $num:\n";
+#      print $line;
+      $max = 1;
+      next ;
+    } else {
+      $max = $min;
+    }
+  }
+  if (exists $slides{$name}) {
+    if ($max > $slides{$name}) {
+      $slides{$name} = $max;
+    }
+  } else {
+    $slides{$name} = $max;
+  }
+}
+
+
+#foreach (keys %slides) {
+#  print $_, " => ", $slides{$_}, "\n";
+#}
+
+
+# now do the figures
+foreach my $name (keys %slides) {
+  my $slide = 1;
+  for (; $slide <= $slides{$name}; $slide++) {
+    my $fig = $file . "_" . $name . "-" . $slide . ".fig";
+    print "Generating $fig\n";
+
+    open OUT,">$fig";
+
+    my $incomment = 0;
+    my $output = 1 ;
+
+    # depth of silent compound
+    my $compounddepth = 0;
+
+
+    foreach my $line (@lines) {
+#      chomp $line ;	# strip record separator
+
+      if ($line =~ /^6 /) {
+        # enter compound
+        $incomment = 0;
+        if (not $output) {
+          # silent compound
+          $compounddepth++;
+          next;
+        }
+      }
+
+#      print "compound $compounddepth\n";
+
+      if ($compounddepth > 0) {
+#        print $line ;
+        if ($line =~ /^-6\s/) {
+#          print "TOTO le hero\n";
+          $compounddepth-- ;
+          if($compounddepth == 0) {
+            $output = 1;
+          }
+        }
+        next ;
+      }
+#      print $line;
+
+      if( $line =~ /^# (\w+) <([^>]*)>/ ) {
+#        print $line;
+        my $sname = $1;
+        my $sl = $2;
+
+        if (not $incomment) {
+          $incomment = 1;
+          $output = 0;
+        } elsif ($output) {
+          # already ok
+#          print " => output already set to $output\n";
+          next
+        }
+
+        my $min = 1;
+        my $max = 0;
+
+        if( $sl =~ s/^(\d+)?(-(\d+)?)?//) {
+          if ($1) {
+            $min = $1 ;
+            if ($2) {
+              if ($3) {
+                $max = $3;
+              } else {
+                $max = 0;
+              }
+            } else {
+              $max = $min
+            }
+          } else {
+            if ($2) {
+              if ($3) {
+                $max = $3;
+              }
+            }
+          }
+        }
+        if ( $sl =~ /-(\d+)?$/ ) {
+          $max = $1 ;
+          $max = $min
+        } 
+        if ($name eq $sname
+          && $slide >= $min
+          && ($max == 0 ||
+            $slide <= $max)) {
+          $output = 1;
+        }
+#        print " => output set to $output\n";
+        next ;
+      }
+
+      if ($line!~/^[ \t]/) {
+        if ($incomment) {
+          $incomment = 0;
+        } else {
+          $output = 1;
+        }
+      }
+
+      print OUT $line if ($output) ;
+
+    } 
+    close OUT;
+  }
+}
+

@@ -1,0 +1,231 @@
+\begin{tikzpicture}[overlay,shift={(current page.south west)}]
+
+\ifx\inktikz\undefined
+\else
+%\begin{tikzpicture}
+%\newif\ifsimplifying
+%\simplifyingtrue
+%\newif\ifprintaffinitystatus
+%\printaffinitystatusfalse
+  \def\simplifylist{0,1,11,10,9,7,13,6,12,5,4,2,3}
+  \def\simplifyme{9}
+\fi
+
+
+\begin{scope}[shift={(3cm,1cm)}]
+
+
+\tikzstyle{normal interf} = [draw, black, thick]
+\tikzstyle{simplified interf} = [draw, gray!30, thick]
+
+\tikzstyle{affinity} = [dashed]
+
+\tikzstyle{normal vertex} = [vertex]
+\tikzstyle{simplified vertex} = [vsimpl]
+
+
+  \countdef\counters=10
+
+  \advance\counters by 1
+  \countdef\returnvalue=\the\counters  % count for return value of functions
+
+  \xdef\nodestatus{\the\counters} %nodestatus + node number
+  \count1=\the\counters
+  \advance\count1 by 20 
+  \xdef\nodedegree{\the\count1} %nodestatus + node number
+
+%  \message{Node status are from \nodestatus and degree from \nodedegree}
+
+  \def\getanyval#1-#2.{{
+    \count1=#1
+    \advance\count1 by #2
+    \global\returnvalue=\the\count\the\count1%
+%    \message{Regs #1: got value of r#2 (i.e, reg {\the\count1}): it is \the\count\the\count1 (\the\returnvalue)}
+  }}
+
+  \def\setanyval#1-#2.#3{{
+    \count1=#1
+    \advance\count1 by #2%
+    \global\count\the\count1=#3
+  %  \message{Regs #1: set r#2 to #3 (i.e, reg {\the\count1} to \the\count\the\count1)}
+  }}
+
+
+  \def\getval#1{\getanyval\nodestatus-#1.}
+  \def\setval#1.#2{\setanyval\nodestatus-#1.{#2}}
+
+  \def\incrdegree#1{{
+    \count1=\nodedegree
+    \advance\count1 by #1
+    \global\advance\count\the\count1 by 1
+  }}
+
+  \def\getdegree#1{\getanyval\nodedegree-#1.}
+
+
+  \newif\ifsimplified
+
+  \def\testedge#1-#2{
+  \getval{#1}
+    \ifnum\the\returnvalue=0
+    \getval{#2}
+      \ifnum\the\returnvalue=0
+%        \message{NORMAL edge #1-#2}
+        \simplifiedfalse
+        \def\estyle{normal interf}
+     \else
+%       \message{SIMPLIFIED edge#1-#2}
+       \simplifiedtrue
+       \def\estyle{simplified interf}
+     \fi
+   \else
+%     \message{SIMPLIFIED edge#1-#2}
+     \simplifiedtrue
+     \def\estyle{simplified interf}
+   \fi
+  }
+
+  \def\testnode#1,#2.#3{%
+    \getval{#1}%
+    \ifnum\the\returnvalue=0
+      \ifsimplifying
+        \def\nstyle{normal vertex}
+      \else
+        \def\nstyle{vert#3}
+      \fi
+    \else
+      \def\nstyle{simplified vertex}
+%      \message{#1 (#2) seems to be simplified}
+      \node at (stack#1) {$#2$};
+    \fi
+  }
+
+  \def\newnode#1-#2-(#3)#4{
+    \testnode#1,#2.#4
+    \node[\nstyle] (n#1) at (#3) {$#2$};
+  }
+
+  \def\newedge#1-#2{
+    \testedge{#1}-{#2}
+    \ifsimplified\else
+      \incrdegree{#1}
+      \incrdegree{#2}
+    \fi
+    \path[\estyle] (n#1) -- (n#2);
+  }
+
+  \def\newaff#1-#2#3{
+    \testedge{#1}-{#2}
+    \ifprintaffinitystatus
+      \path[affinity#3] (n#1) -- (n#2);
+    \else\fi
+    \path[\estyle,affinity] (n#1) -- (n#2);
+  }
+
+
+  \path (-1.8,-3.9) coordinate (stack top)
+  ++(-2em,2.8) node[rotate=90] {{\sl Stack}};
+
+  \def\stackheight{4.8}
+  \draw[rounded corners=1mm] (stack top) ++(0,.5cm) -- ++(-1em,0) -- +(0,\stackheight) -- +(0,0) -- ++(2em,0) -- +(0,\stackheight);
+
+  \def\addtostack#1{
+%  \node[above=1ex of stack top,name=stack#1] (stack top) {};
+    \node[above=.6em of stack top] (stack#1) {};
+    \coordinate (stack top) at (stack#1);
+%  \message{#1 put on stack}
+  }
+  
+
+  \def\dosimplify#1{
+  \foreach \x in \simplifylist {
+    \setval\x.1
+    \addtostack{\x}
+    \ifnum\x=#1
+      \breakforeach
+    \else
+    \fi
+  }}
+
+  \foreach \x in \simplifylist {
+    \setval\x.0 ;
+    \setanyval\nodedegree-\x.0 ;
+  }
+  \dosimplify{\simplifyme}
+
+  \foreach \x in \simplifylist {
+    \getval\x
+%    \message{***************************** \x  is \ifnum\the\returnvalue=0 normal\else simplified\fi}
+  }
+
+  \begin{scope}[scale=1.2,yshift=.5cm,xshift=-.5cm]
+
+  \newnode1-a-(1,0)r
+  \newnode2-b-(2,-2)g
+  \newnode3-c-(1,-2)b
+  \newnode4-d-(3,-1)r
+  \newnode5-e-(4,-1)g
+  \newnode6-f-(5,-1)r
+  \newnode7-g-(6,-2)g
+
+  \newnode9-i-(6,-1)b
+  \newnode10-j-(7,0)g
+
+  \newnode11-c'-(0,-2)g
+  \newnode12-d'-(2,-1)r
+  \newnode13-g'-(4,-2)b
+
+  \newedge1-3
+  \newedge1-2
+  \newedge1-{11}
+  \newedge2-4
+  \newedge2-3
+  \newedge2-{12}
+  \newedge3-4
+  \newedge3-{12}
+  \newedge4-5
+  \newedge5-6
+  \newedge5-{13}
+  \newedge6-7
+  \newedge6-9
+  \newedge6-{13}
+  \newedge7-9
+  \newedge9-{10}
+
+
+  \newaff3-{11}r
+  \newaff4-{12}g
+  \newaff7-{13}r
+  \newaff1-{10}r
+\end{scope}
+
+  % Now print the degree
+  \ifsimplifying
+  \foreach \x in \simplifylist {
+    \getdegree{\x}
+%    \message{degree of \x is \the\returnvalue}
+    \ifnum\the\returnvalue>0
+    \adddegree\the\returnvalue to n\x.
+    \else
+    \fi
+
+    %legend
+	}
+	{%[scale=.5,every node/.style={transform shape}]
+	\it
+	\scriptsize
+    \node[degree label={red!80!magenta},right,transform shape,minimum size=1.5ex] (x) at (0,-2.8)  {} ;
+	\node[right=1ex of x] {Hi-degree node};
+    \node[degree label=green!80!blue,below=1ex of x,minimum size=1.5ex] (x) {};
+	\node[right=1ex of x] {Low-degree node};
+	}
+  \else\fi
+
+
+
+%\useasboundingbox (-2.1,-3.5) rectangle ++ (9.5,5.5);
+%\dbbox
+
+
+\end{scope}
+\end{tikzpicture}
