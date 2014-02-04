@@ -1,3 +1,7 @@
+\def\progpoint{program point\ }
+\def\progpoints{program points\ }
+\def\splitpoint{control flow point\ }
+\def\splitpoints{control flow points\ }
 \chapter{Static Single Information Form \Author{F. Pereira \andAuthor F. Rastello}}
 \inputprogress
 \label{chapter:ssi}
@@ -14,10 +18,10 @@ We call such facts {\em information}.
 Using the notation introduced in Section~\ref{chapter:constant_propagation_is_easier}, an
 information is a element in the data-flow lattice.
 For example, the information that concerns liveness analysis is the set of
-variables alive at a certain program point.
+variables alive at a certain \progpoint.
 Similarly to liveness analysis, many other classic data-flow approaches bind
-information to pairs formed by a variable and a program point.
-However, if an invariant occurs for a variable $v$ at any program point where
+information to pairs formed by a variable and a \progpoint.
+However, if an invariant occurs for a variable $v$ at any \progpoint where
 $v$ is alive, then we can associate this invariant directly to $v$.
 If a program's intermediate representation guarantees this correspondence between
 information and variable for every variable, then we say that the program
@@ -58,9 +62,9 @@ types of data-flow analysis.
 
 The goal of this section is to define the notion of Static Single Information, and to explain how it supports the sparse data-flow analyses discussed in Chapter~\ref{chapter:constant_propagation_is_easier}.
 With this purpose, we revisit the concept of sparse analysis in Section~\ref{sec:ssi:pereira:sparse}.
-There exists a special class of data-flow problems, which we call {\em Partitioned Variable Lattice} (PVL), that fits in this chapter's sparse data-flow framework very well.
+There exists a special class of data-flow problems, which we call {\em Partitioned Lattice per Variable} (PLV), that fits in this chapter's sparse data-flow framework very well.
 We will look more carefully into these problems in Section~\ref{sec:ssi:pereira:pvpPvl}.
-The intermediate program representations that we discuss in this chapter lets us provide the Static Single Information property -- formalized in Section~\ref{sec:ssi:pereira:singProp} -- to any PVL problem.
+The intermediate program representations that we discuss in this chapter lets us provide the Static Single Information property -- formalized in Section~\ref{sec:ssi:pereira:singProp} -- to any PLV problem.
 And the algorithms that we give in Section~\ref{sec:ssi:pereira:engine} lets us solve sparsely any data-flow problem that contains the SSI property.
 This sparse framework is very broad: many well-known data-flow problems are partitioned lattice, as we will see in the examples from Section~\ref{sub:ssi:examples}.
 
@@ -68,15 +72,15 @@ This sparse framework is very broad: many well-known data-flow problems are part
 \subsection{Sparse Analysis}
 \label{sec:ssi:pereira:sparse}
 
-Traditionally, non relational data-flow analyses bind information to pairs formed by a variable and a program point.
+Traditionally, non relational data-flow analyses bind information to pairs formed by a variable and a \progpoint.
 Let's consider, as an example, the problem of estimating the interval of values that any integer variable may assume throughout the execution of a program.
 An algorithm that solves this problem is called a {\em range analysis}.
-A traditional implementation of this analysis would find, for each pair formed by a variable $v$ plus a program point $p$, the interval of possible values that $v$ might assume at $p$.
+A traditional implementation of this analysis would find, for each pair formed by a variable $v$ plus a \progpoint $p$, the interval of possible values that $v$ might assume at $p$.
 Figure~\ref{fig:rangeAnalysis} illustrates this analysis with an example.
-In this case we call a program point any region between two consecutive
+In this case we call a \progpoint any region between two consecutive
 instructions and we let $[v]$ denote the abstract information that is associated
 with variable $v$.
-Because this approach keeps information at each program point, we call it {\em dense}, in contrast with the sparse analyses seen in Section~\ref{chapter:constant_propagation_is_easier:sec:prop-engine}.
+Because this approach keeps information at each \progpoint, we call it {\em dense}, in contrast with the sparse analyses seen in Section~\ref{chapter:constant_propagation_is_easier:sec:prop-engine}.
 
 \begin{figure}[t!]
 \centering
@@ -114,47 +118,47 @@ s=0;\\
 \vspace{1cm}
 \end{minipage}
 \caption{An example of a dense data-flow analysis that finds the range of
-possible values associated with each variable at each program point.}
+possible values associated with each variable at each \progpoint.}
 \label{fig:rangeAnalysis}
 \end{figure}
 
 The dense approach might keep more redundant information during the
 data-flow analysis.
 For instance, if we let $[v]^p$ denote the abstract state of variable
-$v$ at program point $p$, then we have that, in our example, $[i]^1 = [i]^2$,
+$v$ at \progpoint $p$, then we have that, in our example, $[i]^1 = [i]^2$,
 $[s]^5 = [s]^6$ and $[i]^6 = [i]^7$.
 This redundancy happens because some transfer functions are identities.
 For instance, in range analysis, an instruction that neither defines nor uses any variable is associated with an identity transfer function.
-The transfer function that updates the abstract state of $i$ at program point $2$ is an identity.
+The transfer function that updates the abstract state of $i$ at \progpoint $2$ is an identity.
 Because the instruction immediately before $2$ does not add any new information to the abstract state of $i$, $[i]^2$ is updated with the information that flows directly from the predecessor point $1$.
 
-The goal of sparse data-flow analysis is to shortcut the identity transfer functions, a task that we accomplish by grouping contiguous program points bound to identities into larger regions.
-Solving a data-flow analysis sparsely has many advantages over doing it densely: because we do not need to keep bitvectors associated with each program point, the sparse solution tends to be more economical in terms of space and time.
-Going back to our example, a given variable $v$ may be mapped to the same interval along many consecutive program points.
+The goal of sparse data-flow analysis is to shortcut the identity transfer functions, a task that we accomplish by grouping contiguous \progpoints bound to identities into larger regions.
+Solving a data-flow analysis sparsely has many advantages over doing it densely: because we do not need to keep bitvectors associated with each \progpoint, the sparse solution tends to be more economical in terms of space and time.
+Going back to our example, a given variable $v$ may be mapped to the same interval along many consecutive \progpoints.
 Furthermore, if the information associated with a variable is invariant along its
 entire live range, then we can bind this information to the variable itself.
 In other words, we can replace all the constraint variables
 $[v]^p$ by a single constraint variable $[v]$, for each variable $v$
 and every $i\in \textrm{live}(v)$.
-Not every data-flow problem can be easily solved sparsely; however, many of them can, as they fit into the family of PVL problems that we describe in the next section.
+Not every data-flow problem can be easily solved sparsely; however, many of them can, as they fit into the family of PLV problems that we describe in the next section.
 
-\subsection{Partitioned Variable Lattice (PVL) Data-Flow Problems}
+\subsection{Partitioned Lattice per Variable (PLV) Data-Flow Problems}
 \label{sec:ssi:pereira:pvpPvl}
 
-The class of non-relational data flow analysis problems we are interested in are the ones that bind information to pairs of program variables and program points.
-We design this class of problems as \emph{Partitioned Variable Lattice} problems that we formally describe as follow.
+The class of non-relational data flow analysis problems we are interested in are the ones that bind information to pairs of program variables and \progpoints.
+We design this class of problems as \emph{Partitioned Lattice per Variable} problems that we formally describe as follow.
 
-\begin{definition}[PVL]
+\begin{definition}[PLV]
 Let ${\cal V}=\{v_1,\dots,v_n\}$ be the set of program variables.
 Let us consider, without loss of generality, a forward data-flow analysis.
-This data-flow analysis can be written as an equation system that associates, with each program point $p$, an element of a lattice ${\cal L}$, given by the equation $x^p = \bigwedge_{s \in \textit{preds}(p)} F^{s,p}(x^s)$, where $x^p$ denotes the abstract state associated  with program point $p$, and $F^{s,p}$ is the transfer function associated with $s$, one of the control flow predecessors of $p$.
-The analysis can alternatively be written\footnote{As far as we are concerned with finding its maximum solution. See for example Section~1.3.2 of~\cite{Nielson05}.} as a constraint system that binds to each program point $p$ and each $s\in \textit{preds}(p)$ the equation $x^p = x^p \wedge  F^{s,p}(x^s)$ or, equivalently, the inequation $x^p \sqsubseteq  F^{s,p}(x^s)$.
-The corresponding Maximum Fixed Point (MFP) problem is said to be a \emph{Partitioned Variable Lattice Problem} iff $\cal L$ can be decomposed into the product of ${\cal L}_{v_1}\times \dots \times {\cal L}_{v_n}$ where each ${\cal L}_{v_i}$ is the lattice associated with program variable $v_i$. In other words $x^s$ can be writen as $([v_1]^s,\dots,[v_n]^s)$. $F^{s,p}$ can thus be decomposed into the product of $F^{s,p}_{v_1}\times \dots\times F^{s,p}_{v_n}$ and the constraint system decomposed into the inequalities $[v_i]^p\sqsubseteq  F^{s,p}_{v_i}([v_1]^s,\dots,[v_n]^s)$.
+This data-flow analysis can be written as an equation system that associates, with each \progpoint $p$, an element of a lattice ${\cal L}$, given by the equation $x^p = \bigwedge_{s \in \textit{preds}(p)} F^{s,p}(x^s)$, where: $x^p$ denotes the abstract state associated  with \progpoint $p$; for $s$ a control flow predecessor of $p$, $F^{s,p}$ is the transfer function from $s$ to $p$.
+The analysis can alternatively be written\footnote{As far as we are concerned with finding its maximum solution. See for example Section~1.3.2 of~\cite{Nielson05}.} as a constraint system that binds to each \progpoint $p$ and each $s\in \textit{preds}(p)$ the equation $x^p = x^p \wedge  F^{s,p}(x^s)$ or, equivalently, the inequation $x^p \sqsubseteq  F^{s,p}(x^s)$.
+The corresponding Maximum Fixed Point (MFP) problem is said to be a \emph{Partitioned Lattice per Variable Problem} iff $\cal L$ can be decomposed into the product of ${\cal L}_{v_1}\times \dots \times {\cal L}_{v_n}$ where each ${\cal L}_{v_i}$ is the lattice associated with program variable $v_i$. In other words $x^s$ can be writen as $([v_1]^s,\dots,[v_n]^s)$ where $[v]^s$ denotes the abstract state associated to variable $v$ and \progpoint $s$. $F^{s,p}$ can thus be decomposed into the product of $F^{s,p}_{v_1}\times \dots\times F^{s,p}_{v_n}$ and the constraint system decomposed into the inequalities $[v_i]^p\sqsubseteq  F^{s,p}_{v_i}([v_1]^s,\dots,[v_n]^s)$.
 \end{definition}
 
 Going back to range analysis, if we denote by $\cal I$ the lattice of integer intervals, then the overall lattice can be written as ${\cal L}={\cal I}^n$, where $n$ is the number of variables.
 %
-Note that the class of PVL problems include a smaller class of problems called {\em Partitioned Data-flow Analyses} (PDA).
+Note that the class of PLV problems include a smaller class of problems called {\em Partitioned Variable Problems} (PVP).
 These analyses, which include live variables, reaching definitions and forward/backward printing, can be decomposed into a set of sparse data-flow problems -- usually one per variable -- each independent on the other.
 
 \subsection{The Static Single Information Property}
@@ -165,7 +169,7 @@ entire live range, then we can bind this information to the variable itself.
 In other words, we can replace all the constraint variables
 $[v]^p$ by a single constraint variable $[v]$, for each variable $v$
 and every $p\in \textrm{live}(v)$. 
-Consider the problem of range analysis again. There are two types of program points associated with non-identity transfer functions: definitions and conditionals:
+Consider the problem of range analysis again. There are two types of \splitpoints associated with non-identity transfer functions: definitions and conditionals:
 (1) at the definition point of variable $v$, $F_v$ simplifies to a function that depends only on some $[u]$ where each $u$ is an argument of the instruction defining $v$;
 (2) at the conditional tests that use a variable $v$, $F_v$ can be simplified to a function that uses $[v]$ and possibly other variables that appear in the test.
 The other programs points are associated with an identity transfer function and can thus be ignored:  $[v]^p =[v]^p \wedge F_v^{s,p}([v_1]^s, \dots, [v_n]^s)$ simplifies to  $[v]^p = [v]^p \wedge [v]^p$ i.e. $[v]^p = [v]^p$. 
@@ -173,9 +177,9 @@ This gives the intuition on why a propagation engine along the def-use chains of
 This also paves the way toward a formal definition of the Static Single Information property.
 
 \begin{property}[SSI]
-\label{pro:ssi}\textsc{Static Single Information:} Consider a forward (resp. backward) monotone PVL problem $E_\textit{dense}$ stated as a set of constraints $[v]^p \sqsubseteq F_v^{s,p}([v_1]^s,\dots,[v_n]^s)$ for every variable $v$, each program point $p$, and each $s \in \textit{preds}(p)$ (resp. $s\in \textit{succs}(p)$).
+\label{pro:ssi}\textsc{Static Single Information:} Consider a forward (resp. backward) monotone PLV problem $E_\textit{dense}$ stated as a set of constraints $[v]^p \sqsubseteq F_v^{s,p}([v_1]^s,\dots,[v_n]^s)$ for every variable $v$, each \progpoint $p$, and each $s \in \textit{preds}(p)$ (resp. $s\in \textit{succs}(p)$).
 A program representation fulfills the Static Single Information property iff:\begin{description}
-\item {\bf [SPLIT]:} let $s$ be the unique predecessor (resp. successor) of a program point where a variable $v$ is live and such that $F_v^{s,p}\neq \lambda x.\bot$ is non-trivial, i.e. is not the simple projection on ${\cal L}_v$, then $s$ should contain a definition (resp. last use) of $v$; 
+\item {\bf [SPLIT]:} let $s$ be the unique predecessor (resp. successor) of a \progpoint where a variable $v$ is live and such that $F_v^{s,p}\neq \lambda x.\bot$ is non-trivial, i.e. is not the simple projection on ${\cal L}_v$, then $s$ should contain a definition (resp. last use) of $v$; 
 Let $(Y_v^p)_{(v,p)\in \textit{variables}\times \textit{progPoints}}$ be a maximum solution to $E_\textit{dense}$. 
 Each node $p$ that has several predecessors (resp. successors), and for which $F_v^{s,p}(Y_{v_1}^s,\dots,Y_{v_n}^s)$ has different values on its incoming edges $(s,p)$ (resp. outgoing edges $(p,s)$) should have a \phifun at the entry of $p$ (resp. \sigmafun at the exit of $p$) for $v$
 as defined in Section~\ref{sub:ssi:split}.
@@ -186,7 +190,7 @@ as defined in Section~\ref{sub:ssi:split}.
 \end{description}
 \end{property}
 
-These properties allows us to attach the information to variables, instead of program points.
+These properties allows us to attach the information to variables, instead of \progpoints.
 The {SPLIT} property forces the information related to a variable to be invariant along its entire live-range.
 {INFO} forces this information to be irrelevant outside the live range of the variable.
 The {LINK} property forces the def-use chains to reach the points where information is available for a transfer function to be evaluated.
@@ -194,10 +198,10 @@ The {VERSION} property provides an one-to-one mapping between variable names and
 
 We must split live ranges to provide the SSI properties.
 If we split them between each pair of consecutive instructions, then we would automatically provide these properties, as the newly created variables
-would be live at only one program point.
+would be live at only one \progpoint.
 However, this strategy would lead to the creation of many trivial program regions, and we would lose sparsity.
 In Section~\ref{sec:building} we provide a sparser way to split live ranges that fit Property~\ref{pro:ssi}.
-Possibly, we may have to extend the live-range of a variable to cover every program point where the information is relevant.
+Possibly, we may have to extend the live-range of a variable to cover every \progpoint where the information is relevant.
 We accomplish this last task by inserting into the program pseudo-uses and pseudo-definitions of this variable.
 
 \subsection{Special instructions used to split live ranges}
@@ -238,10 +242,10 @@ different names by the \sigmafun that ends that basic block.
 \subsection{Propagating Information Forwardly and Backwardly}
 \label{sec:ssi:pereira:engine}
 
-Let us consider a unidirectional forward (resp. backward) PVL problem $E^{\textit{ssi}}_{\textit{dense}}$ stated as a set of equations $[v]^p \sqsubseteq  F_v^{s,p}([v_1]^s, \dots, [v_n]^s)$ (or equivalently $[v]^p = [v]^p \wedge    F_v^{s,p}([v_1]^s, \dots, [v_n]^s$) for every variable $v$, each program point $p$, and each $s \in \textit{preds}(p)$ (resp. $s \in \textit{succs}(p)$). 
+Let us consider a unidirectional forward (resp. backward) PLV problem $E^{\textit{ssi}}_{\textit{dense}}$ stated as a set of equations $[v]^p \sqsubseteq  F_v^{s,p}([v_1]^s, \dots, [v_n]^s)$ (or equivalently $[v]^p = [v]^p \wedge    F_v^{s,p}([v_1]^s, \dots, [v_n]^s$) for every variable $v$, each \progpoint $p$, and each $s \in \textit{preds}(p)$ (resp. $s \in \textit{succs}(p)$). 
 To simplify the discussion, any \phifun (resp. \sigmafun) is seen as a set of copies, one per predecessor (resp. successor), which leads to as many constraints.
 In other words, a \phifun such as $p:a=\phi(a_1:l^1,\dots,a_m:l^m)$, gives us $n$ constraints such as $[a]^p \sqsubseteq  F_v^{l^j,p}([a_1]^{l^j}, \dots, [a_n]^{l^j})$, which usually simplifies into $[a]^p \sqsubseteq [a_j]^{l^j}$. This last can be written equivalently into the classical meet $[a]^p \sqsubseteq \bigwedge_{l^j \in \textit{preds}(p)} [a_j]^{l^j}$ used in Chapter~\ref{chapter:constant_propagation_is_easier}.
-Similarly, a \sigmafun $(l^1:a_1,\dots,l^m:a_m)=\sigma(p:a)$ after program point $p$ yields $n$ constraints such as $[a_j]^{l_j} \sqsubseteq  F_v^{p,l^j}([a_1]^p, \dots, [a_n]^p)$, which usually simplifies into $[a_j]^{l_j} \sqsubseteq [a]^p$.
+Similarly, a \sigmafun $(l^1:a_1,\dots,l^m:a_m)=\sigma(p:a)$ after \progpoint $p$ yields $n$ constraints such as $[a_j]^{l_j} \sqsubseteq  F_v^{p,l^j}([a_1]^p, \dots, [a_n]^p)$, which usually simplifies into $[a_j]^{l_j} \sqsubseteq [a]^p$.
 Given a program that fulfills the SSI property for $E^{\textit{ssi}}_{\textit{dense}}$ and the set of transfer functions $F_v^s$, we show here how to build an equivalent sparse constrained system.  
 
 \begin{definition}[SSI constrained system]
@@ -333,7 +337,7 @@ In other words, a code under SSA form fulfills the SSI property for dead-code el
 \subsection{Examples of sparse data-flow analyses}
 \label{sub:ssi:examples}
 
-As we have mentioned before, many data-flow analyses can be classified as PVL problems.
+As we have mentioned before, many data-flow analyses can be classified as PLV problems.
 In this section we present some meaningful examples.
 
 \paragraph{Range analysis revisited}
@@ -498,7 +502,7 @@ The list in Figure~\ref{fig:splittingSt} gives further examples of live range sp
 
 \begin{itemize}
 \item Range analysis, is a forward analysis that takes information from points where variables are defined, and conditional tests that use these variables.
-For instance, in Figure~\ref{fig:rangeAnalysis-sparse}, we have that $\SS_{i} = \{l_1, \Out(l_3), l_4\}_\downarrow$ where $\Out(l_i)$ denotes the exit of $l_i$ (i.e. the program point immediately after $l_i$), and that $\SS_{s}=\{l_2, l_5\}_\downarrow$.
+For instance, in Figure~\ref{fig:rangeAnalysis-sparse}, we have that $\SS_{i} = \{l_1, \Out(l_3), l_4\}_\downarrow$ where $\Out(l_i)$ denotes the exit of $l_i$ (i.e. the \progpoint immediately after $l_i$), and that $\SS_{s}=\{l_2, l_5\}_\downarrow$.
 
 \item Class inference is a backward analysis that takes information from the uses of variables; thus, for each variable, the live-range splitting strategy is characterized by the set $\textit{Uses}_\uparrow$ where $\textit{Uses}$ is the set of use points.
 For instance, in Figure~\ref{fig:classInference}(d), we have that
@@ -565,7 +569,7 @@ For instance, in Figure~\ref{fig:rangeAnalysis}, there exist two definitions of 
 The information that flows forward from $l_1$ and $l_4$ collides at $l_3$, the loop entry.
 Hence the live-range of $i$ has to be split immediately before $l_3$ -- at $\In(l_3)$ --, leading,
 in our example, to a new definition $i_1$.
-In general, the set of program points where information collides can be easily
+In general, the set of \progpoints where information collides can be easily
 characterized by the notion of join sets and iterated dominance frontier ($\textit{DF}^+$) seen in Chapter~\ref{chapter:alternative_ssa_construction_algorithms}.
 Similarly, split sets created by the backward propagation of information can
 be over-approximated by the notion of {\em iterated post-dominance
@@ -579,7 +583,7 @@ direction of edges have been reversed. Note that, just as the notion of dominanc
 \begin{tabular}{rl}
 $_1$&{\sf function split}(var \var{v}, Splitting\_Strategy
 $\SS_v = I_\downarrow \cup I_\uparrow$)\\
-$_2$&\1 ``compute the set of split points"\\
+$_2$&\1 ``compute the set of split nodes"\\
 $_3$&\1$S_\uparrow = \emptyset$\\
 $_4$&\1\Foreach $i \in I_\uparrow$:\\
 $_5$&\1\1 \If $i.\textrm{is\_join}$:\\
@@ -793,7 +797,7 @@ All these program representations are very effective, having seen use in a numbe
 The notion of {\em Partitioned Variable Problem} (PVP) was introduced by Zadeck, in his PhD dissertation~\cite{Zadeck84}.
 Zadeck proposed fast ways to build data-structures that allow one to solve these problems efficiently.
 He also discussed a number of data-flow analyses that are partitioned variable problems.
-There are data-flow analyses that do not meet the Partitioned Variable Lattices property.
+There are data-flow analyses that do not meet the Partitioned Lattice per Variable property.
 Noticeable examples include abstract interpretation problems on relational domains, such as Polyhedrons~\cite{Cousot78}, Octagons~\cite{Mine06} and Pentagons~\cite{Logozzo08}.
 %This domain binds variables together in constraints such as $x + y \leq c$, where $c$ is an integer, and $x, y$ are program variables.
 
