@@ -42,12 +42,12 @@ In reference with register allocation, and graph coloring, we will associate the
 
 We suppose that variables have already been colored and the goal is to un-color some of them (preferably not all of them) so that each merged-set become interference free. We suppose that if two variables are pinned together they have been assigned the same color, and that a merged-set cannot contain variables pinned to different physical resources. Here we focus on a single merged-set and the goal is to make it interference free within a single traversal. The idea \ifhab advocated by Budimlic et al.~\cite{Budimlic02} \fi exploits the tree shape of variables live-ranges under strict SSA. To this end, variables are identified by their definition point and ordered using dominance accordingly. 
 
-Algorithm~\ref{alg:alternative_ssa_destruction:domup} performs a traversal of this set along the dominance order, enforcing at each step the sub-set of already considered variables to be interference free. From now, we will abusively design as the dominators of a variable $v$, the set of variables of \emph{color identical to $v$} which definition dominates the definition of $v$. Variables defined at the same program point are arbitrarily ordered, so as to use the standard definition of immediate dominator (denoted $\cidom{v}$, set to $\undef$ if not exists, updated lines~\ref{line:curidom_start}-\ref{line:curidom_end}).
-To illustrate the role of $\eanc{v}$ in Algorithm~\ref{alg:alternative_ssa_destruction:domup}, let us consider the example of Figure~\ref{fig:alternative_ssa_destruction:fig:domtree} where all variables are assumed to be originally in the same merged-set: $\eanc{v}$ (updated line~\ref{line:eanc}) represents the immediate intersecting dominator with the same value than $v$; so we have $\eanc{b}=\undef$ and $\eanc{d}=a$. When line~\ref{line:curanc} is reached, $\curanc$ (if not $\undef$) represents a dominating variable interfering with $v$ and with the same value than $\cidom{v}$: when $v$ is set to $c$ ($\cidom{c}=b$), as $b$ does not intersect $c$ and as $\eanc{b}=\undef$, $\curanc=\undef$ which allows to conclude that there is no dominating variable that interfere with $c$; when $v$ is set to $e$, $d$ does not intersect $e$ but as $a$ intersects and has the same value than $d$ (otherwise $a$ or $d$ would have been un-colored), we have $\eanc{d}=a$ and thus $\curanc=a$. This allows to detect on line~\ref{line:interference} the interference of $e$ with $a$. 
+Algorithm~\ref{alg:alternative_ssa_destruction:domup} performs a traversal of this set along the dominance order, enforcing at each step the sub-set of already considered variables to be interference free. From now, we will abusively design as the dominators of a variable $v$, the set of variables of \emph{color identical to $v$} which definition dominates the definition of $v$. Variables defined at the same program point are arbitrarily ordered, so as to use the standard definition of immediate dominator (denoted $\cidom{v}$, set to $\valundef$ if not exists, updated lines~\ref{line:curidom_start}-\ref{line:curidom_end}).
+To illustrate the role of $\eanc{v}$ in Algorithm~\ref{alg:alternative_ssa_destruction:domup}, let us consider the example of Figure~\ref{fig:alternative_ssa_destruction:fig:domtree} where all variables are assumed to be originally in the same merged-set: $\eanc{v}$ (updated line~\ref{line:eanc}) represents the immediate intersecting dominator with the same value than $v$; so we have $\eanc{b}=\valundef$ and $\eanc{d}=a$. When line~\ref{line:curanc} is reached, $\curanc$ (if not $\valundef$) represents a dominating variable interfering with $v$ and with the same value than $\cidom{v}$: when $v$ is set to $c$ ($\cidom{c}=b$), as $b$ does not intersect $c$ and as $\eanc{b}=\valundef$, $\curanc=\valundef$ which allows to conclude that there is no dominating variable that interfere with $c$; when $v$ is set to $e$, $d$ does not intersect $e$ but as $a$ intersects and has the same value than $d$ (otherwise $a$ or $d$ would have been un-colored), we have $\eanc{d}=a$ and thus $\curanc=a$. This allows to detect on line~\ref{line:interference} the interference of $e$ with $a$. 
 
 \begin{algorithm}[h]
 \Begin{
-$\curidom=\undef$\;
+$\curidom=\valundef$\;
 \ForEach{variable $v$ of the merged-set in DFS pre-order of the dominance tree}{
   \textsf{DeCoalesce}($v$, $\curidom$)\;
   $\curidom \gets v$\;
@@ -62,21 +62,21 @@ $\curidom=\undef$\;
 \Begin{
   %% \tcc{Finds and set the immediate dominator of $v$}
  
-  \lWhile{$(u \neq \undef) \bigwedge \left(\neg(u \dominates\ v) \vee \uncolored(u)\right)$}{\label{line:curidom_start} 
+  \lWhile{$(u \neq \valundef) \bigwedge \left(\neg(u \dominates\ v) \vee \uncolored(u)\right)$}{\label{line:curidom_start} 
          $u \gets \cidom{u}$\;
   }
   $\cidom{v}\gets u$\;\label{line:curidom_end}
   %% \tcc{Walk up variables that have the same value than $\cidom{v}$\\
     %% Do it until $v$ is uncolored or no more interference with $v$} 
-  $\eanc{v}\gets \undef$\;
+  $\eanc{v}\gets \valundef$\;
   $\curanc \gets \cidom{v}$\;
-  \While{$\curanc\neq\undef$}{
+  \While{$\curanc\neq\valundef$}{
     %% \tcc{First that intersects $v$ with the same color than $\cidom{v}$}
-    \While{$\curanc\neq \undef \bigwedge 
+    \While{$\curanc\neq \valundef \bigwedge 
       \neg\left(\colored(\curanc) \wedge \intersect(\curanc,v)\right)$}{
       $\curanc \gets \eanc{\curanc}$\;
     }
-    \If{$\curanc \neq \undef$}{\label{line:curanc}
+    \If{$\curanc \neq \valundef$}{\label{line:curanc}
       \If{$V(\curanc) = V(v)$}{
 	$\eanc{v} \gets \curanc$\; \label{line:eanc}
 	break \;
@@ -119,11 +119,11 @@ all copies along a single traversal of the program at the really end of the de-c
 Because of the virtualization of $\phi$-related copies, the de-coalescing scheme given by Algorithm~\ref{alg:alternative_ssa_destruction:domup} have to be adapted to emulate live-ranges of split-operands. The pseudo-code for processing a local virtual variable is given by Algorithm~\ref{alg:alternative_ssa_destruction:virtualdecoalesce}. The trick is to use the \phifun itself as a placeholder for its set of local virtual variables. As the live-range of a local virtual variable is very small, the cases to consider is quite limited: a local virtual variable can interfere with another virtual variable (lines~\ref{line:interfvirtual_start}-\ref{line:interfvirtual_end}) or with a ``real'' variable (lines~\ref{line:interfreal_start}-\ref{line:interfreal_end}).
 
 \begin{algorithm}[h]
-  \lForEach{$c\in \colors$}{$c.\curidom=\undef$;}\\
+  \lForEach{$c\in \colors$}{$c.\curidom=\valundef$;}\\
   \ForEach{basic-block $B$ in CFG in DFS pre-order of the dominance tree}{
     \ForEach{program point $l$ of $B$ in topological order}{
       \If{$l=\late{B}$}{
-        \lForEach{$c\in \colors$}{$c.\curphi=\undef$}\\
+        \lForEach{$c\in \colors$}{$c.\curphi=\valundef$}\\
         \ForEach{basic-block $B'$ successor of $B$}{
           \ForEach{operation Phi: ``$B':a_0=\phi(\dots, B:v,\dots)$'' in $B'$}{
             \lIf{$\neg\colored(\textit{Phi})$}{continue}
@@ -154,27 +154,27 @@ Because of the virtualization of $\phi$-related copies, the de-coalescing scheme
 \textbf{Procedure }\textsf{DeCoalesce\_virtual}(\textit{Phi}, $B:v$, \textit{Phi'}, $u$)\;
 \Begin{
   %% \tcc{Finds and set the previous virtual variable of color $c$}
-  \If(\tcc*[h]{Interference}){$Phi'\neq\undef \wedge V(\textsf{operand\_from\_B}(\textit{Phi}'))\neq V(a')$}{ \label{line:interfvirtual_start}
+  \If(\tcc*[h]{Interference}){$Phi'\neq\valundef \wedge V(\textsf{operand\_from\_B}(\textit{Phi}'))\neq V(a')$}{ \label{line:interfvirtual_start}
     uncolor $\atomic{\textit{Phi}}$\;
     return\;
   } \label{line:interfvirtual_end}
 
         %% \tcc{Finds and set the immediate dominator of the local virtual variable}
-  \While{$(u \neq \undef) \bigwedge \left(\neg(u \dominates\ B) \vee \neg\colored(u)\right)$}{\label{line:interfreal_start}
+  \While{$(u \neq \valundef) \bigwedge \left(\neg(u \dominates\ B) \vee \neg\colored(u)\right)$}{\label{line:interfreal_start}
     $u \gets \cidom{u}$\;
   }
   $\cidom{v}\gets u$; 
 
         
         %% \tcc{Walk up variables that have the same value than $u$} 
-  $\eanc{v}\gets \undef$; $\curanc \gets u$\;
-  \While{$\curanc\neq\undef$}{
+  $\eanc{v}\gets \valundef$; $\curanc \gets u$\;
+  \While{$\curanc\neq\valundef$}{
     %% \tcc{Find the first one that intersects $v$ with the same color than $u$}
-    \While{$\curanc\neq \undef \bigwedge 
+    \While{$\curanc\neq \valundef \bigwedge 
       \neg\left(\colored(\curanc) \wedge \curanc.\textsf{islive}(\textsf{out}(B))\right)$}{
       $\curanc \gets \eanc{\curanc}$\;
     }
-    \If(\tcc*[h]{interference}){$\curanc \neq \undef$}{ 
+    \If(\tcc*[h]{interference}){$\curanc \neq \valundef$}{ 
       \If{preferable to uncolor \textit{Phi}}{
         uncolor $\atomic{\textit{Phi}}$\;
         break\;
