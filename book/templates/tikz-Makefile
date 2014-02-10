@@ -1,34 +1,120 @@
-TEMPLATE=template-ktikz.pgs
-TEMP=temp.tex
+#
+# Define local variables FIGS and SUBFIGS in
+# a file "figure-list.mk" in the current directory
+# if you want them to be automatically built.
+# (or re-built if .tikz is newer)
+#
+# FIGS= foo bar
+# SUBFIGS= baz-1 baz-2 baz-3
+#
+# use make -B for that.
+#
+-include figure-list.mk
 
-# source files
-TIKZ=$(wildcard *.tikz)
-PDF=$(TIKZ:.tikz=.pdf)
+# image files from FIGS and SUBFIGS
+PDF=$(addsuffix .pdf, $(FIGS)) \
+    $(addsuffix .pdf, $(SUBFIGS))
 
-# files to update
-UPDF=$(wildcard *.pdf)
-
-.PHONY:all pdf update updf 
+.PHONY:all pdf echo
 
 all: pdf
 
-updf: $(UPDF)
-
-update: updf ueps
-
 pdf: $(PDF)
 
-eps: $(EPS)
+echo:
+	@echo Figure files are $(FIGS)
+	@echo Sub-figure files are $(SUBFIGS)
+	@echo PDF files are $(PDF)
 
-%.ps: %.dvi
-	dvips -o $@ $<
+# Functions for figure externalization from tikz
+define gen-fig
+   @tput setaf 6;
+   @echo "Generating figure $(1)";
+   @tput setaf 1;
+   @cd ..; pdflatex --jobname=tikz/$(1) "\def\dousetikz{} \input{chapter}" | grep -A 1000 '^!' || :
+   @tput sgr0
+endef
+# actually, no need for gen-subfig as this is handled in the LaTeX file, but 
+# keeping it anyways for reference
+define gen-subfig
+   echo first arg is $(1)
+#    cd ..; pdflatex --jobname=tikz/$* "\def\dousetikz{} \def\ver={$(1)} \input{chapter}"
+endef
 
-%.eps: %.ps
-	ps2eps $<
 
-%.dvi: %.tikz 
-	latex --jobname=$* tikz2figure
+%.pdf: %.tikz
+	$(call gen-fig,$*)
 
+# not a very clean way to handle automatic re-building
+# but did not found a bette way.
+%-1.pdf: %.tikz
+	$(call gen-fig,$*-1)
+
+%-2.pdf: %.tikz
+	$(call gen-fig,$*-2)
+
+%-3.pdf: %.tikz
+	$(call gen-fig,$*-3)
+
+%-4.pdf: %.tikz
+	$(call gen-fig,$*-4)
+
+%-5.pdf: %.tikz
+	$(call gen-fig,$*-5)
+
+%-6.pdf: %.tikz
+	$(call gen-fig,$*-6)
+
+%-7.pdf: %.tikz
+	$(call gen-fig,$*-7)
+
+%-8.pdf: %.tikz
+	$(call gen-fig,$*-8)
+
+%-9.pdf: %.tikz
+	$(call gen-fig,$*-9)
+
+
+
+
+
+
+
+
+
+
+
+# This rules check if the file is of the form
+#   file-X.pdf
+# ⇒ this is for tikz files used for multiple figures, depending on the value of 
+#   the \ver macro, the value is extracted using the shell substitution #*- on $*
+# ⇒ otherwise, just call the regular figure generator
+# 
+# ⇒ Actually, LaTeX handles the suffix stuff, so not used anymore, but kept for 
+# reference. I probably didn't manage to make thu suffix stuff work anyways.
+#
+%.apdf: 
+	$(if $(suffix $*), \
+            $(call gen-fig), \
+            $(call gen-subfig,$${x#*-}))
+
+clean:
+	rm -f *.aux *.log *.nav *.out *.snm *.toc *~
+
+clean-all: clean
+	rm -f *.pdf *.eps
+
+
+##
+# no support for eps files from tikz
+##
+#eps: $(EPS)
+#%.eps: %.ps
+#	ps2eps $<
+# %.ps: %.dvi
+#	dvips -o $@ $<
+#%.dvi: %.tikz 
+#	latex --jobname=$* tikz2figure
 
 ##
 # Old way, using tikz2figure
@@ -39,38 +125,3 @@ eps: $(EPS)
 #         mv /tmp/t.pdf $@
 
 
-# Functions for figure externalization from tikz
-# actually, no need for gen-subfig as this is handled in the LaTeX file, but 
-# keeping it anyways for reference
-define gen-fig
-   cd ..; pdflatex --jobname=tikz/$* "\def\dousetikz{} \input{chapter}"
-endef
-define gen-subfig
-   echo first arg is $(1)
-#    cd ..; pdflatex --jobname=tikz/$* "\def\dousetikz{} \def\ver={$(1)} \input{chapter}"
-endef
-
-
-%.pdf:
-	$(call gen-fig)
-
-
-# This rules check if the file is of the form
-#   file-X.pdf
-# ⇒ this is for tikz files used for multiple figures, depending on the value of 
-#   the \ver macro, the value is extracted using the shell substitution #*- on $*
-# ⇒ otherwise, just call the regular figure generator
-# 
-# ⇒ Actually, LaTeX handles the suffix stuff, so not used anymore, but kept for 
-# reference
-#
-# %.pdf:
-#         $(if $(suffix $*), \
-#            $(call gen-fig), \
-#            $(call gen-subfig,$${x#*-}))
-
-clean:
-	rm -f *.aux *.log *.nav *.out *.snm *.toc *~
-
-clean-all: clean
-	rm -f *.pdf *.eps
