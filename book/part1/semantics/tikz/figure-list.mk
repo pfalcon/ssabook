@@ -10,3 +10,7 @@ SUBFIGS= \
   SSAConstructionExample-5 \
   SSAConstructionExample-domTree-1 \
   SSAConstructionExample-domTree-2 \
+  shortLoopAnalysis-1 \
+  shortLoopAnalysis-2 \
+  RamalingamSteensgaardOverlayAndLNF-1 \
+  RamalingamSteensgaardOverlayAndLNF-2 \
