@@ -427,6 +427,8 @@ passing it to article class \MessageBreak
             \setcounter{page}{5}}
 %
 \newcommand\mainmatter{\clearemptydoublepage
+       \count0=\value{page}\advance\count0 by -1
+       \xdef\pagesfrontmatter{\the\count0}
        \@mainmattertrue\pagenumbering{arabic}}
 %
 \newcommand\backmatter{\clearemptydoublepage\@mainmatterfalse}
