@@ -1,4 +1,5 @@
 FIGS= \
+  RamalingamSteensgaardConstruction \
 
 SUBFIGS= \
   FunctionalCodeCFG-1 \

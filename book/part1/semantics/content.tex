@@ -33,6 +33,10 @@
 
 \newcommand{\param}[1]{\ensuremath{\overrightarrow{p_{#1}}}}
 \newcommand{\loopfun}{\ensuremath{\mathit{loop}}}
+\newcommand{\funbody}[1]{\ldots<~\mathit{#1}~>\ldots}
+\newcommand{\funcomment}[2][0pt]{%
+  \kern#1{\color{commentcolor}(*~#2~*)\xspace}%
+}
 
 \newenvironment{functional}{%
   \begin{equation}%
@@ -41,10 +45,11 @@
   \end{equation}%
 }
 \newenvironment{functional*}{%
+  \begingroup\small%
   \begin{equation*}%
-    \small%
     }{%
   \end{equation*}%
+  \endgroup%
 }
 
 
@@ -89,7 +94,7 @@ would typically have to be validated or (re-)established after each
 optimization phase of an SSA-based compiler, but are typically
 enforced \emph{by construction} if a functional representation is
 chosen. Consequently, less code is required, improving the
-compiler's robustness, maintainability, and code readability;
+robustness, maintainability, and code readability of the compiler;
 
 \item The intuitive meaning of ``unimplementable'' $\phi$-instructions is
 comple\-men\-ted by a concrete execution model, facilitating the rapid
@@ -1175,12 +1180,14 @@ $f_2$, and the latter one into $f_1$.
 Several options exist as to where $f$ should be placed in its host
 function. The first option is to place $f$ at the beginning of $g$,
 by rewriting to 
-$$\mathtt{function}\ g(y_1,\ldots,y_m) =
+\begin{functional*}
+\mathtt{function}\ g(y_1,\ldots,y_m) =
 \begin{array}[t]{l} 
   \mathtt{function}\ f(x_1,\ldots,x_n) = e_f\\
   \mathtt{in}\ e_g\ \mathtt{end}.
 \end{array}
-$$ This transformation does not alter the meaning of the code, as the
+\end{functional*}
+This transformation does not alter the meaning of the code, as the
 declaration of $f$ is closed: moving $f$ into the scope of the
 formal parameters $y_1,\ldots,y_m$ (and also into the scope of $g$
 itself) does not alter the bindings to which variable uses inside
@@ -1375,8 +1382,7 @@ possibly recursive function $f$ if the following two conditions are met:
   for $x$ surrounding each call site to $f$\! outside of its declaration;
 \item\label{ParameterDroppingConditionTwo} The tightest scope for $x$
   enclosing any recursive call to $f$ (i.e., a call to $f$ in the body
-  of $f$) is the one associated with the formal parameter $x$ in $f$'s
-  declaration.
+  of $f$) is the one associated with the formal parameter $x$ in the declaration of $f$.
 \end{enumerate}
 
 Similarly, we may simultaneously drop a parameter $x$ occurring in
@@ -1390,13 +1396,13 @@ parameter means to remove it from the list of formal parameter lists
 of the function declarations concerned, and also from the argument
 lists of the corresponding function calls.
 
-In (\ref{FunctionalConstructionProgram4}), these conditions sanction
+In code (\ref{FunctionalConstructionProgram4}), these conditions sanction
 the removal of both parameters from the nonrecursive function $f_3$.
 The scope applicable for $v$ at the site of declaration of $f_3$ and
 also at its call site is the one rooted at the formal parameter $v$ of
 $f_2$. In case of $y$, the common scope is the one rooted at the
 let-binding for $y$ in the body of $f_2$. We thus obtain
-code~(\ref{FunctionalConstructionProgram5}).
+the following code:
 %\begin{functional}
 %\label{FunctionalConstructionProgram5}
 %\begin{array}{l}
@@ -1472,8 +1478,8 @@ code~(\ref{FunctionalConstructionProgram5}).
 \end{array}
 \end{functional}%
 Considering the recursive function $f_2$ next we observe that the
-recursive call is in the scope of the let-binding for $y$ in $f_2$'s
-body, preventing us from removing $y$.  In contrast, neither $v$ nor
+recursive call is in the scope of the let-binding for $y$ in the body of $f_2$,
+preventing us from removing $y$.  In contrast, neither $v$ nor
 $z$ have binding occurrences in the body of $f_2$. The scopes
 applicable at the external call site to $f_2$ coincide with those
 applicable at its site of declaration and are given by the scopes
@@ -1555,7 +1561,7 @@ $z$ may be removed from $f_2$:
 \end{functional}%
 Interpreting the uniquely-renamed variant
 of~(\ref{FunctionalConstructionProgram6}) back in SSA yields the
-desired minimal code with a single $\phi$-function, for variable $y$
+desired minimal\todo{check minimality} code with a single $\phi$-function, for variable $y$
 at the beginning of block $b_2$---see
 Figure~\ref{fig:FunctionalCorrespondenceSSAofLambdaDroppedCode}.
 \begin{figure}
@@ -1574,9 +1580,9 @@ Figure~\ref{fig:FunctionalCorrespondenceSSAofLambdaDroppedCode}.
 \caption{SSA code after $\lambda$-dropping.}
 \label{fig:FunctionalCorrespondenceSSAofLambdaDroppedCode}
 \end{figure}
-The reason that this $\phi$-function can't be eliminated (the fact
-that $y$ is redefined in the loop) is precisely the reason why $y$
-survives parameter-dropping.
+The reason that this $\phi$-function can't be eliminated is precisely the 
+reason why $y$ survives parameter-dropping (i.e., the fact that $y$ is 
+redefined in the loop).
 
 Given this understanding of parameter dropping we can also see why
 inserting functions near the end of their hosts during block sinking
@@ -1585,14 +1591,14 @@ preferable to inserting them at the beginning of their hosts (as in
 code~(\ref{FunctionalConstructionProgram3})): the placement of
 function declarations in the vicinity of their calls potentially
 enables the dropping of more parameters, namely those that are
-let-bound in the host function's body.
+let-bound in the host body of the function.
 
 An immediate consequence of this strategy is that blocks with a single
 predecessor indeed do not contain $\phi$-functions. Such a block $b_f$
 is necessarily dominated by its predecessor $b_g$, hence we can always
 nest $f$ inside $g$. Inserting $f$ in $e_g$ directly prior to its call
 site implies that condition~(\ref{ParameterDroppingConditionOne}) is
-necessarily satisfied for all parameters $x$ of $f$. Thus, all
+necessarily satisfied for all parameters $x$ of $f$\!.\, Thus, all
 parameters of $f$ can be dropped and no $\phi$-function is generated.
 
 \subsection{Nesting, dominance, loop-closure}
@@ -1600,8 +1606,8 @@ parameters of $f$ can be dropped and no $\phi$-function is generated.
 As we observed above, analyzing whether function definitions may be
 nested inside one another is tantamount to analyzing the imperative
 dominance structure: function $f_i$ may be moved inside $f_j$ exactly
-if all non-recursive calls to $f_i$ come from within $f_j$ exactly if
-all paths from the initial program point to block $b_i$ traverse $b_j$
+if all non-recursive calls to $f_i$ come from within $f_j$, i.e., exactly if
+all paths from the initial program point to block $b_i$ traverse $b_j$, i.e.,
 exactly if $b_j$ dominates $b_i$.  This observation is merely the
 extension to function identifiers of our earlier remark that lexical
 scope coincides with the dominance region, and that points of
@@ -1613,20 +1619,20 @@ expressions to the variables $k$ in our syntax for CPS.
 
 Thus, the dominator tree immediately suggests a function nesting
 scheme, where all children of a node are represented as a single block
-of mutually recursive function declarations\footnote{Refinements of
+of mutually recursive function declarations.\footnote{Refinements of
 this representation will be sketched in
-Section~\ref{sec:part1:semantics:LNF}}.
+Section~\ref{sec:part1:semantics:LNF}.}
 
 The choice as to where functions are placed corresponds to variants of
-SSA. For example, in loop-closed SSA form~(see
-chapters~\ref{chapter:vsdg} and~\ref{chapter:loop_tree}), SSA names that
+SSA. For example, in loop-closed\index{loop-closed} SSA form~(see
+Chapters~\ref{chapter:vsdg} and~\ref{chapter:loop_tree}), SSA names that
 are defined in a loop must not be used outside the loop. To this end,
-special-purpose unary $\Phi$-nodes are inserted for these variables at
+special-purpose unary $\phi$-nodes are inserted for these variables at
 the loop exit points. As the loop is unrolled, the arity of these
-trivial $\Phi$-nodes grows with the number of unrollings, and the
+trivial $\phi$-nodes grows with the number of unrollings, and the
 program continuation is always supplied with the value the variable
-obtained in the loop's final iteration.  In our example, the only
-loop-defined variable used in $f_3$ is $y$ - and we already observed
+obtained in the final iteration of the loop.  In our example, the only
+loop-defined variable used in $f_3$ is $y$---and we already observed
 in code~(\ref{FunctionalConstructionProgram3}) how we can prevent the
 dropping of $y$ from the parameter list of $f_3$: we insert $f_3$ at
 the \emph{beginning} of $f_2$, preceding the let-binding for $y$. Of
@@ -1805,9 +1811,8 @@ and~(\ref{FunctionalConstructionProgramLCUnrolled}), respectively.}
 \end{figure}
 The SSA form corresponding
 to~(\ref{FunctionalConstructionProgramLCDropped}) contains the desired
-loop-closing $\Phi$-node for $y$ at the beginning of $b_3$, as shown
-in Figure~\ref{fig:FunctionalCorrespondenceSSAofLoopClosedProgramNEW}
-(top). The nesting structure of
+loop-closing $\phi$-node for $y$ at the beginning of $b_3$, as shown
+in Figure~\ref{sub:loop-closed}. The nesting structure of
 both~(\ref{FunctionalConstructionProgramLC1})
 and~(\ref{FunctionalConstructionProgramLCDropped}) coincides with the
 dominance structure of the original imperative code and its
@@ -1906,10 +1911,9 @@ duplicating the declaration of $f_3$}:
 Both calls to $f_3$ are in the scope of the declaration of $f_3$ and
 contain the appropriate loop-closing arguments. In the SSA reading of
 this code---shown in
-Figure~\ref{fig:FunctionalCorrespondenceSSAofLoopClosedProgramNEW}
-(bottom)---the first instruction in $b_3$ has turned into a
-nontrivial $\Phi$-node. As expected, the parameters of this
-$\Phi$-node correspond to the two control-flow arcs leading into
+Figure~\ref{sub:loop-unrolled}---the first instruction in $b_3$ has turned into a
+non-trivial $\phi$-node. As expected, the parameters of this
+$\phi$-node correspond to the two control-flow arcs leading into
 $b_3$, one for each call site to $f_3$ in
 code~(\ref{FunctionalConstructionProgramLCUnrolled}). Moreover, the
 call and nesting structure
@@ -1928,31 +1932,32 @@ with the list of formal parameters of the invoked function. This
 discipline is not enjoyed by functional programs in general, and is
 often destroyed by optimizing program transformations. However,
 programs that do obey this discipline can be immediately converted to
-imperative non-SSA form. Thus, the task of SSA destruction amounts to
+imperative non-SSA form. Thus, the task of SSA destruction\index{destruction!SSA}\index{SSA!destruction} amounts to
 converting a functional program with arbitrary argument lists into one
 where argument lists and formal parameter lists coincide for each
 function. This can be achieved by introducing additional let-bindings
 of the form $\letin x y e$: for example, a call $f(v,z,y)$ where $f$
-is declared as $\mathtt{function}\ f(x,y,z) = e$ may be converted to
+is declared as $\mathtt{function}\ f(x,y,z) = e$ may be converted to\par
+\vskip-3pt
 %$$\letin x v {\letin a z {\letin z y {\letin y a {f(x,y,z)}}}},$$ in
-$$\mathtt{let}\ x = v,\ a = z,\ z = y,\ y = a\ \mathtt{in}\ {f(x,y,z)},$$ in
-correspondence to the move instructions introduced in imperative
+\begin{functional*}
+\mathtt{let}\ x = v,\ a = z,\ z = y,\ y = a\ \mathtt{in}\ {f(x,y,z)}
+\end{functional*}%
+in correspondence to the move instructions introduced in imperative
 formulations of SSA destruction (see
 Chapters~\ref{chapter:classical_construction_algorithm}
 and~\ref{chapter:alternative_ssa_destruction_algorithm}). Appropriate
 transformations can be formulated as manipulations of the functional
-representation, although the target format is not immune against
-$\alpha$-renaming and thus only syntactically a functional
-language. For example, a local algorithm that considers each call site
-individually and avoids the ``lost-copies'' and ``swap''-problems
-identified by Briggs et al.~\cite{DBLP:journals/spe/BriggsCHS98} can
-easily be given~\cite{DBLP:journals/entcs/Beringer07}. Instead of
-introducing let-bindings for all parameter positions of a call, the
-algorithm scales with the number and size of cycles that span
-identically named arguments and parameters (like the cycle between $y$
-and $z$ above), and employs a single additional variable (called $a$
-in the above code) to break all these cycles one by one, in line with
-the results of~\cite{May:1989:PAP:68018.68035}.
+representation, although the target format is not immune against 
+$\alpha$-renaming and thus only syntactically a functional language. For 
+example, we can give a local algorithm that considers each call site 
+individually and avoids the ``lost-copy'' and ``swap'' problems (cf. 
+Chapter~\ref{todo})\index{lost-copy problem}\index{swap problem}:
+Instead of introducing let-bindings for all parameter positions of a call, the 
+algorithm scales with the number and size of cycles that span identically 
+named arguments and parameters (like the cycle between $y$ and $z$ above), and 
+employs a single additional variable (called $a$ in the above code) to break 
+all these cycles one by one.
 
 
 %%%%%%%%%%%%%%%%%%%%%inclusion of {ShortLoopanalysis}
@@ -1969,19 +1974,18 @@ declarations for the $f_i$, nested inside the declaration of $f$:
 \label{sec:SSA:functiondeclarationblock}
 \begin{array}{l}
   \mathtt{function}\ f (\ldots)= 
-  \mathtt{let} \ldots (*\ \mathit{body\ of}\ b\ \mathit{*)}\ldots \mathtt{in}\\
+  \mathtt{let} \funbody{body~of~b} \mathtt{in}\\
   \quad \begin{array}{l}
           \begin{array}{rcl}
             \mathtt{function}\ f_1(\ldots) & = & e_1\
-                  (*\ \mathit{body\ of}\ b_1, \mathit{with\ calls\ to}\ 
-                      b, b_i\ \mathit{*)}\\
-             : \\
+            \funcomment[2em]{\mathit{body\ of}\ b_1, \mathit{with\ calls\ to}\ b, b_i}\\[-1ex]
+             \vdots \\
             \mathtt{and}\ f_n(\ldots) & = & e_n
-                  (*\ \mathit{body\ of}\ b_n, \mathit{with\ calls\ to}\ 
-                      b, b_i\ \mathit{*)}
+                  \funcomment[2em]{\mathit{body\ of}\ b_n, \mathit{with\ calls\ to}\ 
+                      b, b_i}
           \end{array}\\
-          \mathtt{in} \ldots (*\ b\mathit{'s\ calls\ to}\ b, b_i\ \mathit{*)} 
-            \ldots\ \mathtt{end}
+          \mathtt{in} \funbody{\mathit{calls\ to}\ b, b_i~from~b}
+            \mathtt{end}
         \end{array}
   \end{array}
 \end{functional}%
@@ -1992,7 +1996,7 @@ been identified in the SSA literature.
 
 These refinements arise if we enrich the above dominance tree by
 adding arrows $b_i \to b_j$ whenever the CFG contains a directed
-edge from one of $b_i$'s dominance successors (i.e., the descendants of
+edge from one of dominance successors of $b_i$ (i.e., the descendants of
 $b_i$ in the dominance tree) to $b_j$.
 
 In the case of a \emph{reducible} CFG, the resulting graph contains
@@ -2016,28 +2020,28 @@ the resulting order.
   \hfill\null
 \end{center}
 \caption{Example placement for reducible flow graphs.
-  \protect\subref{sub:shortloop-cfg} control-flow graph
-  \protect\subref{sub:shortloop-domtree} overlay of CFG
+  \protect\subref{sub:shortloop-cfg} Control-flow graph;
+  \protect\subref{sub:shortloop-domtree} Overlay of CFG
   (dashed edges) arcs between dominated blocks onto dominance graph (solid
   edges).}
 \label{FigShortLoopAnalysis1ReducibleGraph}
 \end{figure}
 As an example, consider the CFG in
-Figure~\ref{FigShortLoopAnalysis1ReducibleGraph}(a) and its enriched
+Figure~\ref{sub:shortloop-cfg} and its enriched
 dominance tree shown in
-Figure\ref{FigShortLoopAnalysis1ReducibleGraph}(b). A possible (but
-not unique) ordering of $b$'s children is $[b_5,b_1,b_3,b_2,b_4]$,
+Figure\ref{sub:shortloop-domtree}. A possible (but
+not unique) ordering of the children of $b$ is $[b_5,b_1,b_3,b_2,b_4]$,
 resulting in the nesting shown in code~(\ref{FunctionalCascadeFun}).
 \begin{functional}
 \label{FunctionalCascadeFun}
 \begin{array}{l}
   \mathtt{function}\ f (\ldots)= 
-  \mathtt{let} \ldots (*\ \mathit{body\ of}\ f\ *)\ldots \mathtt{in}\\
+  \mathtt{let} \funbody{\mathit{body\ of}\ f} \mathtt{in}\\
   \quad \begin{array}{l}
           \mathtt{function}\ f_5(\ldots) = e_5\\ \mathtt{in}\  
           \begin{array}[t]{l}
             \mathtt{function}\ f_1(\ldots) = e_1\ 
-                 (*\ \mathit{contains\ calls\ to}\ f\ \mathit{and}\ f_5\ *) \\
+                 \funcomment[15mm]{\mathit{contains\ calls\ to}\ f\ \mathit{and}\ f_5} \\
             \mathtt{in}\ 
             \begin{array}[t]{l}
               \mathtt{function}\ f_3(\ldots) = e_3\\ \mathtt{in}\ 
@@ -2045,24 +2049,23 @@ resulting in the nesting shown in code~(\ref{FunctionalCascadeFun}).
                 \mathtt{function}\ f_2(\ldots) =\\
                 \qquad
                   \begin{array}[t]{l}
-                    \mathtt{let} \ldots\ (*\ \mathit{body\ of}\ f_2\ *)\ldots\\
+                    \mathtt{let} \funbody{\mathit{body\ of}\ f_2}\\
                     \mathtt{in}\
                       \begin{array}[t]{l}
                         \mathtt{function}\ g(\ldots) = e_g\
-                           (*\ \mathit{contains\ call\ to}\ f_3\ *)\\ 
-                        \mathtt{in}\   \ldots 
-                              (*\ \mathit{calls\ to\ f_5}\ \mathit{and}\ g\ *)
-                        \ldots \mathtt{end}
+                           \funcomment[7mm]{\mathit{contains\ call\ to}\ f_3}\\ 
+                        \mathtt{in}\ \funbody{\mathit{calls\ to\ f_5}\ \mathit{and}\ g}
+                         \mathtt{end}
                      \end{array}\\
                    \end{array}\\ 
                 \mathtt{in}\
                 \begin{array}[t]{l}
                   \mathtt{function}\ f_4(\ldots) = e_4\
-                    (*\ \mathit{contains\ calls\ to}\ f_3\ 
-                        \mathit{and}\ f_4\ *) \\
-                   \mathtt{in} \ldots 
-                      (*\ \mathit{calls\ to}\ f_1, f_2, f_4, f_5\ *)
-                   \ldots \mathtt{end}
+                    \funcomment[3.2mm]{\mathit{contains\ calls\ to}\ f_3\ 
+                        \mathit{and}\ f_4} \\
+                   \mathtt{in}
+                      \funbody{\mathit{calls\ to}\ f_1, f_2, f_4, f_5}
+                   \mathtt{end}
                 \end{array}
               \end{array}
             \end{array}
@@ -2079,8 +2082,10 @@ brought into or moved out of the scope of the formal parameters of any
 other function) the reordering does not affect the potential to
 subsequently perform parameter dropping.
 
-A further improvement is obtained if functions are declared using
-$\lambda$-abstraction. This enables us not only to syntactically
+
+Declaring functions using $\lambda$-abstraction brings further 
+improvements.
+This enables us not only to syntactically
 distinguish between loops and non-recursive control-flow structures
 using the distinction between $\mathtt{let}$ and $\mathtt{letrec}$
 present in many functional languages, but also to further restrict the
@@ -2088,7 +2093,7 @@ visibility of function names. Indeed, while $b_3$ is immediately
 dominated by $b$ in the above example, its only control-flow
 predecessors are $b_2/g$ and $b_4$. We would hence like to make the
 declaration of $f_3$ local to the \emph{tuple} $(f_2, f_4)$,
-i.e., invisible to $f$.  This can be achieved by combining
+i.e., invisible to $f$\!. This can be achieved by combining
 $\mathtt{let}$/$\mathtt{letrec}$ binding with pattern matching, if we
 insert the shared declaration of $f_3$
 \emph{between} the declaration of the names $f_2$ and $f_4$ and the
@@ -2097,12 +2102,12 @@ $\lambda$-bindings of their formal parameters $p_i$:
 \label{FuntionalCascadeFunLambda}
 \begin{array}{l}
   \mathtt{letrec}\ f = \lambda\; p.\;
-  \mathtt{let} \ldots (*\ \mathit{body\ of}\ f\ *)\ldots \mathtt{in}\\
+  \mathtt{let} \funbody{\mathit{body\ of}\ f} \mathtt{in}\\
   \quad \begin{array}{l}
           \mathtt{let}\ f_5 = \lambda\; p_5.\; e_5\\ \mathtt{in}\  
           \begin{array}[t]{l}
             \mathtt{let}\ f_1 = \lambda\;  p_1.\; e_1\ 
-                 (* \mathit{contains\ calls\ to}\ f\ \mathit{and}\ f_5\ *) \\
+            \funcomment[18mm]{\mathit{contains\ calls\ to}\ f\ \mathit{and}\ f_5} \\
             \mathtt{in}\ 
             \begin{array}[t]{l}
                \mathtt{letrec}\ (f_2, f_4) =\\ 
@@ -2112,28 +2117,28 @@ $\lambda$-bindings of their formal parameters $p_i$:
                    \begin{array}[t]{l}
                    (\lambda\; p_2.\; 
                        \begin{array}[t]{l}
-                         \mathtt{let} \ldots 
-                            (*\ \mathit{body\ of}\ f_2\ *)\ldots
+                         \mathtt{let}
+                            \funbody{\mathit{body\ of}\ f_2}
                          \mathtt{in}\\
                          \quad \begin{array}{l}
                            \mathtt{let}\ g = \lambda\; p_g.\; e_g\
-                              (*\ \mathit{contains\ call\ to}\ f_3\ *)\\ 
-                           \mathtt{in}\   \ldots 
-                                 (*\ \mathit{calls\ to}\ f_5\ 
-                                     \mathit{and}\ g\ *)
-                           \ldots \mathtt{end},
+                              \funcomment[5.2mm]{\mathit{contains\ call\ to}\ f_3}\\ 
+                           \mathtt{in}
+                                 \funbody{\mathit{calls\ to}\ f_5\ 
+                                     \mathit{and}\ g}
+                           \mathtt{end}
                          \end{array}
                        \end{array}\\
-                    \; \lambda\; p_4.\; e_4\
-                       (*\ \mathit{contains\ calls\ to}\ f_3\ 
-                           \mathit{and}\ f_4\ *))
+                    \;, \lambda\; p_4.\; e_4)
+                       \funcomment[14mm]{\mathit{contains\ calls\ to}\ f_3\ 
+                           \mathit{and}\ f_4}
                   \end{array}\\
-               \mathtt{end}\ (*\ \mathit{declaration\ of\ tuple}\ (f_2,f_4)\
-                                 \mathit{ends\ here}\ *) 
+               \mathtt{end}\ \funcomment[10mm]{\mathit{declaration\ of\ tuple}\ (f_2,f_4)\
+                                 \mathit{ends\ here}} 
             \end{array}\\
-            \mathtt{in} \ldots 
-               (*\ \mathit{calls\ to}\ f_1, f_2, f_4, f_5\ *)
-                 \ldots \mathtt{end}
+            \mathtt{in}
+               \funbody{\mathit{calls\ to}\ f_1, f_2, f_4, f_5}
+                 \mathtt{end}
             \end{array}
           \end{array}
         \end{array}
@@ -2144,13 +2149,14 @@ $(f_2,f_4)$ but $f_3$ remains non-recursive. In general, the role of
 $f_3$ is played by any merge point $b_i$ that is not directly called
 from the dominator node $b$.
 
-In the case of \emph{irreducible} CFG's, the enriched dominance tree
+In the case of \emph{irreducible}\index{irreducible} CFGs, the enriched dominance tree
 is no longer acyclic, even when self-loops are ignored. In this case,
 the functional representation not only depends on the chosen DFS order
 but additionally on the partitioning of the enriched graph into loops.
 As each loop forms a \emph{strongly connected component} (SCC),
-different partitionings are possible, corresponding to different
-notions of \emph{loop nesting forests} (LNF's). Of the various LNF
+different partitioning are possible, corresponding to different
+notions of \emph{loop nesting forests}. Of the various loop nesting 
+forest
 strategies proposed in the SSA-literature, the scheme introduced by
 Steensgaard is particularly appealing from a functional perspective.
 
@@ -2162,10 +2168,10 @@ that have a predecessor outside of $B$.  For example, the CFG $G_0$
 shown in Figure~\ref{FigLoopAnalysisRamalingamSteensgaardConstruction}
 contains the outer loop $L_0 = (\{u,v,w,x\}, \{u,v\})$, whose
 constituents $B_0$ are determined as the maximal SCC of
-$G_0$. Removing $L_0$'s back-edges (i.e., edges from $B_0$ to $H_0$)
-from $G_0$ yields $G_1$, whose (only) SCC determines a further, inner,
+$G_0$. Removing the back-edges of $L_0$ (i.e., edges from $B_0$ to $H_0$)
+from $G_0$ yields $G_1$, whose (only) SCC determines a further inner
 loop $L_1 = (\{w,x\},
-\{w,x\})$. Removing $L_1$'s back-edges from $G_1$ results in the
+\{w,x\})$. Removing the back-edges $L_1$ from $G_1$ results in the
 acyclic $G_2$, terminating the process.
 
  \begin{figure}
@@ -2173,21 +2179,18 @@ acyclic $G_2$, terminating the process.
     %\includegraphics[scale=0.3]{RamalingamSteensgaardConstruction}
     \tikzfigure{RamalingamSteensgaardConstruction}
     \end{center}
-    \caption{Illustration
-       of Steensgaard's construction of loop nesting forests (from
-       Ramalingam~\cite{DBLP:journals/toplas/Ramalingam02}):
-       Iterative construction of graphs $G_1$ and $G_2$.}
+    \caption{Illustration of Steensgaard's construction of loop nesting forests:}
     \label{FigLoopAnalysisRamalingamSteensgaardConstruction} 
   \end{figure} 
 
-Figure~\ref{FigLoopAnalysisRamalingamSteensgaardOverlayAndANF}(a)
+Figure~\ref{sub:ramal-steens-overlayTree}
 shows the CFG-enriched dominance tree of $G_0$. The body of loop $L_0$
 is easily identified as the maximal SCC, and likewise the body of
 $L_1$ once the cycles $(u, w)$ and $(x,v)$ are broken by the removal
-of $L_0$'s backdeges $w \to u$ and $x \to v$.
+of the back-edges $w \to u$ and $x \to v$.
 
-The LNF resulting from Steensgaard's contruction is shown in
-Figure~\ref{FigLoopAnalysisRamalingamSteensgaardOverlayAndANF}(b). Loops
+The loop nesting forest resulting from Steensgaard's contruction is shown in
+Figure~\ref{sub:ramal-steens-overlayLNF}. Loops
 are drawn as ellipsis that are decorated with the appropriate header
 nodes, and are nested in accordance with the containment relation $B_1
 \subset B_0$ between the bodies.
@@ -2224,28 +2227,25 @@ nodes, and are nested in accordance with the containment relation $B_1
     \label{FigLoopAnalysisRamalingamSteensgaardOverlayAndANF} 
   \end{figure} 
 
-  In the functional representation, a loop $L=(B,H)$ with headers
-  $H=\{h_1,\ldots,h_n\}$ yields a function declaration block for
+  In the functional representation, a loop $L=(B,\{h_1,\ldots,h_n\})$ yields a function declaration block for
   functions $h_1,\ldots,h_n$, with private declarations for the
   non-headers from $B \setminus H$. In our example, loop $L_0$
   provides entry points for the headers $u$ and $v$ but not for its
   non-headers $w$ and $x$.  Instead, the loop comprised of the latter
   nodes, $L_1$, is nested inside the definition of $L_0$, in
-  accordance with the LNF.
+  accordance with the loop nesting forest.
   \begin{functional}
     \label{FunctionalSteensgaard}
      \begin{array}{l}
        \mathtt{function}\ \entrynode (\ldots)=\\ 
-       \quad \mathtt{let} \ldots (*\ \mathit{body\ of\ \entrynode}\ *)\ldots\\
+       \quad \mathtt{let} \funbody{\mathit{body\ of\ \entrynode}}\\
        \quad \mathtt{in}\ 
          \begin{array}[t]{l}
-           (*\ \mathit{Define\ outer\ loop}\ L_0,\ 
-               \mathit{with\ headers}\ u, v\ *)\\
-           \mathtt{letrec}\ (u,v) =\\
+           \mathtt{letrec}\ (u,v) =
+           \funcomment[13mm]{\mathit{define\ outer\ loop}\ L_0,\ \mathit{with\ headers}\ u, v}\\
            \quad \begin{array}[t]{l}
-                     (*\ \mathit{Define\ inner\ loop}\ L_1,\ 
-                         \mathit{with\ headers}\ w, x\ *)\\
-                     \mathtt{letrec}\ (w,x) =\\
+                     \mathtt{letrec}\ (w,x) =
+                     \funcomment[9mm]{\mathit{define\ inner\ loop}\ L_1,\ \mathit{with\ headers}\ w, x}\\
                      \qquad 
                      \begin{array}{l}
                         \mathtt{let}\ \exitnode = 
@@ -2253,30 +2253,30 @@ nodes, and are nested in accordance with the containment relation $B_1
                         \mathtt{in}\ 
                           \begin{array}[t]{l}
                           (%(*function\ w*)\\
-                           \ \lambda p_w.\ \ldots (*\ \mathit{body\ of}\ w,\ 
+                           \ \lambda p_w.\ \funbody{\mathit{body\ of}\ w,\ 
                                             \mathit{with\ calls\ to}\ u,\ x,\
-                                            \mathit{and}\ \exitnode\ *),\\ 
+                                            \mathit{and}\ \exitnode}\\ 
                            % \ (*function\ x*)\\ 
-                           \ \ \ \lambda p_x.\ \ldots (*\ \mathit{body\ of}\ 
+                           \ ,\lambda p_x.\ \funbody{\mathit{body\ of}\ 
                                             x,\ \mathit{with\ calls\ to}\ w,\
-                                            v,\ \mathit{and}\ \exitnode\ *)\ )
+                                            v,\ \mathit{and}\ \exitnode}\ )
                            \end{array}\\
-                        \mathtt{end}\ (*\ \mathit{End\ of\ inner\ loop}\ *)
+                        \mathtt{end}\ \funcomment[28mm]{\mathit{end\ of\ inner\ loop}}
                      \end{array}\\
                      \mathtt{in}\ 
                      \begin{array}[t]{l}
-                       (%(*function\ u *)\
-                         \lambda p_u.\ \ldots (*\ \mathit{body\ of}\ u,\ 
-                                     \mathit{with\ call\ to}\ w\ *),\\ 
-                        % \ (*function\ v *)\
-                        \ \, \lambda p_v.\ \ldots (*\ \mathit{body\ of}\ v,\ 
+                       (%(*function\ u}\
+                        \  \lambda p_u.\ \funbody{\mathit{body\ of}\ u,\ 
+                                     \mathit{with\ call\ to}\ w}\\ 
+                        % \ (*function\ v}\
+                        \ , \lambda p_v.\ \funbody{\mathit{body\ of}\ v,\ 
                                             \mathit{with\ call\ to}\ 
-                                               x\ *)\ )
+                                               x}\ )
                       \end{array}\\
-                      \mathtt{end}\ (*\ \mathit{End\ of\ outer\ loop}\ *)
+                      \mathtt{end}\ \funcomment[34mm]{\mathit{end\ of\ outer\ loop}}
                     \end{array}\\
-                    \mathtt{in}\ \ldots (*\ \mathit{calls\ from}\ \entrynode\
-                          \mathit{to}\ u\ \mathit{and}\ v\ *) \ldots
+                    \mathtt{in}\ \funbody{\mathit{calls\ from}\ \entrynode\
+                          \mathit{to}\ u\ \mathit{and}\ v}
          \end{array}
        \end{array}
   \end{functional}%
@@ -2286,7 +2286,7 @@ nodes, and are nested in accordance with the containment relation $B_1
   private to $L_1$, we obtain a
   representation~(\ref{FunctionalSteensgaard}) which captures all the
   essential information of Steensgaard's construction. Effectively,
-  the functional reading of the LNF extends the earlier correspondence
+  the functional reading of the loop nesting forest extends the earlier correspondence
   between the nesting of individual functions and the dominance
   relationship to groups of functions and basic blocks: loop $L_0$
   \emph{dominates} $L_1$ in the sense that any path from $\entrynode$
@@ -2295,11 +2295,10 @@ nodes, and are nested in accordance with the containment relation $B_1
   \emph{header} of $L_0$.
 
   In general, each step of Steensgaard's construction may identify
-  several loops, as a CFG may contain several maximal SCC's. As the
-  bodies of these SCC's are necessarily nonoverlapping, the
-  construction yields a forest comprised of trees shaped like the LNF
-  in
-  Figure~\ref{FigLoopAnalysisRamalingamSteensgaardOverlayAndANF}(b)).
+  several loops, as a CFG may contain several maximal SCCs. As the
+  bodies of these SCCs are necessarily non-overlapping, the
+  construction yields a forest comprised of trees shaped like the loop 
+  nesting forest in Figure~\ref{sub:ramal-steens-overlayLNF}.
   As the relationship between the trees is necessarily acyclic, the
   declarations of the function declaration tuples corresponding to
   the trees can be placed according to the loop-extended notion of
@@ -2339,21 +2338,21 @@ Continuations and low-level functional languages have been an object
 of intensive study since their inception about four decades
 ago~\cite{vanWijngaarden1966,Landin1965}.  For retrospective accounts
 of the historical development, see Reynolds~\cite{Reynolds:LSC1993}
-and Wadsworth~\cite{Wadsworth00}. Early studies of CPS and direct
-style include~\cite{Reynolds:1972,Reynolds1974,Plotkin75}.  Two
+and Wads-worth~\cite{Wadsworth00}. Early studies of CPS and direct
+style articles by Reynolds and Plotkin \cite{Reynolds:1972,Reynolds1974,Plotkin75}.  Two
 prominent examples of CPS-based compilers are those by Sussman et
 al.~\cite{DBLP:journals/lisp/SussmanS98a} and Appel~\cite{Appel:CWC}.
 The relative merit of the various functional representations,
 algorithms for formal conversion between these formats, and their
 efficient compilation to machine code, remain an active area of
 research, in particular with respect to their integration with program
-analyses and optimizing transformations.  Recent contributions include
+analyses and optimizing transformations
 \cite{DBLP:journals/jfp/DanvyMN07,DBLP:journals/lisp/Reppy02,DBLP:conf/icfp/Kennedy07}. 
 A particularly appealing variant is that of
 Kennedy~\cite{DBLP:conf/icfp/Kennedy07}, where the approach to
 explicitly name control-flow points such as merge points is taken to
-its logical conclusion. By mandating that \emph{all} control-flow
-points be explicitly named, a uniform representation is obtained that
+its logical conclusion. By mandating \emph{all} control-flow
+points to be explicitly named, a uniform representation is obtained that
 admits optimizing transformations to be implemented efficiently,
 avoiding the administrative overhead to which some of the alternative
 approaches are susceptible.
@@ -2366,7 +2365,7 @@ of tail-recursive functions and let-normal form, and the conditions on
 the latter notion are strengthened so that only variables may appear
 as branch conditions. Variations of this discipline include
 \emph{administrative normal form} (A-normal form,
-ANF~\cite{DBLP:conf/pldi/FlanaganSDF93}),
+ANF)~\cite{DBLP:conf/pldi/FlanaganSDF93},
 B-form~\cite{DBLP:conf/pldi/TarditiMCSHL96}, and
 SIL~\cite{DBLP:journals/jfp/TolmachO98}.
 
@@ -2376,8 +2375,8 @@ al.~\cite{BentonKennedyRussel:ICFP1998} and Peyton-Jones et
 al.~\cite{PeytonJonesShieldsLT:POPL1998}. These partition expressions
 into categories of \emph{values} and
 \emph{computations}, similar to the isolation of primitive terms in
-let-normal form (see also~\cite{Reynolds1974,Plotkin75}). This allows
-one to treat side-effects (memory access, IO, exceptions,\ldots) in a
+let-normal form~\cite{Reynolds1974,Plotkin75}). This allows
+one to treat side-effects (memory access, IO, exceptions, etc.) in a
 uniform way, following Moggi~\cite{Moggi1991}, and thus simplifies
 reasoning about program analyses and the associated transformations in
 the presence of impure language features.
@@ -2389,19 +2388,24 @@ al.~\cite{DBLP:journals/tcs/DanvyS00}.
 
 Rideau et al.~\cite{DBLP:journals/jar/RideauSL08} present an in-depth
 study of SSA destruction, including a verified implementation in the
-proof assistant Coq for the ``windmills''-problem, i.e., the task of
-correctly introducing $\phi$-compensating assignments.
+proof assistant Coq for the ``windmills'' problem, i.e., the task of
+correctly introducing $\phi$-compensating assignments. The local algorithm to 
+avoid the lost-copy problem and swap problem identified by Briggs et 
+al.~\cite{DBLP:journals/spe/BriggsCHS98} was given by 
+Beringer~\cite{DBLP:journals/entcs/Beringer07}. In this solution, the 
+algorithm to break the cycles is in line with the results 
+of May~\cite{May:1989:PAP:68018.68035}.
 
 We are not aware of previous work that transfers the analysis of loop
 nesting forests to the functional setting, or of loop analyses in the
-functional world that correspond to LNF's.  Our discussion of
-Steensgaard's construction was based on a classification of LNF's by
-Ramalingam~\cite{DBLP:journals/toplas/Ramalingam02}, which also served
+functional world that correspond to loop nesting forests.  Our discussion of
+Steensgaard's construction was based on a classification of loop nesting forests by
+Ramalingam~\cite{Ramalingam02:Loops}, which also served
 as the source of the example in
 Figure~\ref{FigLoopAnalysisRamalingamSteensgaardConstruction}.  Two
 alternative constructions discussed by Ramalingam are those by
 Sreedhar, Gao and Lee~\cite{DBLP:journals/toplas/SreedharGL96}, and
-Havlak~\cite{DBLP:journals/toplas/Havlak97}.  To us, it appears that a
+Havlak~\cite{havlak:loop}.  To us, it appears that a
 functional reading of Sreedhar, Gao and Lee's construction would
 essentially yield the nesting mentioned at the beginning of
 Section~\ref{sec:part1:semantics:LNF}. Regarding Havlak's
@@ -2431,7 +2435,7 @@ correspondence between data-flow analyses and type systems but consider
 a simple imperative language rather than SSA. The
 textbook~\cite{DBLP:books/daglib/0015430} presents a unifying
 perspective on various program analysis techniques, including data-flow analysis, abstract interpretation, and type systems. As outlined
-in \emph{loc.~cit.}, the extension of type systems to effect systems
+in this book, the extension of type systems to effect systems
 is particularly suitable for integrating data with control-flow
 analyses. Indeed, as functional languages treat code and data in an
 integrated fashion, type-based analyses provide a natural setting for
@@ -2464,7 +2468,7 @@ that captures core aspects of SSA in a notion of (non-standard) types
 while leaving the program text in unstructured non-SSA form. Instead
 of classifying values or computations, types represent the definition
 points of variables. Contexts associate program variables at each
-program point with types in the standard fashion, but the nonstandard
+program point with types in the standard fashion, but the non-standard
 notion of types means that this association models the
 reaching-definitions relationship rather than characterizing the
 values held in the variables at runtime.  Noting a correspondence
@@ -2846,5 +2850,3 @@ Chapter~\ref{chapter:loop_tree}.
 
 %\bibliographystyle{alpha}
 %\bibliography{chapter}
-
-}
