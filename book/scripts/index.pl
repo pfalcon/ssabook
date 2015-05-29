@@ -2,6 +2,8 @@
 
 open GREP, "find . -name '*.tex' -exec grep -HE 'index\{.+\}' {} \\;|";
 my %indexes = ();
+my $BALBRACE='(?{local$d=0})(?:\{(?{$d++})|\}(?{$d--})(?(?{$d<0})(?!))|(?>[^\{\}]*))+(?(?{$d!=0})(?!))';
+
 
 while (my $indexref=<GREP>) {
     next if ($indexref =~ /\/Springer\//);
@@ -11,7 +13,7 @@ while (my $indexref=<GREP>) {
     if ($indexref =~ s/^\.\/(part\d)\/([^\/]+)\/.+://) {
 	($part,$section)=($1,$2);
     } else { die "pb parsing grep".$indexref; }
-    while ($indexref=~ s/index\{([^\}]+)\}//) {
+    while ($indexref=~ s/index\{($BALBRACE)\}//) {
 	$indexes{$1}{$section}++;
     }
 }
