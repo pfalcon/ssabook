@@ -47,7 +47,7 @@
 \def\pop{\textrm{pop}}
 \newcommand{\Func}[2]{\textsf{{\bf Function} #1}\\\Begin{#2}}
 \newcommand{\reducedGraph}{forward control-flow graph}
-\newcommand{\Comment}{C}
+\newcommand{\Comment}{\hfill$\rhd$}
 
 \section{Introduction}
 This chapter illustrates the use of strict SSA properties to simplify and accelerate \emph{liveness analysis}, \ie an analysis that determines for all variables the set of program points where the variables' values are potentially used by subsequent operations.
@@ -140,13 +140,13 @@ For a $\phi$-function $a_0 = \phi(a_1, \ldots, a_n)$ in block~$B_0$, where $a_i$
 This corresponds to placing a copy of $a_i$ to $a_0$ on each edge from $B_i$ to $B_0$.
 The data-flow equations given hereafter and the presented algorithms follow the same semantics.
 They require minor modifications when other $\phi$-semantics are desired.
-We will come back to these subtleties in Section~\ref{sec:correctnessdebase}.
+%We will come back to these subtleties in Section~\ref{sec:correctnessdebase}.
 
 \section{Data-Flow Approaches}
 \label{sec:data-flow}
 
-A well-known and frequently used approach to compute the live-in and live-out sets of basic blocks is backward data-flow analysis~\cite{appel:2002:modern}.
-The liveness sets are given by a set of \emph{equations} that relate the \emph{upward-exposed uses} and the \emph{definitions} occurring within a basic block to the live-in and live-out sets of the predecessors and successors in the \@CFG.
+A well-known and frequently used approach to compute the live-in and live-out sets of basic blocks is backward data-flow analysis~\index{bacward analysis} (see Section~\ref{novillo:sec:preliminaries}).
+The liveness sets are given by a set of \emph{equations} that relate the \emph{upward-exposed uses}\index{upward-exposed use} and the \emph{definitions} occurring within a basic block to the live-in and live-out sets of the predecessors and successors in the \@CFG.
 A use is said to be \emph{upward-exposed} when a variable is used within a basic block and no definition of the same variable precedes the use locally within that basic block.
 The sets of upward-exposed uses and definitions do not change during liveness analysis and can thus be precomputed.
 
@@ -166,7 +166,7 @@ Instead of computing a fixed point, we show that liveness information can be der
 The first version of the algorithm requires the CFG to be reducible.
 We then show that arbitrary control-flow graphs can be handled elegantly and with no additional cost, except for a cheap pre-processing step on the loop-nesting forest.
 
-The key properties of live-ranges under strict SSA form that we exploit for this purpose and that we will formalize and prove later on, can be outlined as follow:
+The key properties of live-ranges under strict SSA form that we exploit for this purpose and that we will formalize later on, can be outlined as follow:
 \begin{enumerate}
 \item
 	Let~$q$ be a CFG node that does not contain the definition~$d$ of a variable~$v$, $h$ be the header of the maximal loop containing~$q$ but not~$d$.
@@ -189,7 +189,7 @@ Algorithm~\ref{alg:twopass} shows the necessary initialization and the high-leve
       \For{each basic block~$B$}{
           mark~$B$ as unprocessed\;
       }
-      \textsf{DAG\_DFS}($R$) \Comment~$R$ is the CFG root node\;
+      \textsf{DAG\_DFS}($R$); \Comment~$R$ is the CFG root node\\
       \For{each root node~$L$ of the loop-nesting forest}{
         \textsf{LoopTree\_DFS}($L$)
       }
@@ -200,25 +200,25 @@ Algorithm~\ref{alg:twopass} shows the necessary initialization and the high-leve
 
 The post-order traversal is shown in Algorithm~\ref{alg:dag_dfs}, which performs a simple depth-first search and associates every basic block of the CFG with partial liveness sets.
 The algorithm roughly corresponds to the precomputation step of the traditional iterative data-flow analysis.
-However, loop-edges are not considered during the traversal (Line~\ref{alg:dag_dfs:loop_edge}).
+However, back-edges are not considered during the traversal (Line~\ref{alg:dag_dfs:loop_edge}).
 Recalling the definition of liveness for \phifuns, $\PhiUses(B)$ denotes the set of variables live-out of basic block~$B$ due to uses by \phifuns in~$B$'s successors.
 Similarly, $\PhiKill(B)$ denotes the set of variables defined by a \phifun in~$B$.
 
 \begin{algorithm}[H]
     \Func{DAG\_DFS(block~$B$)}{
-      \For{each $S\in\textrm{succs}(B)$ if $(B,S)$ is not a loop-edge}{\label{alg:dag_dfs:loop_edge}
+      \For{each $S\in\textrm{succs}(B)$ such that $(B,S)$ is not a back-edge}{\label{alg:dag_dfs:loop_edge}
         \lIf{$S$ is unprocessed}{\textsf{DAG\_DFS}($S$)}\label{alg:dag_dfs:irreducible_dfs}
       }
-      $Live=\PhiUses(B)$ \label{alg:dag_dfs:phi_use}
-      \For{each $S\in\textrm{succs}(B)$ if $(B,S)$ is not a loop-edge}{
-        $Live = Live \union (\LiveIn(S) \setminus \PhiKill(S))$ \label{alg:dag_dfs:phi_kill_minus}\label{alg:dag_dfs:irreducible}\;
+      $\textit{Live}=\PhiUses(B)$\; \label{alg:dag_dfs:phi_use}
+      \For{each $S\in\textrm{succs}(B)$ such that $(B,S)$ is not a back-edge}{
+        $\textit{Live} = \textit{Live} \union (\LiveIn(S) \setminus \PhiKill(S))$ \label{alg:dag_dfs:phi_kill_minus}\label{alg:dag_dfs:irreducible}\;
       }
-      $\LiveOut(B)=Live$\;
+      $\LiveOut(B)=\textit{Live}$\;
       \For{each program point~$p$ in~$B$, backward}{
-        remove variables defined at~$p$ from $Live$\;
-        add uses at~$p$ to $Live$\;
+        remove variables defined at~$p$ from \textit{Live}\;
+        add uses at~$p$ to \textit{Live}\;
       }
-      $\LiveIn(B)=Live \union \PhiKill(B)$ \label{alg:dag_dfs:phi_kill_union}\;
+      $\LiveIn(B)=\textit{Live} \union \PhiKill(B)$ \label{alg:dag_dfs:phi_kill_union}\;
       mark~$B$ as processed\;
     }
   \caption{Partial liveness, with post-order traversal.}
@@ -227,17 +227,16 @@ Similarly, $\PhiKill(B)$ denotes the set of variables defined by a \phifun in~$B
 
 The next phase, traversing the loop-nesting forest, is shown by Algorithm~\ref{alg:loop_dfs}.
 The live-in and live-out sets of all basic blocks within a loop are unified with the liveness sets of its loop-header.
-This is sufficient in order to compute valid liveness information due to the fact that a variable whose live-range crosses a back-edge of the loop is live-in and live-out at all basic blocks of the loop (see the proofs in Section~\ref{sec:correctnessdebase}).
 
 \begin{algorithm}[H]
     \Func{LoopTree\_DFS(node~$N$ of the loop-nesting forest)}{
       \If{$N$ is a loop node}{
-        Let $B_N = Block(N)$; \Comment The loop-header of~$N$\\
-        Let $LiveLoop = \LiveIn(B_N) \setminus \PhiKill(B_N)$ \label{alg:loop_dfs:phi_kill_minus}\;
+        Let $B_N = \textrm{Block}(N)$; \Comment The loop-header of~$N$\\
+        Let $\textit{LiveLoop} = \LiveIn(B_N) \setminus \PhiKill(B_N)$ \label{alg:loop_dfs:phi_kill_minus}\;
         \For{each $M \in \textrm{Children}(N)$}{
-          Let $B_M = Block(M)$; \Comment Loop-header or block\\
-          $\LiveIn(B_M)=\LiveIn(B_M) \union LiveLoop$\;
-          $\LiveOut(B_M) = \LiveOut(B_M) \union LiveLoop$\;
+          Let $B_M = \textrm{Block}(M)$; \Comment Loop-header or block\\
+          $\LiveIn(B_M)=\LiveIn(B_M) \union \textit{LiveLoop}$\;
+          $\LiveOut(B_M) = \LiveOut(B_M) \union \textit{LiveLoop}$\;
           \textsf{LoopTree\_DFS}($M$)\;
         }
       }
@@ -249,34 +248,26 @@ This is sufficient in order to compute valid liveness information due to the fac
 \subsubsection{Correctness}
 \label{sec:correctnessdebase}
 
-The previous algorithms were specialized for the case where $\phi$-functions are interpreted as copies at the CFG edges preceding the $\phi$-functions.
-For the correctness proofs, we resort to the following, more generic, $\phi$-semantics.
-A $\phi$-function $a_0 = \phi(a_1, \ldots, a_n)$ at basic block~$B_0$, receiving its arguments from blocks $B_i$, $i>0$, is represented by a fresh variable $a_{\phi}$, a copy $a_0 = a_{\phi}$ at $B_0$, and copies $a_{\phi} = a_i$ at~$B_i$, for $i>0$.
-Now, with respect to this $\phi$-function, $a_i$, for $i>0$, is not live-out at $B_i$ and $a_0$ is not live-in at $B_0$ anymore.
-As for $a_{\phi}$, since it is not an SSA variable, it is not covered by the following lemmas.
-But its live-range is easily identified:
-it is live-in at~$B_0$ and live-out at $B_i$, $i>0$, and nowhere else.
-Other $\phi$-semantics extend the live-ranges of the $\phi$-operands with parts of the live-range of $a_{\phi}$ and can thus be handled by locally refining the live-in and live-out sets.
-This explains why, in Algorithm~\ref{alg:dag_dfs}, $\PhiUses(B)$ is added to $\LiveOut(B)$ (Line~\ref{alg:dag_dfs:phi_use}), $\PhiKill(B)$ is added to $\LiveIn(B)$ (Line~\ref{alg:dag_dfs:phi_kill_union}), and $\PhiKill(S)$ is removed from $\LiveIn(S)$ (Line~\ref{alg:dag_dfs:phi_kill_minus}).
-This ensures that the variable defined by a $\phi$-function is marked as live-in and its uses as live-out at the predecessors.
-A similar adjustment appears on Line~\ref{alg:loop_dfs:phi_kill_minus} of Algorithm~\ref{alg:loop_dfs}.
-
-% say something about that?
-% This ``placement'' is consistent with the fact that the definition of a variable
-% dominates all its uses.
+%% The previous algorithms were specialized for the case where $\phi$-functions are interpreted as copies at the CFG edges preceding the $\phi$-functions.
+%% For the correctness proofs, we resort to the following, more generic, $\phi$-semantics.
+%% A $\phi$-function $a_0 = \phi(a_1, \ldots, a_n)$ at basic block~$B_0$, receiving its arguments from blocks $B_i$, $i>0$, is represented by a fresh variable $a_{\phi}$, a copy $a_0 = a_{\phi}$ at $B_0$, and copies $a_{\phi} = a_i$ at~$B_i$, for $i>0$.
+%% Now, with respect to this $\phi$-function, $a_i$, for $i>0$, is not live-out at $B_i$ and $a_0$ is not live-in at $B_0$ anymore.
+%% As for $a_{\phi}$, since it is not an SSA variable, it is not covered by the following lemmas.
+%% But its live-range is easily identified:
+%% it is live-in at~$B_0$ and live-out at $B_i$, $i>0$, and nowhere else.
+%% Other $\phi$-semantics extend the live-ranges of the $\phi$-operands with parts of the live-range of $a_{\phi}$ and can thus be handled by locally refining the live-in and live-out sets.
+%% This explains why, in Algorithm~\ref{alg:dag_dfs}, $\PhiUses(B)$ is added to $\LiveOut(B)$ (Line~\ref{alg:dag_dfs:phi_use}), $\PhiKill(B)$ is added to $\LiveIn(B)$ (Line~\ref{alg:dag_dfs:phi_kill_union}), and $\PhiKill(S)$ is removed from $\LiveIn(S)$ (Line~\ref{alg:dag_dfs:phi_kill_minus}).
+%% This ensures that the variable defined by a $\phi$-function is marked as live-in and its uses as live-out at the predecessors.
+%% A similar adjustment appears on Line~\ref{alg:loop_dfs:phi_kill_minus} of Algorithm~\ref{alg:loop_dfs}.
 
 
-The first pass propagates the liveness sets using a post-order traversal of the \reducedGraph\ $\mathcal{F}_\mathcal{L}(G)$ of the CFG, obtained by removing all loop-edges from the \@CFG.
-We first show that this pass correctly propagates liveness information to the loop-headers of the original \@CFG.
+The first pass propagates the liveness sets using a post-order traversal of the \reducedGraph\ $\mathcal{F}_\mathcal{L}(G)$ of the CFG, obtained by removing all back-edges from the \@CFG.
+The first two lemmas show that this pass correctly propagates liveness information to the loop-headers of the original \@CFG.
 \begin{lemma}
 	\label{lemma:firstpass}
 	Let~$G$ be a reducible CFG, $\var{v}$ an SSA variable, and~$d$ its definition.
-	If~$L$ is a maximal loop not containing~$d$, then~$\var{v}$ is live-in at the loop-header~$h$ of~$L$ iff there is a path in $\mathcal{F}_\mathcal{L}(G)$, not containing~$d$, from~$h$ to a use of $\var{v}$.
+	If~$L$ is a maximal loop not containing~$d$, then~$\var{v}$ is live-in at the loop-header~$h$ of~$L$ iff there is a path in $\mathcal{F}_\mathcal{L}(G)$ (i.e. back-edge free), not containing~$d$, from~$h$ to a use of $\var{v}$.
 \end{lemma}
-
-
-Lemma~\ref{lemma:firstpass} does not apply if there is no loop~$L$ satisfying the conditions.
-The following lemma covers this case.
 
 \begin{lemma}
 	\label{lemma:firstpass2}
@@ -285,6 +276,9 @@ The following lemma covers this case.
 	Then $\var{v}$ is live-in at~$p$ iff there is a path in $\mathcal{F}_\mathcal{L}(G)$, from~$p$ to a use of $\var{v}$, not containing~$d$.
 \end{lemma}
 
+Pointers to formal proofs are provided in the last section of this chapter.
+The important property used in the proof is the dominance property that enforces the full live-range of a variable to be dominated by its definition $d$.
+As a consequence any back-edge part of the live-range is dominated by $d$, and the associated loop cannot contain $d$.
 
 Algorithm~\ref{alg:dag_dfs}, which propagates liveness information along the DAG $\mathcal{F}_\mathcal{L}(G)$, can only mark variables as live-in that are indeed live-in.
 Furthermore, if, after this propagation, a variable~$\var{v}$ is missing in the live-in set of a CFG node~$p$, Lemma~\ref{lemma:firstpass2} shows that~$p$ belongs to a loop that does not contain the definition of~$\var{v}$.
@@ -302,17 +296,14 @@ The next lemma shows that the second pass of the algorithm (Algorithm~\ref{alg:l
 	If $\var{v}$ is live-in at the loop-header of~$L$, it is live-in and live-out at every CFG node in~$L$.
 \end{lemma}
 
-
-This lemma proves the correctness of the second pass, which propagates the liveness information within loops.
-Every CFG node, which is not yet associated with accurate liveness information, is properly updated by the second pass.
-Moreover, no variable is added where it should not be added.
+The intuition is straightforward: a loop is a strongly connected component, and because $d$ is live-in of $L$, $d$ cannot be part of $L$. 
 
 \begin{example}
 	The CFG of Figure~\ref{fig:liveness_dataflow:a} is a pathological case for iterative data-flow analysis.
 	The precomputation phase does not mark variable \texttt{a} as live throughout the two loops.
-	An iteration is required for every loop-nesting level until the \pagebreak final solution is computed.
+	An iteration is required for every loop-nesting level until the final solution is computed.
 	In our algorithm, after the CFG traversal, the traversal of the loop-nesting forest (Figure~\ref{fig:liveness_dataflow:b}) propagates the missing liveness information from the loop-header of loop $L_2$ down to all blocks within the loop's body and all inner loops, \ie blocks~$3$ and~$4$ of $L_3$.
-\qed \end{example}
+\end{example}
 
 \begin{figure}[t]
    \begin{center}
@@ -359,11 +350,11 @@ As mentioned earlier, in practice edges are virtually and directly redirected to
 For every loop~$L$, $\textit{EntryEdges}(L)$ denotes the set of entry-edges, \ie the edges leading, from a basic block that is not part of the loop~$L$, to a block within~$L$.
 $\textit{Entries}(L)$ denotes the set of~$L$'s entry-nodes, \ie the nodes that are target of an entry-edge.
 Similarly, $\textit{PreEntries}(L)$ denotes the set of blocks that are the source of an entry-edge.
-The set of loop-edges is given by $\textit{LoopEdges}(L)$.
+The set of back-edges is given by $\textit{LoopEdges}(L)$.
 Given a loop~$L$ from a graph $G = (V, E, r)$, we define the graph $\Psi_L (G) = (E', V', r)$ as follows.
 The graph is extended by a new node $\delta_L$, which represents the (unique) loop-header of~$L$ after the transformation.
 All edges entering the loop from preentry-nodes are redirected to this new header.
-The loop-edges of~$L$ are similarly redirected to $\delta_L$ and additional edges are inserted leading from $\delta_L$ to~$L$'s former loop-headers.
+The back-edges of~$L$ are similarly redirected to $\delta_L$ and additional edges are inserted leading from $\delta_L$ to~$L$'s former loop-headers.
 More formally:
 %
 \begin{eqnarray*}
@@ -897,7 +888,7 @@ Once forward reachability have been pre-computed this way, $\FR{H}{U}$ returns t
   \Func{DFS\_Compute\_{\reduced}Reachable(block $N$)}{
      $N.\textsf{{\reduced}Reachable} \gets \emptyset$\;
      $N.\textsf{{\reduced}Reachable.add}(N)$\;
-    \For{\textbf{each} $S\in \textsf{succs}(N)$ \textbf{if} $(N,S)$ is not a loop-edge}{
+    \For{\textbf{each} $S\in \textsf{succs}(N)$ \textbf{if} $(N,S)$ is not a back-edge}{
        $H \gets \OLE{S}{N}$\;
        \If{$H.\textsf{{\reduced}Reachable} = \bot$}{\textsf{DFS\_Compute\_{\reduced}Reachable}$(H)$}
        $N.\textsf{{\reduced}Reachable} \gets  N.\textsf{{\reduced}Reachable} \cup H.\textsf{{\reduced}Reachable}$\;
@@ -981,3 +972,6 @@ proves the correctness of the algorithm of~\cite{WimmerF10} and how a suitable
 order of basic blocks can be chosen thanks to a loop-nesting forest. Such
 orders were also exploited for liveness analysis in static single information
 (SSI)~\cite{BoissinotBDR12}.  
+
+
+They require minor modifications when other $\phi$-semantics are desired.
