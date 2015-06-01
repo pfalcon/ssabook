@@ -330,49 +330,21 @@ We can derive an algorithm that works for irreducible graphs as well, in the fol
 transform, the irreducible graph to a reducible graph, such that the liveness in both graphs is \emph{equivalent}.
 First of all we would like to stress two points:
 \begin{asparaenum}[(1)]
-\item
-	As opposed to well-known CFG transformations such as node splitting~\cite{JC97,ASU06} our transformation does not involve any size explosion.
-The key reason is that we do not impose the transformed graph to be \emph{semantically equivalent} to the original one, only isomorphism of liveness is required.
-\item
-	In practice the graph is not actually modified, but Algorithm~\ref{alg:dag_dfs} can be changed to simulate the modification of some edges, on the fly.
+\item We do not impose the transformed graph to be \emph{semantically equivalent} to the original one, only isomorphism of liveness is required. CFG transformations such as node splitting are not required.
+\item In practice the graph is not actually modified, but Algorithm~\ref{alg:dag_dfs} can be changed to simulate the modification of some edges, on the fly.
 \end{asparaenum}
 
-The transformation can be done for any \emph{minimal} loop-nesting forest as defined by Ramalingam but is simpler to explain and implement when each loop as a unique header, in particular with Havlak's loop-nesting forest.
-As we will see further, the transformation, in this case, simply relies in redirecting any edge $(s,t)$ to the header of the outermost loop (if exists) that contain~$t$ but not~$s$.
+There exist loop nesting forests representations with possibly multiple headers per irreducible loop.
+For the sake of clarity (and simplicity of implementation), we consider a representation where each loop as a unique entry node as header.
+In this case, the transformation simply relies in redirecting any edge $(s,t)$ to the header of the outermost loop (if exists) that contain~$t$ but not~$s$.
+The example of Figure~\ref{fig:examplecfg} illustrates this transformation.
+Considering the associated loop-nesting forest as depticted in Figure~\ref{fig:exampleloop} (with nodes $2$, $5$, and $8$ as loop headers), edge $(9,6)$ is redirected to node $5$.
 
-For loop-nesting forests with multiple headers per loop, similarly to Ramalingam%
-\footnote{Our transformation differs from the one proposed by Ramalingam as we want to keep the liveness information here, not only the dominance.}%
-~\cite{ramalingam:2002:loopforest:minimal} we can add a dummy node to represent the headers.
-As it allows a simple proof by induction, we give here an iterative construction that transforms each irreducible loop into a reducible one.
-Performing the transformation this way, and especially from inner to outer loops would obviously lead, in the worst case, to a quadratic number of edge redirections.
-As mentioned earlier, in practice edges are virtually and directly redirected to the header (or representative) of the outermost loop.
-
-For every loop~$L$, $\textit{EntryEdges}(L)$ denotes the set of entry-edges, \ie the edges leading, from a basic block that is not part of the loop~$L$, to a block within~$L$.
-$\textit{Entries}(L)$ denotes the set of~$L$'s entry-nodes, \ie the nodes that are target of an entry-edge.
-Similarly, $\textit{PreEntries}(L)$ denotes the set of blocks that are the source of an entry-edge.
-The set of back-edges is given by $\textit{LoopEdges}(L)$.
-Given a loop~$L$ from a graph $G = (V, E, r)$, we define the graph $\Psi_L (G) = (E', V', r)$ as follows.
-The graph is extended by a new node $\delta_L$, which represents the (unique) loop-header of~$L$ after the transformation.
-All edges entering the loop from preentry-nodes are redirected to this new header.
-The back-edges of~$L$ are similarly redirected to $\delta_L$ and additional edges are inserted leading from $\delta_L$ to~$L$'s former loop-headers.
-More formally:
-%
-\begin{eqnarray*}
-%  V' & = & V \cup \{\delta_L\} \\
-  E' & = & E \setminus \textit{LoopEdges}(L) \setminus \textit{EntryEdges}(L)
-%\\
-%     &   &
-\cup \{ (s, \delta_L)~|~s \in \textit{PreEntries}(L) \} \\
-     &   & \cup \{ (s, \delta_L)~|~\exists (s, h) \in \textit{LoopEdges}(L) \}
-%\\
-%     &   &
-\cup \{ (\delta_L, h)~|~h  \in \textit{LoopHeaders}(L) \}
-\end{eqnarray*}
-%
-Repeatedly applying this transformation yields a reducible graph, slightly larger than the original graph, in which each node is still reachable from the root~$r$.
-As already mentioned, depending on the order in which loops are considered, entry-edges may be updated several times during the processing in order to reach their final positions.
-But the loop-nesting forest structure remains the same.
-The next example illustrates this transformation.
+Obviously the transformed code does not have the same semantic than the original one.
+But, because a loop is a strongly connected component, dominance relationship is unchanged.
+As an example, immediate dominator of node $5$ is $3$, both in the original and transformed CFG.
+For this reason, any variable live-in of loop $L_5$, thus live everywhere in the loop, will be live on any path from $3$ to the loop.
+Redirecting an incomming edge to another node of the loop such as the header, does not change this behavior.
 
 \begin{figure}[t]
   \begin{center}
@@ -381,85 +353,43 @@ The next example illustrates this transformation.
       \includegraphics{examplecfg_a.pdf}
     }
     \hspace{4mm}
-    \subfloat[Reducible CFG $\Psi_L(G)$; general case] {
-      \includegraphics{examplecfg_b.pdf}
-      \label{fig:examplecfg:b}
-    }
-    \hspace{4mm}
-    \subfloat[~~Reducible CFG; single header case] {
-      \includegraphics{examplecfg_b.pdf}
+    \subfloat[~~Reducible CFG] {
+      \includegraphics{examplecfg_c.pdf}
       \label{fig:examplecfg:c}
     }
   \end{center}
   \caption{%
 	  A reducible CFG derived from an irreducible CFG, using the loop-nesting forest depicted in Figure~\ref{fig:exampleloop}.
-	  When loops are single header, such as for Havlak's loop-nesting forests, the transformation reduces to redirect some edges.}
+	  The transformation reduces to redirect incomming edges to the loop header.}
   \label{fig:examplecfg}
 \end{figure}
 
+\begin{figure}[t]
+  \begin{center}
+    \includegraphics{exampleloop.pdf}
+  \end{center}
+  \caption{A rooted loop-nested forest for the CFG of Figure~\ref{fig:examplecfg}.}
+  \label{fig:exampleloop}
+\end{figure}
 
 \newcommand{\OLE}[2]{#1.\textsf{OLE}(#2)}
 
 To avoid building this transformed graph explicitly, an elegant alternative is to modify the CFG traversal (Algorithm~\ref{alg:dag_dfs}).
-To make things simpler, we assume that the loop-nesting forest is built so that, as in Havlak's loop-nesting forest construction, each loop~$L$ has a single loop header%
-\footnote{%
-	To handle loop-nesting forests with loops having several loop-headers, we can select one particular loop-header to be \emph{the} loop representative ($B_N$ in Algorithm~\ref{alg:loop_dfs}).
-	But then we need to ``add'' edges from this header to the other headers of the loop.
-}
-, which can thus implicitly be fused with~$\delta_L$.
-It is then easy to see that, after all CFG transformations, an entry-edge $(s,t)$ is redirected from~$s$ to $\OLE{t}{s}$ the outermost loop containing~$t$ and excluding~$s$, \ie of the highest ancestor of~$t$ in the loop-nesting forest that is not an ancestor of~$s$.
-Thus, whenever an entry-edge $(s,t)$ is encountered during the traversal, we just have to visit $\OLE{t}{s}$ instead of~$t$, \ie to visit the representative of the largest loop containing the edge target, but not its source.
-To perform this modification, we replace all occurrences of~$S$ by $\OLE{S}{B}$ at Lines~\ref{alg:dag_dfs:irreducible_dfs} and~\ref{alg:dag_dfs:irreducible} of Algorithm~\ref{alg:dag_dfs}, in order to handle irreducible flow graphs.
+Whenever an entry-edge $(s,t)$ is encountered during the traversal, instead of visiting $t$, we visit the header of the largest loop containing $t$ and not $s$.
+This header node is nothing else than the highest ancestor of~$t$ in the loop-nesting forest that is not an ancestor of~$s$.
+We represent such as node as $\OLE{t}{s}$ (for ``Outermost Loop Excluding'').
+As an example in Figure~\ref{fig:exampleloop}, considering edge $(s,t)=(9,6)$, the highest ancestor of $6$ not an ancestor of $9$ is $\OLE{9}{6}=L_5$. 
+Overall, the transformation amounts to replace all occurrences of~$S$ by $\OLE{S}{B}$ at Lines~\ref{alg:dag_dfs:irreducible_dfs} and~\ref{alg:dag_dfs:irreducible} of Algorithm~\ref{alg:dag_dfs}, in order to handle irreducible flow graphs.
 
-%% The modification follows in fact the approach used for the construction of
-%% Havlak's loop-nesting forest: an edge that leads to an entry-node that is not a
-%% loop-header is replaced by an edge to the loop-header. Notice that for Havlak,
-%% an edge might be replaced several times, until it points to the loop-header of
-%% the largest loop that does not contain its source.
-
-\begin{example}
-	Consider the CFG of Figure~\ref{fig:examplecfg:a} and the loop-nesting forest in Figure~\ref{fig:exampleloop}.
-	An artificial root node~$r$ for the entire CFG have been added to turn it into a tree.
-	The loop $L_5$ containing the nodes~$5$ and~$6$ is irreducible as it has two entry-nodes, via the preentry-nodes~$4$ and~$9$.
-	We suppose that node~$5$ was selected as its loop-header.
-	The transformed reducible graph $\Psi_{L_5}(G)$ is depicted in Figure~\ref{fig:examplecfg:b}.
-	The graph might not reflect the semantics of the original program during execution, but it preserves the liveness properties of the original graph for a strict SSA program, as we will show in Theorem~\ref{thm:equiv}.
-	As for Havlak's loop nesting forest, the original irreducible loop $L_5$ has a single loop-header~$5$ that can play the role of the loop-header of the transformed reducible loop (in place of $\delta_{L_5}$):
-	in Figure~\ref{fig:examplecfg:c} edge $(9,6)$ is simply redirected to~$5$ the highest loop-nesting forest ancestor of~$6$ not ancestor of~$9$.
-	\qed
-\end{example}
 
 \newcommand{\couple}[2]{\langle#1,#2\rangle}
 \def\sep{,$ $}
 
 \subsection{Computing the outermost excluding loop}
 \label{sec:ole}
-Finding the maximal loop not containing a node~$s$ but containing a node~$t$ is a problem similar to finding the least common ancestor (LCA) of the two nodes~$s$ and~$t$ in the rooted loop-nested forest:
-the loop in question is the only direct child of $\textsf{LCA}(s,t)$, ancestor of~$t$.
-As described in~\cite{BenderFC00} and explained in Section~\ref{sec:foundations}, an LCA query can be reduced to an RMQ query that can itself be answered in $O(1)$, with a pre-computation of $O(n)$.
-Recall that the reduction to the RMQ problem is based on the Euler tour of the tree, that is the sequence of nodes as they are visited by a depth first search (DFS).
-On the example of Figure~\ref{fig:exampleloop} such a tour would create the array% $A=[\couple{L_R}{0}\sep \couple{1}{1}\sep \dots\sep \couple{\textbf{2}}{2}\sep \couple{L_2}{1}\sep \couple{3}{2}\sep \couple{L_2}{1}\sep\dots\sep \couple{\textbf{9}}{3}\sep \couple{L_8}{2}\sep \couple{L_2}{1}\sep \couple{L_5}{2}\sep \couple{5}{3}\sep \couple{L_5}{2}\sep \couple{\textbf{6}}{3}\sep \dots]$ that reports between chevrons both the id of the visited node and its level, \ie its distance from $L_R$, in the tree.
-Between the (unique) occurrences of the leafs~$9$ and~$6$ the occurrence of minimum level in~$A$ is $\couple{L_2}{1}$, found in $O(1)$, gives $L_2$ as the LCA of~$9$ and~$6$.
-On this example, the outermost loop containing~$6$ but excluding~$9$ is $L_5$, given by the occurrence $\couple{L_5}{2}$ just following the occurrence of the \@LCA.
-The attentive reader would have noticed that another order used for the Euler tour could show $\couple{L_8}{2}$ as the immediate following occurrence of $\couple{L_5}{2}$.
-Also, there might exists more than one occurrence of the same node in a sub-array of~$A$:
-suppose for example that we are looking for the outermost loop containing~$9$ but excluding~$2$, then $L_2$, the LCA of~$9$ and~$2$ is visited multiple times in between\ldots
-
-To make sure that the loop-node we are looking for, \ie the outermost loop containing~$t$ and excluding~$s$, occurs in~$A$ just after the queried $\textsf{RMQ}(s,t)$, we do the following:
-\begin{enumerate}
-\item
-	take a topological order of the forward CFG, and visit the children of each node along this order during the DFS of the Euler tour.
-\item
-	restrict to queries such that~$s$ is before~$t$ in the topological order used for the Euler tour.
-	Notice that this condition will always be fulfilled if~$s$ dominates~$t$ or if $(s,t)$ is a forward edge of the \@CFG.
-\item
-	parametrize the RMQ algorithm to pick up the \emph{last} occurrence of minimum level.
-\end{enumerate}
-
-This gives a sophisticated but $\langle O(n),O(1)\rangle$ solution the OLE problem, that we will not develop further as in practice maximum loop-depth is usually small.
-Simpler solutions can be used such as the naive one that would just walk upward in the tree starting at both nodes and stops when it encounters a common ancestor.
-
-The other alternative method (shown in Algorithm~\ref{alg:hnca}) is to pre-compute the set of ancestors from the loop-tree for every node.
+Our approach involves to associate to \emph{any} liveness query an outermost excluding loop query.
+An efficient implementation of \textsf{OLE} is thus required.
+The technique proposed here and shown in Algorithm~\ref{alg:hnca}) is to pre-compute the set of ancestors from the loop-tree for every node.
 Then a simple set operation can find the node we are looking for:
 the ancestor of the definition node are removed from the ancestor of the query point.
 From the remaining ancestors, we pick the shallowest.
@@ -468,9 +398,9 @@ The removal is a \texttt{bit-inversion} followed by a \texttt{bitwise-and} opera
 Since the number of loops (and thus the number loop-headers) is rather small, the bitsets are themselves small as well and this optimization does not result in much wasted space.
 
 Consider a topological indexing of loop-headers accessible using:
-$n.LTindex$ ($n$~being a loop-header) or reciprocally $i.node$ ($i$~being an index).
+$n.\textrm{LTindex}$ ($n$~being a loop-header) or reciprocally $i.\textrm{node}$ ($i$~being an index).
 For each node, we need a bitset (indexed by loop-headers) of all its ancestors in the loop tree:
-$n.ancestors$.
+$n.\textrm{ancestors}$.
 This can be computed using any topological traversal of the loop-tree by a call of \textsc{DFS\_compute\_ancestors}($L_r$).
 Notice that some compiler intermediate representation sometimes consider $L_r$ as a loop header.
 Considering so in \textsc{DFS\_compute\_ancestors} will not spoil the behavior of \@OLE.
@@ -478,15 +408,15 @@ Considering so in \textsc{DFS\_compute\_ancestors} will not spoil the behavior o
 \begin{algorithm}
   \Func{DFS\_compute\_ancestors(node~$n$)}{
     \uIf{$n \neq L_r$}{
-      $n.ancestors \gets n.LTparent.ancestors$\;
+      $n.\textrm{ancestors} \gets n.\textrm{LTparent.ancestors}$\;
     }
     \Else{
-      $n.ancestors \gets bitset\_{empty}$\;
+      $n.\textrm{ancestors} \gets \textit{bitset\_empty}$\;
     }
-    \If{$n.isLoopHeader$}{
-      $n.ancestors.add(n.LTindex)$
+    \If{$n.\textrm{isLoopHeader}$}{
+      $n.\textrm{ancestors.add}(n.\textrm{LTindex})$
     }
-    \For{$s$ in $n.LTchildren$}{
+    \For{$s$ in $n.\textrm{LTchildren}$}{
       \textsc{DFS\_compute\_ancestors}($s$)
     }
   }
@@ -494,14 +424,15 @@ Considering so in \textsc{DFS\_compute\_ancestors} will not spoil the behavior o
 \label{alg:ancestors}
 \end{algorithm}
 
-Using this information, finding the outermost excluding loop can be done by simple bitset operations:
+Using this information, finding the outermost excluding loop can be done by simple bitset operations.
+
 \begin{algorithm}
-  \Func{OLE(node $self$, node~$b$)}{
-    $nCA \gets bitset\_and(self.ancestors, bitset\_not(b.ancestors))$\;
-    \uIf{$nCA.isempty$}{
-      \Return $self$
+  \Func{OLE(node \textit{self}, node~$b$)}{
+    $\textit{nCA} \gets \textrm{bitset\_and}(\textit{self}.\textrm{ancestors}, \textrm{bitset\_not}(b.\textrm{ancestors}))$\;
+    \uIf{$\textit{nCA}.\textrm{isempty}$}{
+      \Return \textit{self}
     }\Else{
-      \Return $nCA.bitset\_leading\_set.node$\;
+      \Return $\textit{nCA}.\textrm{bitset\_leading\_set.node}$\;
     }
   }
 \caption{Outermost excluding loop.}
@@ -514,30 +445,6 @@ Using this information, finding the outermost excluding loop can be done by simp
 	The outermost loop containing~$6$ but not~$9$ is given by the leading bit of $101\wedge \lnot 110=001$ \ie $L_5$.
 \end{example}
 
-\subsubsection{Correctness}
-\label{sec:equiv_correctness}
-
-We now prove that, for strict SSA programs, the liveness of the resulting reducible CFG is equivalent to the liveness of the original \@CFG.
-The following results hold even for a loop-nesting forest whose loops can have more than one loop-header.
-First, to be able to apply the lemmas and algorithms of Section~\ref{sec:forreducible} to the reducible CFG $\Psi_L(G)$, we need to prove that any definition of a variable still dominates its uses.
-
-\begin{lemma}
-\label{lemma:dom_psi}
-If~$d$ dominates~$u$ in~$G$, then~$d$ dominates~$u$ in $\Psi_L(G)$.
-\end{lemma}
-
-It remains to show that, for every basic block present in both graphs, the live-in and live-out sets are the same.
-This is proved by the following theorem.
-\begin{theorem}
-\label{thm:equiv}
-Let $\var{v}$ be an SSA variable, $G$ a CFG, transformed into $\Psi_L(G)$ when considering a loop~$L$ of a loop-nesting forest of~$G$.
-%If the definition and the uses of $\var{v}$ are
-%placed in the same nodes in $\Psi_L (G)$, then
-Then, for each node~$q$ of~$G$, $\var{v}$ is live-in (resp.\ live-out) at~$q$ in~$G$ iff $\var{v}$ is live-in (resp.\ live-out) at~$q$ in~$\Psi_L (G)$.
-\end{theorem}
-
-
-
 
 \section{Liveness Sets using Path Exploration}
 \label{sec:path-explore}
@@ -547,6 +454,7 @@ As recalled earlier, a variable is live at a program point p, if p belongs to a 
 Therefore, the live-range of a variable can be computed using a backward traversal starting at its uses and stopping when reaching its (unique) definition.
 This idea was first proposed by Appel in his ``Tiger'' book~\cite{appel:2002:modern} (Pages~208 and~429).
 We distinguish two implementation variants of the basic idea.
+As described in~\cite{BenderFC00} and explained in Section~\ref{sec:foundations}, an LCA query can be reduced to an RMQ query that can itself be answered in $O(1)$, with a pre-computation of $O(n)$.
 
 
 
@@ -975,3 +883,12 @@ orders were also exploited for liveness analysis in static single information
 
 
 They require minor modifications when other $\phi$-semantics are desired.
+As opposed to well-known CFG transformations such as node splitting~\cite{JC97,ASU06}
+For loop-nesting forests with multiple headers per loop, similarly to Ramalingam%
+\footnote{Our transformation differs from the one proposed by Ramalingam as we want to keep the liveness information here, not only the dominance.}%
+~\cite{ramalingam:2002:loopforest:minimal} we can add a dummy node to represent the headers.
+Ramalingam minimal loop nesting forest. Havlak loop nesting forest.
+
+Finding the maximal loop not containing a node~$s$ but containing a node~$t$ is a problem similar to finding the least common ancestor (LCA) of the two nodes~$s$ and~$t$ in the rooted loop-nested forest:
+the loop in question is the only direct child of $\textsf{LCA}(s,t)$, ancestor of~$t$.
+
