@@ -387,8 +387,8 @@ Overall, the transformation amounts to replace all occurrences of~$S$ by $\OLE{S
 
 \subsection{Computing the outermost excluding loop}
 \label{sec:ole}
-Our approach involves to associate to \emph{any} liveness query an outermost excluding loop query.
-An efficient implementation of \textsf{OLE} is thus required.
+Our approach involves potentially many outermost excluding loop queries, espetially for the liveness check algorithm as developed further.
+An efficient implementation of \textsf{OLE} is required.
 The technique proposed here and shown in Algorithm~\ref{alg:hnca}) is to pre-compute the set of ancestors from the loop-tree for every node.
 Then a simple set operation can find the node we are looking for:
 the ancestor of the definition node are removed from the ancestor of the query point.
@@ -514,39 +514,18 @@ This leads to the code of Algorithm~\ref{alg:up_and_mark_stack} for path explora
 \label{sec:live-check}
 \index{liveness check}
 
-
-The goal of this section is to revisit the liveness check algorithm proposed in~\cite{BoissinotHGDR08} in the light of the properties and techniques developed in sections~\ref{sec:forreducible}, \ref{sec:irreducible}, and~\ref{sec:ole} that we will recall below.
-
 In contrast to liveness sets, liveness check does not provide the set of variables live at a block, but provides a query system to answer questions such as ``is variable $v$ live at location $q$?''.
-Such a framework is well suited for tree-scan based register allocation~\cite{ColombetBBHR11}, SSA destruction~\cite{boissinot:2009:ssadestruction}, or Hyperblock scheduling.
+Such a framework is well suited for tree-scan based register allocation, SSA destruction, or Hyperblock scheduling.
 Most register-pressure aware algorithms such as code-motion are not designed to take advantage of liveness check query system and still require sets.
 On the other hand, such a query system can obviously be built on top of precomputed liveness sets.
-Queries in $O(1)$ are possible, at least for basic block boundaries, providing the use of sparsesets~\cite{cooper:2004:engineering} or bitsets to allow for efficient element-wise queries.
+Queries in $O(1)$ are possible, at least for basic block boundaries, providing the use of sparsesets or bitsets to allow for efficient element-wise queries.
 If sets are only stored at basic block boundaries, to allow a query system at instructions granularity, the list of variables' uses or backward scans can be used.
 Constant time worst case complexity is lost in this scenario and liveness sets that have to be incrementally updated at each (even minor) code transformation, can be avoided and replaced by less memory consuming data structures that only depend on the \@CFG.
-
-For completeness, we recall the prerequisites of the liveness check query system here:
-\begin{itemize}
-\item
-	The CFG of the input program is available.
-\item
-	The dominance tree of the CFG is available.
-	Otherwise it is computable in $O(|V|)$.
-	Within each basic block checking if one instruction precedes another should be possible in $O(1)$.
-\item
-	A loop-nesting forest of the CFG is available.
-	Also computable in~$O(|V| \log^*|E|)$.
-\item
-	A list of uses for each variable, also known as def-use chain is available.
-	Having an easy-to-maintain def-use chain is one of the major advantages of the SSA form.
-	Hence, def-use chains are often available in SSA-based compilers.
-	Updating the def-use chain when adding or removing uses of a variable incurs virtually no costs, quite contrary to updating liveness information on each change.
-\end{itemize}
 
 In the following, we consider the live-in query of variable $\var{a}$ at node $q$.
 To avoid notational overhead, let $\var{a}$ be defined in the CFG node $d:=\ldef{a}$ and let $u \in \luse{a}$ be (w.l.o.g.) the single node where $\var{a}$ is used.
 Suppose that $q$ is strictly dominated by $d$ (otherwise $v$ cannot be live at $q$).
-Lemmas~\ref{lemma:firstpass}, \ref{lemma:firstpass2}, and~\ref{lemma:secondpass} stated in Section~\ref{sec:equiv_correctness} can be simplified as follow:
+Lemmas~\ref{lemma:firstpass}, \ref{lemma:firstpass2}, and~\ref{lemma:secondpass} stated in Section~\ref{sec:correctnessdebase} can be simplified as follow:
 \begin{enumerate}
 \item
 	Let $h$ be the header of the maximal loop containing $q$ but not $d$.
@@ -659,16 +638,16 @@ In practice we do not build explicitly the modified-\reduced\ graph.
 To compute efficiently the modified-\reduced\ reachability we simply need to traverse the modified-\reduced\ graph in a reverse topological order.
 A post-order initiated by a call to the recursive function \textsf{DFS\_Compute\_{\reduced}Reachable}($r$) (Algorithm~\ref{alg:computeFR}) will do the job.
 Bitsets can be used to efficiently implement sets of basic blocks.
-Once forward reachability have been pre-computed this way, $\FR{H}{U}$ returns true if and only if $U\in H.{\reduced}Reachable$.
+Once forward reachability have been pre-computed this way, $\FR{H}{U}$ returns true if and only if $U\in H.\textrm{{\reduced}Reachable}$.
 
 \begin{algorithm}
   \Func{DFS\_Compute\_{\reduced}Reachable(block $N$)}{
-     $N.\textsf{{\reduced}Reachable} \gets \emptyset$\;
-     $N.\textsf{{\reduced}Reachable.add}(N)$\;
+     $N.\textrm{{\reduced}Reachable} \gets \emptyset$\;
+     $N.\textrm{{\reduced}Reachable.add}(N)$\;
     \For{\textbf{each} $S\in \textsf{succs}(N)$ \textbf{if} $(N,S)$ is not a back-edge}{
        $H \gets \OLE{S}{N}$\;
-       \If{$H.\textsf{{\reduced}Reachable} = \bot$}{\textsf{DFS\_Compute\_{\reduced}Reachable}$(H)$}
-       $N.\textsf{{\reduced}Reachable} \gets  N.\textsf{{\reduced}Reachable} \cup H.\textsf{{\reduced}Reachable}$\;
+       \If{$H.\textrm{{\reduced}Reachable} = \bot$}{\textsf{DFS\_Compute\_{\reduced}Reachable}$(H)$}
+       $N.\textrm{{\reduced}Reachable} \gets  N.\textrm{{\reduced}Reachable} \cup H.\textrm{{\reduced}Reachable}$\;
     }
   }
 \caption{Computation of modified-forward reachability using a traversal along a reverse topological order.}
@@ -762,3 +741,5 @@ Finding the maximal loop not containing a node~$s$ but containing a node~$t$ is 
 the loop in question is the only direct child of $\textsf{LCA}(s,t)$, ancestor of~$t$.
 path exploration by use. For arbitrary program
 
+Such a framework is well suited for tree-scan based register allocation~\cite{ColombetBBHR11}, SSA destruction~\cite{boissinot:2009:ssadestruction}, or Hyperblock scheduling.
+providing the use of sparse-sets~\cite{cooper:2004:engineering}
