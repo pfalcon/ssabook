@@ -452,68 +452,20 @@ Using this information, finding the outermost excluding loop can be done by simp
 Another maybe more intuitive way of calculating liveness sets is closely related to the definition of the live-range of a given variable.
 As recalled earlier, a variable is live at a program point p, if p belongs to a path of the CFG leading from a definition of that variable to one of its uses without passing through the definition.
 Therefore, the live-range of a variable can be computed using a backward traversal starting at its uses and stopping when reaching its (unique) definition.
-This idea was first proposed by Appel in his ``Tiger'' book~\cite{appel:2002:modern} (Pages~208 and~429).
-We distinguish two implementation variants of the basic idea.
-As described in~\cite{BenderFC00} and explained in Section~\ref{sec:foundations}, an LCA query can be reduced to an RMQ query that can itself be answered in $O(1)$, with a pre-computation of $O(n)$.
 
+Actual implementation of this  idea could be done in several ways.
+In particular the order along which use operands are processed, in addition to the way liveness sets are represented can substantially impact the performance.
+The one we choose the develop here allows to use a simple stack-like set represenation so as to avoid any expensive set-insertion operations and set-membership tests.
+The idea is simply to process use operands variable per variable.
+In other words the processing of different variables is not intermixed, \ie the processing of one variable is completed before the processing of another variable begins.
 
-
-\subsection{Processing Variables by Use}
-\label{sec:llvm-like}
-
-The first variant relies solely on the CFG of the input program and does not require any additional preprocessing step.
-Starting from a use of a variable, all paths where that variable is live are followed by traversing the CFG backwards until the variable's definition is reached.
-Along the encountered paths, the variable is added to the live-in and live-out sets of the respective basic blocks.
-
-Algorithm~\ref{alg:use_by_use} performs the initial traversal discovering the uses of all variables in the program.
-Every use is the starting point for a path exploration performed by Algorithm~\ref{alg:up_and_mark}.
-The presented algorithm has also some similarities with the liveness algorithm used by the open-source compiler infrastructure \@LLVM.
-
- \begin{algorithm}[H]
-     \Func{Compute\_LiveSets\_SSA\_ByUse(CFG)}{
-       \For(\Comment Consider all blocks successively){each basic block~$B$ in CFG}{
-         \For(\Comment Used in the $\phi$ of a successor block){each $v\in\PhiUses(B)$}{
-           $\LiveOut(B)= \LiveOut(B)\union\{v\}$\;
-           \textsf{Up\_and\_Mark}($B,v$)\;
-         }
-         \For(\Comment Traverse~$B$ to find all uses){each~$v$ used in~$B$ ($\phi$ excluded)}{
-         \textsf{Up\_and\_Mark}($B,v$)\;
-         }
-       }
-     }
-   \caption{Compute liveness sets by exploring paths from variable uses.}
-   \label{alg:use_by_use}
- \end{algorithm}
-
-\begin{algorithm}[H]
-  \Func{Up\_and\_Mark($B,v$)}{
-    \If{$\Def(v) \in B$ ($\phi$ excluded)}{
-      return \Comment{Killed in the block, stop}
-    }
-    \If{$v\in \LiveIn(B)$}{
-      return \Comment{Propagation already done, stop}
-    }
-    $\LiveIn(B)= \LiveIn(B) \union \{v\}$\;
-    \If{$v\in\PhiKill(B)$}{
-      return \Comment{Do not propagate $\phi$ definitions}
-    }
-    \For(\Comment Propagate backward){each $P\in\textrm{CFG\_preds}(B)$}{
-      $\LiveOut(P)=\LiveOut(P)\union\{v\}$\;
-      \textsf{Up\_and\_Mark}($P,v$)\;
-    }
-  }
-  \caption{Explore all paths from a variable's use to its definition.}
-  \label{alg:up_and_mark}
-\end{algorithm}
-
-\subsection{Processing Variables by Definition}
-\label{sec:Appel-like}
-
-The second variant follows the initial idea of Appel~\cite[p.~429]{appel:2002:modern}, but adapted and optimized to work on blocks instead of instructions.
 Depending on the particular compiler framework, a preprocessing step that performs a full traversal of the program (\ie the instructions) might be required in order to derive the def-use chains for all variables, \ie a list of all uses for each SSA-variable.
-% In contrast to the previous use-by-use variant, it is not necessary to explicitly scan the program for uses of each variable when def-use chains are available.
-Algorithm~\ref{alg:var_by_var} adapts the pseudo-code shown previously to make use of these def-use chains.
-The algorithm to perform the path exploration stays the same, \ie Algorithm~\ref{alg:up_and_mark}.
+The traversal of variable list and processing of its uses thanks to def-use chains is depicted in Algorithm~\ref{alg:var_by_var}.
+
+Note that, in strict SSA, in a given block, no use can appear before a definition.
+Thus, if $\var{v}$ is live-out or used in a block~$B$, it is live-in iff it is not defined in~$B$.
+This leads to the code of Algorithm~\ref{alg:up_and_mark_stack} for path exploration.
+
 
 \begin{algorithm}[H]
     \Func{Compute\_LiveSets\_SSA\_ByVar(CFG)}{
@@ -530,12 +482,8 @@ The algorithm to perform the path exploration stays the same, \ie Algorithm~\ref
   \label{alg:var_by_var}
 \end{algorithm}
 
-A nice property of this approach is that the processing of different variables is not intermixed, \ie the processing of one variable is completed before the processing of another variable begins.
-This enables to optimize the \textsf{Up\_and\_Mark} phase by using a stack-like set representation.
-Unlike in Algorithm~\ref{alg:up_and_mark}, the expensive set-insertion operations and set-membership tests can then be avoided.
-It is indeed sufficient to test the top element of the stack, see Algorithm~\ref{alg:up_and_mark_stack}.
-Note also that, in strict SSA, in a given block, no use can appear before a definition.
-Thus, if $\var{v}$ is live-out or used in a block~$B$, it is live-in iff it is not defined in~$B$.
+
+
 
 \begin{algorithm}[H]
     \Func{Up\_and\_Mark\_Stack($B,v$)}{
@@ -560,85 +508,6 @@ Thus, if $\var{v}$ is live-out or used in a block~$B$, it is live-in iff it is n
   \label{alg:up_and_mark_stack}
 \end{algorithm}
 
-\subsection{Path Exploration for non-SSA-form Programs}
-\label{sec:path-explore:non_ssa}
-
-Interestingly, we can show that, with an additional preprocessing step, the path exploration approach can also be applied to programs that are \emph{not} in SSA form.
-Similar to the precomputation of the def-use chains for the variable-by-variable approach (Section~\ref{sec:Appel-like}), we can avoid multiple traversals of the internal program representation by precomputing information on uses and definitions of all variables in the program.
-First, using a forward scan of each block (see Algorithm~\ref{alg:precomputeusesdefs}), we compute, for each variable~$v$, the list of blocks, denoted by \UpExp($v$), where~$v$ is live-in and upward-exposed, \ie the blocks where the first access to~$v$ is a use and not a definition.
-We also compute the list of blocks, denoted by \Kill($v$), where the variable is defined.
-
-\begin{algorithm}[H]
-  \Func{Compute\_Killing\_and\_UpwardExposed\_Stack(CFG)}{
-    \For{each basic block~$B$ in the CFG}{
-      \For{each access to a variable~$v$, from start to end of block}{
-        \If(\Comment No definition yet){$\top(\Kill(v)) \neq B$}{
-          \If(\Comment Upward-exposed use at~$B$){$v$ is a use}{
-            \uIf{$\top(\UpExp(v)) \neq B$}{
-              $\push(\UpExp(v), B)$\;
-            }
-            \Else{
-              $\push(\Kill(v), B)$ \Comment First definition in~$B$
-            }
-          }
-        }
-      }
-    }
-  }
-  \caption{Compute the upward-exposed uses and definitions of variables.}
-  \label{alg:precomputeusesdefs}
-\end{algorithm}
-
-The algorithm to compute the liveness information is similar to the optimized variable-by-variable algorithm presented in the previous section.
-The main difference is that multiple definitions of the same variable might appear in the program.
-In order to avoid expensive checks to find definitions during the path exploration, basic blocks are marked with a variable during the processing.
-The marking indicates that the path exploration algorithm should stop following the current path any further.
-Also, when the variable is already known to be live-in, the path exploration stops.
-% A block is marked with the current variable in two cases:
-%\begin{compactenum}[(1)]
-%\item
-%	The basic block contains a definition of the variable or
-%\item
-%	The basic block has been visited by the path exploration algorithm previously, the variable is thus already known to be live.
-%\end{compactenum}
-Algorithms~\ref{alg:var_by_var_non_ssa} and~\ref{alg:up_and_mark_non_ssa} show the modified pseudo-code of the liveness algorithm for programs that are not in SSA form.
-
-\begin{algorithm}[H]
-    \Func{Compute\_LiveSets\_NonSSA\_ByVar\_Stack(CFG)}{
-       \For{each basic block~$B$ of CFG}{
-         mark~$B$ with $\vundef$
-       }
-      \For{each variable~$v$}{
-        \For{each block~$B$ in $\Kill(v)$}{
-          mark~$B$ with~$v$
-        }
-        \For{each block~$B$ in $\UpExp(v)$}{
-          \If(\Comment Not propagated yet){$\top(\LiveIn(B)) \neq v$}{
-            $\push(\LiveIn(B),v)$ \Comment Insert in live-in set\\
-            \For(\Comment Propagate backward){$P\in\textrm{CFG\_preds}(B)$}{
-              \textsf{Up\_and\_Mark\_NonSSA\_Stack}($P,v$)\;
-            }
-          }
-        }
-      }
-    }
-  \caption{Compute liveness per variable for non-SSA-form programs.}
-  \label{alg:var_by_var_non_ssa}
-\end{algorithm}
-
-\begin{algorithm}[H]
-    \Func{Up\_and\_Mark\_NonSSA\_Stack($B,v$)}{
-      \lIf{$\top(\LiveOut(P)) \neq v$}{$\push(\LiveOut(P),v)$}\;
-      \lIf(\Comment Killed in the block, stop){$B$ is marked with~$v$}{return}
-      \lIf(\Comment Already processed){$\top(\LiveIn(B)) = v$}{return}
-      $\push(\LiveIn(B),v)$; \Comment Not propagated yet\\
-      \For(\Comment Propagate backward){each $P\in\textrm{CFG\_preds}(B)$}{
-        \textsf{Up\_and\_NonSSA\_Mark\_Stack}($P,v$)\;
-      }
-    }
-  \caption{Compute liveness sets per variable for non-SSA-form programs.}
-  \label{alg:up_and_mark_non_ssa}
-\end{algorithm}
 
 
 \section{Liveness Check using Loop Nesting Forest and \Reduced\ Reachability}
@@ -891,4 +760,5 @@ Ramalingam minimal loop nesting forest. Havlak loop nesting forest.
 
 Finding the maximal loop not containing a node~$s$ but containing a node~$t$ is a problem similar to finding the least common ancestor (LCA) of the two nodes~$s$ and~$t$ in the rooted loop-nested forest:
 the loop in question is the only direct child of $\textsf{LCA}(s,t)$, ancestor of~$t$.
+path exploration by use. For arbitrary program
 
