@@ -3,70 +3,89 @@
 \inputpath{part4}{machine_dependent_optimization_codegen}
 \inputprogress
 
-In a compiler for imperative languages like C, C++, or FORTRAN, the code
+In a compiler for imperative languages such as C, C++, or FORTRAN, the code
 generator covers the set of code transformations and optimizations that operate
-on a program representation close to the target processor ISA, and produce an
+on a program representation close to the target machine ISA, and produce an
 assembly source or relocatable file with debugging information as result.
 
 The main duties of code generation are: lowering the program intermediate
-representation to the target processor instructions and calling conventions;
+representation to the target machine instructions and calling conventions;
 laying out data objects in sections and composing the stack frames; allocating
 variable live ranges to architectural registers; scheduling instructions to
 exploit micro-architecture; and producing assembly source or object code.
 
-Precisely, the 1986 edition of
-the ``Compilers Principles, Techniques, and Tools'' Dragon Book by Aho et al.
-lists the tasks of code generation as:
+Historically, the 1986 edition of the ``Compilers Principles, Techniques, and
+Tools'' Dragon Book by Aho et al. lists the tasks of code generation as:
 \begin{itemize}
-\item Instruction selection and calling conventions lowering.
-\item Control flow (dominators, loops) and data flow (variable liveness) analyses.
+\item Instruction selection and lowering of calling conventions.
+\item Control-flow (dominators, loops) and data-flow (variable liveness) analyses.
 \item Register allocation and stack frame building.
 \item Peephole optimizations.
 \end{itemize}
 Ten years later, the 1997 textbook ``Advanced Compiler Design \& Implementation''
-by Muchnich extends code generation with the following: \begin{itemize}
+by Muchnich extends code generation with the following tasks: \begin{itemize}
 \item Loop unrolling and basic block replication.
 \item Instruction scheduling and software pipelining.
 \item Branch optimizations and basic block alignment.
 \end{itemize}
-In current releases of compilers such as the Open64 or GCC, code generation
-techniques have significantly evolved, as they are mainly responsible for
-exploiting the performance-oriented features of processor architectures and
-micro-architectures. In these compilers, code generator optimizations
-include: \begin{itemize}
+In current releases of high-end compilers such as Open64 or GCC, code
+generation techniques have significantly evolved, as they are mainly responsible
+for exploiting the performance-oriented features of architectures and
+micro-architectures. In these compilers, code generator optimizations include:
+\begin{itemize}
 \item If-conversion using SELECT, conditional move, or predicated, instructions.
 \item Use of specialized addressing modes such as auto-modified and modulo.
 \item Exploitation of hardware looping or static branch prediction hints.
-\item Matching fixed-point arithmetic and SIMD idioms by special instructions.
+\item Matching fixed-point arithmetic and SIMD idioms to special instructions.
 \item Memory hierarchy optimizations, including pre-fetching and pre-loading.
 \item VLIW instruction bundling, that may interfere with instruction
 scheduling.
 \end{itemize}
 
-This increasing sophistication of compiler code generation motivates the
-introduction of the SSA form in order to simplify analyses and optimizations.
-However, engineering the SSA form on machine code raises a number of issues,
-some of which we present in Section~\ref{sec:ssa-codegen-engineering}.  The
-suitability of the SSA form for main code generation phases is discussed in
-Section~\ref{sec:ssa-codegen-suitability}.
+This sophistication of modern compiler code generation motivates the
+introduction of the SSA form on the program representation in order to simplify
+some of the analyses and optimizations. In particular, liveness analysis,
+unrolling-based loop optimizations, and exploitation of special instructions or
+addressing modes benefit significantly from the SSA form. On the other hand,
+the SSA form does not apply after register allocation, and there is still
+debate as to whether it should be used in the register allocator
+\cite{Barik:2013:TACO}.
+
+In this chapter, we review some of the issues of inserting the SSA form in a code
+generator, based on experience with a family of code generators and linear
+assembly optimizers for the ST120 DSP core \cite{Dinechin:2000:ME}
+\cite{Dinechin:2000:CASES,Stoutchinin:2001:MICRO,Rastello:2004:CGO}, the
+Lx/ST200 VLIW family \cite{Faraboschi:2000:ISCA}
+\cite{Dinechin:2007:MISTA,Dinechin:2008:EuroPar,Boissinot:2008:CGO,Boissinot:2009:CGO,Boissinot:2011:APLAS},
+and the Kalray VLIW core \cite{Dinechin:2013:HPEC}.
+Section~\ref{sec:ssa-codegen-engineering} presents the challenges of maintaining
+the SSA form on a program representation based on machine instructions.
+Section~\ref{sec:ssa-codegen-suitability} discusses two code generator
+optimizations that seem at odds with the SSA form, yet must occur before register
+allocation. One is if-conversion, whose modern formulations require an extension
+of the SSA form. The other is pre-pass instruction scheduling, which currently
+does not seem to benefit from the SSA form.  Going in and out of SSA form in a
+code generator is required in such case, so Section~\ref{sec:ssa-destruction}
+characterizes various SSA form destruction algorithms with regards to satisfying
+the constraints of machine code.
+
 
 \section{SSA form engineering issues}
 \label{sec:ssa-codegen-engineering}
 
-\subsection{About instructions, operands, operations, and operators}
+\subsection{Instructions, operands, operations, and operators}
 
-In this chapter, we adopt the following terminology. An \emph{instruction} is a
-member of the processor Instruction Set Architecture (ISA). Instructions access
-values and modify the processor state through \emph{operand}s. We distinguish
-\emph{explicit operands}, which are associated with a specific bit-field in the
-instruction encoding, from \emph{implicit operands}, without any encoding bits.
-Explicit operands correspond to allocatable architectural registers, immediate
-values, or instruction modifiers. Implicit operands correspond to single
-instance architectural registers and to registers implicily used by some
-instructions, such as the processor status register, the procedure link
-register, or even the stack pointer.
+An \emph{instruction} is a member of the machine instruction set architecture
+(ISA). Instructions access values and modify the machine state through
+\emph{operand}s. We distinguish \emph{explicit operands}, which are associated
+with a specific bit-field in the instruction encoding, from \emph{implicit
+operands}, without any encoding bits.  Explicit operands correspond to
+allocatable architectural registers, immediate values, or instruction modifiers.
+Implicit operands correspond to single instance architectural registers and to
+registers implicitly used by some instructions, such as the status register, the
+procedure link register, or even the stack pointer.
 
-An \emph{operation} is an instance of an instruction that compose a program. It
+An \emph{operation} is an instance of an instruction that composes a program. It
 is seen by the compiler as an \emph{operator} applied to a list of operands
 (explicit \& implicit), along with operand naming constraints, and has a set of
 clobbered registers. The compiler view of operations also involves
@@ -81,22 +100,21 @@ encoded in register mask immediates.
 \subsection{Representation of instruction semantics}
 
 Unlike IR operators, there is no straightforward mapping between machine
-instruction and their operational semantics. For instance, a subtract
-with operands $(a,b,c)$ may either compute $c \leftarrow a-b$ or $c
-\leftarrow b-a$ or any such expression with permuted operands. Yet basic SSA
-form code cleanups such as constant propagation and sign extension removal need
-to know what is actually computed by machine instructions.  Machine instructions
-may also have multiple target operands, such as memory accesses with
-auto-modified addressing, or combined division-modulus instructions.
-There are at least two ways to address this issue. \begin{itemize}
-\item Add properties to the instruction operator and to its operands, a
-technique used by the Open64 compiler. Typical operation properties include
-'isAdd', 'isLoad', etc. Typical operand properties include 'isLeft', 'isRigh',
-'isBase', 'isOffset', 'isPredicated', etc. Extended properties that involve the
-instruction operator and some of its operands include 'isAssociative',
-'isCommutative', etc.
-\item Associate a 'semantic combinator', that is, a tree of IR-like operators,
-to each target operand of a machine instruction. This more ambitious alternative
+instructions and their operational semantics. For instance, a subtract with
+operands $(a,b,c)$ may either compute $c \leftarrow a-b$ or $c \leftarrow b-a$
+or any such expression with permuted operands. Yet basic SSA form code cleanups
+such as constant propagation and sign extension removal need to know what is
+actually computed by machine instructions.  Machine instructions may also have
+multiple target operands, such as memory accesses with auto-modified addressing,
+or combined division-modulus instructions.  There are two ways to address this
+issue. \begin{itemize} \item Add properties to the instruction operator and to
+its operands, a technique used by the Open64 compiler. Operator properties
+include \emph{isAdd}, \emph{isLoad}, etc. Typical operand properties include
+\emph{isLeft}, \emph{isRight}, \emph{isBase}, \emph{isOffset},
+\emph{isPredicated}, etc. Extended properties that involve the operator and some
+of its operands include \emph{isAssociative}, \emph{isCommutative}, etc.  \item
+Associate a \emph{semantic combinator}, that is, a tree of IR-like operators, to
+each target operand of a machine instruction. This more ambitious alternative
 was implemented in the SML/NJ \cite{Leung:1999:PLDI} compiler and the LAO
 compiler \cite{Dinechin:2000:CASES}.  \end{itemize}
 
@@ -112,7 +130,7 @@ machine instruction of the code generator internal representation.
 
 Finally, code generation for some instruction set architectures require that
 pseudo-instructions with known semantics be available, besides variants of
-$\phi$-functions and parallel COPY instructions. \begin{itemize}
+$\phi$-functions and parallel COPY operations. \begin{itemize}
 
 \item Machine instructions that operate on register pairs, such as the long
 multiplies on the ARM, or more generally on register tuples, are common. In such
@@ -120,12 +138,12 @@ cases there is a need for pseudo-instructions to compose wide operands in
 register tuples, and to extract independently register allocatable operands from
 wide operands.
 
-\item Embedded processor architectures such as the Tensilica Xtensa provide
-hardware loops, where an implicit conditional branch back to the loop header is
-taken whenever the program counter match some address. The implied loop-back
-branch is also conveniently materialized by a pseudo-instruction.
+\item Embedded architectures such as the Tensilica Xtensa provide hardware
+loops, where an implicit conditional branch back to the loop header is taken
+whenever the program counter matches some address. The implied loop-back branch
+is also conveniently materialized by a pseudo-instruction.
 
-\item Register allocation for predicated architectures need that the live-ranges
+\item Register allocation for predicated architectures requires that the live-ranges
 of pseudo-registers or SSA variables with predicated definitions be contained by
 kill pseudo-instructions \cite{Gillies:1996:MICRO}.
 
@@ -135,58 +153,58 @@ kill pseudo-instructions \cite{Gillies:1996:MICRO}.
 
 Implicit operands and indirect operands are constrained to specific
 architectural registers either by the instruction set architecture (ISA
-constraints), or by application binary interface (ABI constraints). An effective
-way to deal with these constraints in the SSA form is by inserting parallel COPY
-instruction that write to the constrained source operands or read from the
-constrained target operands of the instructions. The new SSA variables thus
-created are pre-colored with the required architectural register. The parallel
-COPY operations are coalesced away or sequentialized when going out of SSA form
-\cite{Boissinot:2009:CGO}.
+constraints), or by the application binary interface (ABI constraints). An
+effective way to deal with such \emph{dedicated register} naming constraints in
+the SSA form is by inserting parallel COPY operations that write to the
+constrained source operands, or read from the constrained target operands of
+instructions.  The new SSA variables thus created are pre-colored with the
+required architectural register. With modern SSA form destruction
+\cite{Sreedhar:1999:SAS,Boissinot:2009:CGO}, COPY operations are aggressively
+coalesced, and the remaining ones are sequentialized into machine operations.
 
-Explicit instruction operands may also be constrained to use the same register
-between a source and a target operand, or even to use different registers
-between two source operands (MUL instructions on the ARM). Operand constraints
-between one source and the target operand are the general case on popular
-instruction set architectures such as x68 and the ARM~Thumb. In the setting of
-\cite{Boissinot:2009:CGO}, these constraints are represented by inserting a COPY
-between the constrained source operand and a new variable, then using this new
-variable as the constrained source operand. The COPY is a parallel copy in case
-of multiple constrained source operands. Again, the COPY operations are
-processed when going out of SSA form.
+Explicit instruction operands may be constrained to use the same resource (an
+unspecified architectural register) between a source and a target operand, as
+illustrated by most x86 instructions and by DSP-style auto-modified addressing
+modes.  A related naming constraint is to require different resources between
+two source operands, as with the MUL instructions on the ARM. The \emph{same
+resource} naming constraints are represented under the SSA form by inserting a
+COPY operation between the constrained source operand and a new variable, then
+using this new variable as the constrained source operand. In case of multiple
+constrained source operands, a parallel COPY operation is used.  Again, these
+COPY operations are processed by the SSA form destruction.
 
-A difficult case of ISA or ABI operand constraint is when a variable must be
-bound to a specific register at all points in the program. This is the case of
-the stack pointer, as interrupt handling may reuse the program run-time stack.
-One possibility is to inhibit the promotion of the stack pointer to a SSA
-variable. Stack pointer definitions including memory allocations through
-\verb|alloca()|, activation frame creation/destruction, are then encapsulated in
-a specific pseudo-instruction. Instructions that use the stack pointer must be
-treated as special cases as far as the SSA form analyses and optimizations are
-concerned.
+A wider case of operand naming constraint is when a variable must be bound to a
+specific architectural register at all points in the program. This is the case
+with the stack pointer, as interrupt handling may reuse the run-time stack at
+any program point.  One possibility is to inhibit the promotion of the stack
+pointer to a SSA variable.  Stack pointer definitions including memory
+allocations through \verb|alloca()|, activation frame creation/destruction, are
+then encapsulated as instances of a specific pseudo-instruction. Instructions
+that use the stack pointer must be treated as special cases for the SSA form
+analyses and optimizations.
 
 \subsection{Non-kill target operands} \label{sec:non-kill-target}
 
-The SSA form assumes that variable definitions are kills. This is not the case
-for target operands such as a processor status register that contains several
-independent bit-fields. Moreover, some instruction effects on bit-field may be
-'sticky', that is, with an implied OR with the previous value. Typical sticky
-bits include exception flags of the IEEE~754 arithmetic, or the integer overflow
-flag on DSPs with fixed-point arithmetic. When mapping a processor status
-register to a SSA variable, any operation that partially reads or modifies the
-register bit-fields should appear as reading and writing the corresponding
-variable.
+The SSA form requires that variable definitions be kills. This is not the case
+for target operands such as a status register that contains several independent
+bit-fields. Moreover, some instruction effects on bit-field may be \emph{sticky},
+that is, with an implied OR with the previous value. Typical sticky bits include
+exception flags of the IEEE~754 arithmetic, or the integer overflow flag on DSPs
+with fixed-point arithmetic. When mapping a status register to a SSA variable,
+any operation that partially reads or modifies the register bit-fields should
+appear as reading and writing the corresponding variable.
 
-Predicated execution and conditional execution are the other main source of
-definitions that do not kill the target register. The execution of predicated
-instructions is guarded by the evaluation of a single bit operand. The execution
-of conditional instructions is guarded by the evaluation of a condition on a
-multi-bit operand. We extend the classification of \cite{Mahlke:1995:ISCA} and
-distinguish four classes of ISA: \begin{description}
+Predicated execution and conditional execution are other sources of definitions
+that do not kill their target register. The execution of predicated instructions
+is guarded by the evaluation of a single bit operand. The execution of
+conditional instructions is guarded by the evaluation of a condition on a
+multi-bit operand. We extend the ISA classification of \cite{Mahlke:1995:ISCA}
+to distinguish four classes: \begin{description}
 
-\item[\bf Partial predicated execution support] SELECT instructions like those
-of the Multiflow TRACE architecture \cite{Colwell:1987:ASPLOS} are provided. The
-Multiflow TRACE 500 architecture was to include predicated store and
-floating-point instructions \cite{Lowney:1993:JS}.
+\item[\bf Partial predicated execution support] SELECT instructions, first
+introduced by the Multiflow TRACE architecture \cite{Colwell:1987:ASPLOS}, are
+provided. The Multiflow TRACE 500 architecture was to include predicated store
+and floating-point instructions \cite{Lowney:1993:JS}.
 
 \item[\bf Full predicated execution support] Most instructions accept a Boolean
 predicate operand which nullifies the instruction effects if the predicate
@@ -196,42 +214,23 @@ conditions: Unconditional, Conditional, parallel-OR, parallel-AND
 \cite{Gillies:1996:MICRO}.
 
 \item[\bf Partial conditional execution support] Conditional move (CMOV)
-instructions similar to those introduced in the Alpha AXP architecture
-\cite{Blickstein:1992:DTJ} are provided. CMOV instructions are available in the
+instructions, first introduced by the Alpha AXP architecture
+\cite{Blickstein:1992:DTJ}, are provided. CMOV instructions are available in the
 ia32 ISA since the Pentium Pro.
 
 \item[\bf Full conditional execution support] Most instructions are
 conditionally executed depending on the evaluation of a condition of a source
 operand. On the ARM architecture, the implicit source operand is a bit-field in
-the processor status register and the condition is encoded on 4 bits. On the
-VelociTI{\texttrademark} TMS230C6xxx architecture, the source operand is a
-general register encoded on 3 bits and the condition is encoded on 1 bit.
+the status register and the condition is encoded on 4 bits. On the
+VelociTI{\texttrademark} TMS230C6x architecture \cite{Seshan:1998:IEEESPM}, the
+source operand is a general register encoded on 3 bits and the condition is
+encoded on 1 bit.
 
 \end{description}
-Extensions of the SSA form such as the $\psi$-SSA \cite{Stoutchinin:2001:MICRO}
-presented in Chapter~\ref{chapter:psi_ssa} specifically address the handling
-operations that do not kill the target operand because of predicated or
-conditional execution.
+%In the following discussion, we consider as partially predicated (partially
+%conditional) the instruction set architectures that include SELECT (CMOV)
+%instruction, and possibly predicated (conditional) memory access instructions.
 
-Observe however that under the SSA form, a CMOV is equivalent to a SELECT with a
-'must be same register' naming constraint between one source and the target
-operand. Unlike other predicated or conditional instructions, the SELECT
-instructions kill the target register.  Generalizing this observation provides a
-simple way to handle predicated or conditional execution in vanilla SSA form:
-\begin{itemize}
-
-\item For each target operand of the predicated or conditional instruction, add
-a corresponding source operand in the instruction signature.
-
-\item For each added source operand, add a 'must be same same register' naming
-constraint with the corresponding target operand.
-
-\end{itemize}
-This simple transformation enables SSA form analyses and optimizations to remain
-oblivious to predicated and conditional code. The drawback of this solution is
-that non-kill definitions of a given variable (before SSA renaming) remain in
-dominance order across transformations, as opposed to $\psi$-SSA where predicate
-value analysis may enable to relax this order.
 
 %\subsection{Machine description system}
 %
@@ -265,7 +264,7 @@ value analysis may enable to relax this order.
 % PHIs with memory operands (stack slots), also need parallel spill instructions
 % Enable to coalesce memory slots
 
-Enginering a code generator requires decisions about what information is
+Engineering a code generator requires decisions about what information is
 transient, or belongs to the invariants of the program representation.  By
 invariant we mean a property which is ensured before and after each phase.
 Transient information is recomputed as needed by some phases from the program
@@ -280,50 +279,51 @@ as extensions to a baseline code generator program representation.
 Some extensions to the program representation required by the SSA form are
 better engineered as invariants, in particular for operands, operations, basic
 blocks, and control-flow graph.  Operands which are SSA variables need to record
-the unique operation that defines them as target operand, and possibly to
+the unique operation that defines them as a target operand, and possibly to
 maintain the list of where they appear as source operands. Operations such as
 $\phi$-functions, $\sigma$-functions of the SSI form \cite{BoissinotBDR12}, and
-parallel copies, may appear as regular operations constrained to specific places
+parallel copies may appear as regular operations constrained to specific places
 in the basic blocks. The incoming arcs of basic blocks need also be kept in the
 same order as the source operands of each of its $\phi$-functions.
 
 A program representation invariant that impacts SSA form engineering is the
 structure of loops. The modern way of identifying loops in a CFG is the
 construction of a loop nesting forest as defined by Ramalingam
-\cite{ramalingam:loopforest}. Non-reducible control flow allow for different
-loop nesting forest for a given CFG, yet high-level information such as
+\cite{Ramalingam:2002:TOPLAS}. Non-reducible control-flow allows for different
+loop nesting forests for a given CFG, yet high-level information such as
 loop-carried memory dependences, or user-level loop annotations, are provided to
 the code generator. This information is attached to a loop structure, which thus
 becomes an invariant. The impact on the SSA form is that some loop nesting
-forests, such as the Havlak \cite{havlak:loop} loop structure, are better than
+forests, such as the Havlak \cite{Havlak:1997:TOPLAS} loop structure, are better than
 others for key analyses such as SSA variable liveness
 \cite{Boissinot:2011:APLAS}.
 
 Up-to-date live-in and live-out sets at basic block boundaries are also
 candidates for being program representation invariants. However, when using and
 updating liveness information under the SSA form, it appears convenient to
-distinguish the $\phi$-function contributions from the results of data-flow
-fixpoint computation.  In particular, Sreedhar et al.  \cite{SreedharSep99}
+distinguish the $\phi$-function contributions from the results of dataflow
+fix-point computation.  In particular, Sreedhar et al.  \cite{Sreedhar:1999:SAS}
 introduced the $\phi$-function semantics that became later known as
-\emph{multiplexing mode} (see
-Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}), where a
+\emph{multiplexing mode},% (see
+%Chapter~\ref{chapter:alternative_ssa_destruction_algorithm})
+where a
 $\phi$-function $B_0:a_0=\phi(B_1:a_1,\dots,B_n:a_n)$ makes $a_0$ live-in of
 basic block $B_0$, and $a_1,\dots a_n$ live-out of basic blocks $B_1,\dots B_n$.
 The classic basic block invariants $\hbox{LiveIn}(B)$ and $\hbox{LiveOut}(B)$
 are then complemented with $\hbox{PhiDefs}(B)$ and $\hbox{PhiUses}(B)$
 \cite{Boissinot:2011:APLAS}.
 
-Finally, we know one compiler who adopted the invariant that the SSA form be
-conventional across the code generation phases. This approach was motivated in
-part by the fact that some classic optimizations such as SSAPRE \cite{CCK+97}
-require that the 'live ranges of different versions of $h$ [an arbitrary SSA
-variable] do not overlap', implying the SSA form is conventional. Other
-compilers that use SSA numbers and omit the $\phi$-functions from the program
-representation \cite{Lapkowski:1996:CASCON} are similary constrained. Work by
-Sreedhar et al. \cite{SreedharSep99} makes it clear how to make the transformed
-SSA form conventional wherever required, so there is no reason nowadays for this
+Finally, some compilers adopt the invariant that the SSA form be
+\emph{conventional} across the code generation phases. This approach is
+motivated by the fact that classic optimizations such as SSA-PRE
+\cite{Kennedy:1999:TOPLAS} require that 'the live ranges of different versions
+of the same original program variable do not overlap', implying the SSA form is
+conventional. Other compilers that use SSA numbers and omit the $\phi$-functions
+from the program representation \cite{Lapkowski:1996:CASCON} are similarly
+constrained. Work by Sreedhar et al.  \cite{Sreedhar:1999:SAS} and by Boissinot
+et al.  \cite{Boissinot:2009:CGO} clarified how to convert the transformed SSA
+form conventional wherever required, so there is no reason nowadays for this
 property to be an invariant.
-
 
 %More generally, the code generator intermediate representation should allow
 %that machine instruction operands mix SSA variables, ordinary compiler
@@ -333,6 +333,8 @@ property to be an invariant.
 \section{Code generation phases and the SSA form}
 \label{sec:ssa-codegen-suitability}
 
+\begin{comment}
+
 \subsection{Instruction selection}
 
 Instruction selection (Chapter~\ref{chapter:code_selection}). Unlike
@@ -340,78 +342,73 @@ classic techniques that match one IR tree or one DAG at a time, using the SSA
 form as input extends the scope of pattern matching to more complex IR graphs,
 in particular those resulting from control-flow constructs.
 
-\subsection{If-conversion}
+\end{comment}
 
-If-conversion refers to optimization techniques that remove conditional branches
-from a program region. The basic idea is to replace conditional branches by
-straight-line computations that directly use the condition as a source operand.
-The scope and effectiveness of if-conversion depends on ISA support for
-predicated execution \cite{Mahlke:1995:ISCA}. In principle, any if-conversion
-technique targeted to full predicated or conditional execution support may be
-adapted to partial predicated or conditional execution support. For instance,
-non-predicated instructions with side-effects such as memory accesses can be
-used in combination with SELECT to provide a harmless effective address in case
-the operation must be nullified \cite{Mahlke:1995:ISCA}.
+\subsection{Classic if-conversion}
 
-Besides predicated execution, architectural support for if-conversion can be
-improved by supporting speculative execution. Speculative execution (control
-speculation) refers to executing an operation before knowing that its execution
-is required, such as when moving code above a branch \cite{Lowney:1993:JS} or
-promoting predicates \cite{Mahlke:1995:ISCA}.  Speculative execution assumes
-instructions have reversible side effects, so speculating potentially excepting
-instructions requires architectural support. On the Multiflow TRACE 300
-architecture and later on the Lx VLIW architecture \cite{Faraboschi:2000:ISCA},
-non-trapping memory loads known as 'dismissible' are provided. The IMPACT EPIC
-architecture speculative execution \cite{August:1998:ISCA} is generalized from
-the 'sentinel' model \cite{Mahlke:1992:ASPLOS}.
 
-If-conversion is primarily motivated by instruction scheduling on
-instruction-level parallel processors \cite{Mahlke:1995:ISCA}, as removing
-conditional branches: \begin{itemize} \item eliminates branch resolution stalls
-in the instruction pipeline, \item reduces uses of the branch unit, which is
-often single-issue, \item increases the size of the instruction scheduling
-regions.  \end{itemize} In case of inner loop bodies, if-conversion further
-enables vectorization \cite{Allen:1983:POPL} and software pipelining (modulo
-scheduling) \cite{Park:1991:TR58}. Consequently, control-flow regions selected
-for if-conversion are acyclic, even though seminal techniques
-\cite{Allen:1983:POPL, Park:1991:TR58} consider more general control flow.
-The result of an if-converted region is typically a hyperblock, that is, a set
-of predicated basic blocks in which control may only enter from the top, but may
-exit from one or more locations \cite{Mahlke:1992:MICRO}.
+If-conversion refers to optimizations that convert a program region to
+straight-line code.  It is primarily motivated by instruction scheduling on
+instruction-level parallel cores \cite{Mahlke:1995:ISCA}, as removing
+conditional branches enables to: \begin{itemize}
+\item eliminate branch resolution stalls in the instruction pipeline,
+\item reduce uses of the branch unit, which is often single-issue,
+\item increase the size of the instruction scheduling regions.
+\end{itemize} In case of inner loop bodies, if-conversion further enables
+vectorization \cite{Allen:1983:POPL} and software pipelining (modulo scheduling)
+\cite{Park:1991:TR58}. Consequently, control-flow regions selected for
+if-conversion are acyclic, even though seminal techniques
+\cite{Allen:1983:POPL,Park:1991:TR58} consider more general control-flow.
+
+The scope and effectiveness of if-conversion depends on the ISA support.  In
+principle, any if-conversion technique targeted to full predicated or
+conditional execution support may be adapted to partial predicated or
+conditional execution support.  For instance, non-predicated instructions with
+side-effects such as memory accesses can be used in combination with SELECT to
+provide a harmless effective address in case the operation must be nullified
+\cite{Mahlke:1995:ISCA}.
+
+Besides predicated or conditional execution, architectural support for
+if-conversion is improved by supporting speculative execution. Speculative
+execution (control speculation) refers to executing an operation before knowing
+that its execution is required, such as when moving code above a branch
+\cite{Lowney:1993:JS} or promoting operation predicates \cite{Mahlke:1995:ISCA}.
+Speculative execution assumes instructions have reversible side effects, so
+speculating potentially excepting instructions requires architectural support.
+On the Multiflow TRACE 300 architecture and later on the Lx VLIW architecture
+\cite{Faraboschi:2000:ISCA}, non-trapping memory loads known as
+\emph{dismissible} are provided. The IMPACT EPIC architecture speculative
+execution \cite{August:1998:ISCA} is generalized from the \emph{sentinel} model
+\cite{Mahlke:1992:ASPLOS}.
+
 \medskip
+The classic contributions to if-conversion
+did not consider the SSA form.
 
-%The generic steps of if-conversion are \cite{Fang:1996:LCPC}: region selection;
-%code hoisting; assignment of predicates to basic blocks; insertion of
-%operations to compute basic block predicates; predication or speculation of
-%operations and conditional branch removal.
+\paragraph{Allen et al. \cite{Allen:1983:POPL}} convert control dependences to data
+dependences, motivated by inner loop vectorization. They distinguish forward
+branches, exit branches, and backward branches, and compute Boolean guards
+accordingly. As this work pre-dates the Program Dependence Graph
+\cite{Ferrante:1987:TOPLAS}, complexity of the resulting Boolean expressions is
+an issue. When comparing to later if-conversion techniques, only the conversion
+of forward branches is relevant.
 
-Classic contributions to if-conversion
-dot not consider the SSA form: \begin{itemize}
-
-%\item Allen et al. \cite{Allen:1983:POPL} describe how to convert control
-%dependences to data dependences, motivated by inner loop vectorization. They
-%distinguish forward branches, exit branches, and backward branches, and compute
-%Boolean guards accordingly. As this work pre-dates the Program Dependence Graph
-%\cite{Ferrante:1987:TOPLAS}, complexity of the resulting Boolean expressions is
-%an issue. When comparing to later if-conversion techniques, only the conversion
-%of forward branches is relevant.
-
-\item Park \& Schlansker \cite{Park:1991:TR58} propose the RK algorithm based
-the control dependences. They assume a fully predicated architecture wit only
+\paragraph{Park \& Schlansker \cite{Park:1991:TR58}} propose the RK algorithm based
+on control dependences. They assume a fully predicated architecture with only
 Conditional PDIs. The R function assigns a minimal set of Boolean predicates to
 basic blocks, and the K function express the way these predicates are computed.
 The algorithm is general enough to process cyclic and irreducible rooted flow
 graphs, but it practice it is applied to single entry acyclic regions.
 
-\item Blickstein et al. \cite{Blickstein:1992:DTJ} pioneer the use of CMOV
+\paragraph{Blickstein et al. \cite{Blickstein:1992:DTJ}} pioneer the use of CMOV
 instructions to replace conditional branches in the GEM compilers for the Alpha
 AXP architecture.
 
-\item Lowney et al. \cite{Lowney:1993:JS} match the innermost if-then constructs
-in the Multiflow compiler in order to generate the SELECT and the predicated
-memory store operations.
+\paragraph{Lowney et al. \cite{Lowney:1993:JS}} match the innermost if-then
+constructs in the Multiflow Trace Scheduling compiler in order to generate the
+SELECT and the predicated memory store operations.
 
-\item Fang \cite{Fang:1996:LCPC} assumes a fully predicated architecture with
+\paragraph{Fang \cite{Fang:1996:LCPC}} assumes a fully predicated architecture with
 Conditional PDIs. The proposed algorithm is tailored to acyclic regions with
 single entry and multiple exits, and as such is able to compute R and K
 functions without relying on explicit control dependences.  The main improvement
@@ -420,79 +417,128 @@ instructions up the dominance tree through predicate promotion, except for
 stores and PDIs. This work further proposes a pre-optimization pass to hoist or
 sink common sub-expressions before predication and speculation.
 
-\item Leupers \cite{Leupers:1999:DATE} focuses on if-conversion of nested
+\paragraph{Leupers \cite{Leupers:1999:DATE}} focuses on if-conversion of nested
 if-then-else (ITE) statements on architectures with full conditional execution
 support. A dynamic programming technique appropriately selects either a
 conditional jump or a conditional instruction based implementation scheme for
 each ITE statement, and the objective is the reduction of worst-case execution
 time (WCET).
 
-\end{itemize} A few contributions to if-conversion only use the SSA form
-internally: \begin{itemize}
+\medskip
+A few contributions to if-conversion did use the SSA form
+but only internally.
 
-\item Jacome et al. \cite{Jacome:2001:DAC} propose the Static Single Assignment
--- Predicated Switching (SSA-PS) transformation aimed at clustered VLIW
-architectures, with predicated move instructions that operate inside clusters
-(internal moves) or between clusters (external moves). The first idea of the
-SSA-PS transformation is to realize the conditional assignments corresponding to
-$\phi$-functions via predicated switching operations, in particular predicated
-move operations. The second idea is that the predicated external moves leverage
-the penalties associated with inter-cluster data transfers. The SSA-PS
-transformation predicates non-move operations and is apparently restricted to
-innermost if-then-else statements.
+\paragraph{Jacome et al. \cite{Jacome:2001:DAC}} propose the Static Single
+Assignment - Predicated Switching (SSA-PS) transformation aimed at clustered
+VLIW architectures, with predicated move instructions that operate inside
+clusters (internal moves) or between clusters (external moves). The first idea
+of the SSA-PS transformation is to realize the conditional assignments
+corresponding to $\phi$-functions via predicated switching operations, in
+particular predicated move operations. The second idea is that the predicated
+external moves leverage the penalties associated with inter-cluster data
+transfers. The SSA-PS transformation predicates non-move operations and is
+apparently restricted to innermost if-then-else statements.
 
-\item Chuang et al. \cite{Chuang:2003:CGO} introduce a predicated execution
-support aimed at removing non-kill register writes from the processor
-micro-architecture. They propose SELECT instructions called 'phi-ops',
-predicated memory accesses, Unconditional PDIs, and ORP instructions for OR-ing
-multiple predicates. A restriction of the RK algorithm to single-entry
-single-exit regions is proposed, adapted to the Unconditional PDIs and the ORP
-instructions. The other contribution from this work is the generation of
-'phi-ops', whose insertion points are computed like the SSA form placement of the
-$\phi$-functions. The $\phi$-functions source operands are replaced by
-$\phi$-lists, where each operand is associated with the predicate of
-its source basic block. The $\phi$-lists are processed by topological order of
-the operand predicates to generate the 'phi-ops'.
+\paragraph{Chuang et al. \cite{Chuang:2003:CGO}} introduce a predicated execution
+support aimed at removing non-kill register writes from the micro-architecture.
+They propose SELECT instructions called \emph{phi-ops}, predicated memory
+accesses, Unconditional PDIs, and ORP instructions for OR-ing multiple
+predicates. A restriction of the RK algorithm to single-entry single-exit
+regions is proposed, adapted to the Unconditional PDIs and the ORP instructions.
+Their other contribution is the generation of {phi-ops}, whose insertion points
+are computed like the SSA form placement of the $\phi$-functions. The
+$\phi$-functions source operands are replaced by $\phi$-lists, where each
+operand is associated with the predicate of its source basic block. The
+$\phi$-lists are processed by topological order of the predicates to
+generate the {phi-ops}.
 
-\end{itemize} Recent contributions to if-conversion input SSA form,
-and output $\psi$-SSA form: \begin{itemize}
 
-\item Stoutchinin \& Ferri\`ere \cite{Stoutchinin:2001:MICRO} introduce
-$\psi$-functions in order to bring predicated code under the SSA form for a
-fully predicated architecture. The $\psi$-functions arguments are paired with
-predicates and are ordered in dominance order, a correctness condition
-re-discovered later by Chuang et al. \cite{Chuang:2003:CGO} for their phi-ops.
+\subsection{If-conversion under SSA form}
 
-\item Stoutchinin \& Gao \cite{Stoutchinin:2004:EuroPar} propose an
+The ability to perform if-conversion on the SSA form of a program representation
+requires the handling of operations that do not kill the target operand because
+of predicated or conditional execution.
+
+\paragraph{Stoutchinin \& Ferri\`ere \cite{Stoutchinin:2001:MICRO}} introduce
+$\psi$-functions in order to represent fully predicated code under the SSA form,
+which is then called the $\psi$-SSA form.  The $\psi$-functions arguments are
+paired with predicates and are ordered in dominance order in the $\psi$-function
+argument list, a correctness condition re-discovered by Chuang et al.
+\cite{Chuang:2003:CGO} for their phi-ops.
+% The $\psi$-SSA form is presented in Chapter~\ref{chapter:psi_ssa}.
+
+\paragraph{Stoutchinin \& Gao \cite{Stoutchinin:2004:EuroPar}} propose an
 if-conversion technique based on the predication of Fang \cite{Fang:1996:LCPC}
 and the replacement of $\phi$-functions by $\psi$-functions. They prove the
 conversion is correct provided the SSA form is conventional. The technique is
-implemented in the Open64 for the ia64 architecture.
+implemented in Open64 for the ia64 architecture.
 
-\item Bruel \cite{Bru06} targets VLIW architectures with SELECT and
+\paragraph{Bruel \cite{Bruel:2006:ODES}} targets VLIW architectures with SELECT and
 dismissible load instructions. The proposed framework reduces acyclic
 control-flow constructs from innermost to outermost, and the monitoring of the
 if-conversion benefits provides the stopping criterion. The core technique
 control speculates operations, reduces height of predicate computations, and
 performs tail duplication. It can also generate $\psi$-functions instead of
-SELECT operations. A generalization of this framework, which also accepts
-$\psi$-SSA form as input, is described in Chapter~\ref{chapter:if_conversion}.
+SELECT operations. %A generalization of this framework, which also accepts
+%$\psi$-SSA form as input, is described in Chapter~\ref{chapter:if_conversion}.
 
-\item Ferri\`ere \cite{Ferriere:2007:SCOPES} extends the $\psi$-SSA form
-algorithms of \cite{Stoutchinin:2001:MICRO} to the partial predicated execution
-support, by formulating simple correctness conditions for the predicate
-promotion of operations that do not have side-effects. This work also details
-how to transform the $\psi$-SSA form to conventional $\psi$-SSA by generating
-CMOV operations. A self-contained explanation of these techniques appears in
-Chapter~\ref{chapter:psi_ssa}.
+\paragraph{Ferri\`ere \cite{Ferriere:2007:SCOPES}} extends the $\psi$-SSA form
+algorithms of \cite{Stoutchinin:2001:MICRO} to architectures with partial
+predicated execution support, by formulating simple correctness conditions for
+the predicate promotion of operations that do not have side-effects. This work
+also details how to transform the $\psi$-SSA form to conventional $\psi$-SSA
+form by generating CMOV operations.
+%A self-contained explanation of these techniques appears in %Chapter~\ref{chapter:psi_ssa}.
+
+\medskip
+Thanks to these contributions, virtually all if-conversion techniques formulated
+without the SSA form can be adapted to the $\psi$-SSA form, with the added
+benefit that already predicated code may be part of the input. In practice, these
+contributions follow the generic steps of if-conversion proposed by Fang
+\cite{Fang:1996:LCPC}:
+\begin{itemize}
+\item if-conversion region selection;
+\item code hoisting and sinking of common sub-expressions;
+\item assignment of predicates to the basic blocks;
+\item insertion of operations to compute the basic block predicates;
+\item predication or speculation of operations;
+\item and conditional branch removal.
+\end{itemize}
+The result of an if-converted region is a hyper-block, that is, a sequence of
+basic blocks with predicated or conditional operations, where control may only
+enter from the top, but may exit from one or more locations
+\cite{Mahlke:1992:MICRO}.
+
+\medskip
+Although if-conversion based on the $\psi$-SSA form appears effective for the
+different classes of architectural support, the downstream phases of the code
+generator require at least some adaptations of the plain SSA form algorithms to
+handle the $\psi$-functions. The largest impact of handling $\psi$-function is
+apparent in the $\psi$-SSA form destruction \cite{Ferriere:2007:SCOPES}, whose
+original description \cite{Stoutchinin:2001:MICRO} was incomplete.
+
+In order to avoid such complexities, the Kalray VLIW code generator adopts
+simpler solution than $\psi$-functions to represent the non-kill effects of
+conditional operations on target operands.  This solution is based on the
+observation that under the SSA form, a CMOV operation is equivalent to a SELECT
+operation with a {same resource} naming constraint between one source and the
+target operand. Unlike other predicated or conditional instructions, a SELECT
+instruction kills its target register.  Generalizing this observation provides a
+simple way to handle predicated or conditional operations in plain SSA form:
+\begin{itemize}
+
+\item For each target operand of the predicated or conditional instruction, add
+a corresponding source operand in the instruction signature.
+
+\item For each added source operand, add a {same resource} naming constraint
+with the corresponding target operand.
 
 \end{itemize}
-
-Thanks to these two latter contributions, virtually all if-conversion techniques
-formulated without the SSA form can be adapted to the $\psi$-SSA form, with the
-added benefit that already predicated code can be part of input. The main issues
-that remain for the selection of an if-conversion technique are the match with
-the architectural support, and the approach to if-conversion region formation.
+This simple transformation enables the SSA form analyses and optimizations to
+remain oblivious to predicated or conditional code. The drawback of this
+solution is that non-kill definitions of a given variable (before SSA variable
+renaming) remain in dominance order across program transformations, as opposed
+to $\psi$-SSA where predicate value analysis may enable this order to be relaxed.
 
 %\paragraph{Chuang:2003:CGO} The phi-predication is motivated by the removal of
 %conditional register writes in the architecture. The proposed instruction set
@@ -518,7 +564,7 @@ the architectural support, and the approach to if-conversion region formation.
 % - Compute control dependences
 % - assign predicate to each unique value
 % - insert predicate defines
-% - remove control flow
+% - remove control-flow
 
 % Open64
 %   Algorithm description:
@@ -582,6 +628,8 @@ the architectural support, and the approach to if-conversion region formation.
 %         is used to screen out hyperblock candidates during the simple if-conversion
 %         phase of the hyperblock formation.
 
+\begin{comment}
+
 \subsection{Inner loop optimizations}
 
 Non-inner loop transformations, such as
@@ -622,26 +670,28 @@ Required because analyses and code specialization
 
 Reassociation
 
+\end{comment}
 
 \subsection{Pre-pass instruction scheduling}
 
-Further down the code generator, the next major phase is pre-pass instruction
-scheduling. Innermost loops with a single basic block, super-block or
-hyper-block body are candidates for software pipelining techniques such as
-modulo scheduling. For innermost loops that are not software pipelined, and for
-other program regions, acyclic instruction scheduling techniques apply: basic
-block scheduling \cite{Goodman:1988:ICS}; super-block scheduling
-\cite{Hwu:1993:JS}; hyper-block scheduling \cite{Mahlke:1992:MICRO}; tree region
-scheduling \cite{Havanki:1998:HPCA}; or trace scheduling \cite{Lowney:1993:JS}.
+Further down the code generator, the last major phase before register allocation
+is pre-pass instruction scheduling. Innermost loops with a single basic block,
+super-block or hyper-block body are candidates for software pipelining
+techniques such as modulo scheduling \cite{Rau:1996:IJPP}. For innermost loops
+that are not software pipelined, and for other program regions, acyclic
+instruction scheduling techniques apply: basic block scheduling
+\cite{Goodman:1988:ICS}; super-block scheduling \cite{Hwu:1993:JS}; hyper-block
+scheduling \cite{Mahlke:1992:MICRO}; tree region scheduling
+\cite{Havanki:1998:HPCA}; or trace scheduling \cite{Lowney:1993:JS}.
 
 By definition, pre-pass instruction scheduling operates before register
-allocation. On a classic code generator, instruction operands are mostly virtual
-registers, except for instructions with ISA or ABI constraints that binds them
-to specific architectural registers. Moreover, preparation to pre-pass
-instruction scheduling include virtual register renaming, also known as register
-web construction, in order to reduce the number of anti dependences and output
+allocation. At this stage, instruction operands are mostly virtual registers,
+except for instructions with ISA or ABI constraints that bind them to specific
+architectural registers. Moreover, preparation to pre-pass instruction
+scheduling includes virtual register renaming, also known as register web
+construction, in order to reduce the number of anti dependences and output
 dependences in the instruction scheduling problem. Other reasons why it seems
-there is little to gain to schedule instructions on a SSA form program
+there is little to gain from scheduling instructions on a SSA form of the program
 representation include: \begin{itemize}
 
 \item Except in case of trace scheduling which pre-dates the use of SSA form in
@@ -658,138 +708,188 @@ instructions, besides control dependences and memory dependences, are limited to
 true data dependences on operands, code motion will create interferences that
 must later be resolved by inserting COPY operations in the scheduled code
 region. (Except for interferences created by the overlapping of live ranges
-that results from modulo scheduling, as these are resolved by modulo renaming.)
-So scheduling instructions with SSA variables as operands is not effective
-unless extra dependences are added to the scheduling problem to prevent such
-code motion. 
+that results from modulo scheduling, as these are resolved by modulo renaming
+\cite{Lam:1988:PLDI}.) So scheduling instructions with SSA variables as operands
+is not effective unless extra dependences are added to the scheduling problem to
+prevent such code motion. 
 
-\item Some machine instructions have side effects on special resources such as
-the processor status register. Representing these resources as SSA variables
-even though they are not operated like the processor architectural registers
-requires coarsening the instruction effects to the whole resource, as discussed
-in Section~\ref{sec:non-kill-target}. In turn this implies def-use variable
+\item Some machine instructions have partial effects on special resources such
+as the status register. Representing special resources as SSA variables even
+though they are accessed at the bit-field level requires coarsening the
+instruction effects to the whole resource, as discussed in
+Section~\ref{sec:non-kill-target}. In turn this implies def-use variable
 ordering that prevents aggressive instruction scheduling. For instance, all
-'sticky' bit-field definitions can be reordered with regards to the next use,
+{sticky} bit-field definitions can be reordered with regards to the next use,
 and an instruction scheduler is expected to do so. Scheduling OR-type predicate
-define operations \cite{Schlansker:1999:PLDI} raises the same issues. An
+define operations \cite{Schlansker:1999:PLDI} raises the same issues.  An
 instruction scheduler is also expected to precisely track accesses to unrelated
-of partially overlapping bit-fields in a processor status register.
+or partially overlapping bit-fields in a status register.
 
 \item Aggressive instruction scheduling relaxes some flow data dependences that
-are normally implied by SSA variable def-use ordering. A first example is 'move
-renaming' \cite{Young:1998:MICRO}, the dynamic switching of the definition of a
-source operand defined by a COPY operation when the consumer operations ends
-up being scheduled at the same cycle or earlier. Another example is 'inductive
-relaxation' \cite{Dinechin:1997:PaCT}, where the dependence between additive
-induction variables and their use as base in base+offset addressing modes is
-relaxed to the extent permitted by the induction step and the range of the
-offset. These techniques apply to acyclic scheduling and to modulo scheduling.
+are normally implied by SSA variable def-use ordering. A first example is
+\emph{move renaming} \cite{Young:1998:MICRO}, the dynamic switching of the
+definition of a source operand defined by a COPY operation when the consumer
+operations ends up being scheduled at the same cycle or earlier. Another example
+is \emph{inductive relaxation} \cite{Dinechin:1997:PaCT}, where the dependence
+between additive induction variables and their use as base in base+offset
+addressing modes is relaxed to the extent permitted by the induction step and
+the range of the offset. These techniques apply to acyclic scheduling and to
+modulo scheduling.
 
 \end{itemize}
 
 To summarize, trying to keep the SSA form inside the pre-pass instruction scheduling
-currently appears more complex than operating on the program representation with
-classic compiler temporary variables. This representation is obtained from the
-SSA form after aggressive coalescing and SSA destruction. If required by the
-register allocation, the SSA form should be re-constructed.
+appears more complex than operating on the program representation with classic
+compiler temporary variables. This representation is obtained after SSA form
+destruction and aggressive coalescing. If required by the register allocation,
+the SSA form should be re-constructed.
 
 
-\subsection{SSA form destruction}
+\section{SSA form destruction algorithms} \label{sec:ssa-destruction}
+
+%\subsection{Evolution of the SSA form destruction}
 
 The destruction of the SSA form in a code generator is required before the
-pre-pass instruction scheduling and software pipelining, at least with the
-established techniques, and also before classic register allocation such as
-George \& Appel \cite{George96}. A weaker form is the conversion of transformed
-SSA form to conventional, which is required by some register allocators
-operating on the SSA form \cite{Pereira08}. For all these uses cases, the main
+pre-pass instruction scheduling and software pipelining, as discussed earlier,
+and also before non-SSA register allocation.  A weaker form is the conversion of
+transformed SSA form to conventional SSA form, which is required by classic SSA
+form optimizations such as SSA-PRE \cite{Kennedy:1999:TOPLAS} and SSA form
+register allocators \cite{Pereira:2008:PLDI}. For all such cases, the main
 objective besides removing the SSA form extensions from the program
-representation is to ensure that the ISA and ABI operand naming constraints are
-satisfied. These objectives are met with aggressive coalescing.
+representation is to ensure that the operand naming constraints are satisfied.
+Another objective is to avoid critical edge splitting, as this interferes with
+branch alignment \cite{Calder:1994:ASPLOS}, and is not possible on some
+control-flow edges of machine code such as hardware loop back edges.
 
-A summary of the SSA form destruction techniques is that correctness issues of
-the original out-of-SSA translation of Cytron et al. \cite{Cytron} were
-addressed first. The focus then moved to the handling of ISA and
-ABI operand naming constraints. Simultaneously, the time and space constraints of
-JIT compilation motivated new approaches to SSA variable interference checks.
-State-of-the-art algorithms such as those presented in
-Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} fix the remaining
-correctness issues, handle all ISA and ABI operand naming constraints, support
-aggressive coalescing, and can be adapted to JIT compilation constraints.
-\begin{itemize}
+The contributions to SSA form destruction techniques can be characterized as an
+evolution towards correctness, the ability to manage operand naming constraints,
+and the reduction of algorithmic time and memory requirements.
 
-\item Cytron et al. \cite{Cytron} describe the process of 'translating out of
-SSA' as 'naive replacement preceded by dead code elimination and followed by
-coloring' (graph coloring coalescing). The naive replacement replaces
-each $\phi$-function $B_0:a_0=\phi(B_1:a_1,\dots,B_n:a_n)$ by $n$ copies $a_0 = a_i$,
-one per basic block $B_i$.
+\paragraph{Cytron et al. \cite{Cytron:1991:TOPLAS}} describe the process of
+\emph{translating out of SSA} as 'naive replacement preceded by dead code
+elimination and followed by coloring'. They replace each $\phi$-function
+$B_0:a_0=\phi(B_1:a_1,\dots,B_n:a_n)$ by $n$ copies $a_0 = a_i$, one per basic
+block $B_i$, before applying Chaitin-style coalescing.
 
-\item Briggs et al. \cite{bib:briggs.ea-98} identifies correctness issues in
-Cytron et al. translation out of (transformed) SSA form and illustrate them by
-the 'lost-copy' and the 'swap' problems. These issues are related to the fact
-that critical edges must be split, and that a sequence of $\phi$-functions at
-the start of a basic block has parallel assignment semantics. Two SSA form
+\paragraph{Briggs et al. \cite{Briggs:1998:SPE}} identify correctness issues in
+Cytron et al. \cite{Cytron:1991:TOPLAS} out of (transformed) SSA form
+translation and illustrate them by the \emph{lost-copy problem} and the
+\emph{swap problem}. These problems appear in relation with the critical edges,
+and because a sequence of $\phi$-functions at the start of a basic block has
+parallel assignment semantics \cite{Boissinot:2009:CGO}. Two SSA form
 destruction algorithms are proposed, depending on the presence of critical edges
-in the confrol-flow graph.
+in the control-flow graph. However the need for parallel COPY operations is not
+recognized.
 
-\item Sreedhar et al. \cite{SreedharSep99} 
+\paragraph{Sreedhar et al. \cite{Sreedhar:1999:SAS}} define the
+$\phi$-congruence classes as the sets of SSA variables that are transitively
+connected by a $\phi$-function. When none of the $\phi$-congruence classes have
+members that interfere, the SSA form is called \emph{conventional} and its
+destruction is trivial: replace all the SSA variables of a $\phi$-congruence
+class by a temporary variable, and remove the $\phi$-functions. In general, the
+SSA form is \emph{transformed} after program optimizations, that is, some
+$\phi$-congruence classes contain interferences.  In Method~I, the SSA form is
+made conventional by inserting COPY operations that target the arguments of each
+$\phi$-function in its predecessor basic blocks, \emph{and also} by inserting
+COPY operations that source the target of each $\phi$-function in its basic
+block. The latter is the key for not depending on critical edge splitting
+\cite{Boissinot:2009:CGO}. The code is then improved by running a new SSA
+variable coalescer that grows the $\phi$-congruence classes with COPY-related
+variables, while keeping the SSA form conventional. In Method~II and Method~III, the
+$\phi$-congruence classes are initialized as singletons, then merged while
+processing the $\phi$-functions in some order. In Method~II, two variables of
+the current $\phi$-function that interfere directly or through their
+$\phi$-congruence classes are isolated by inserting COPY operations for both.
+This ensures that the $\phi$-congruence class which is grown from the classes of
+the variables related by the current $\phi$-function is interference-free. In
+Method~III, if possible only one COPY operation is inserted to remove the
+interference, and more involved choices about which variables to isolate from
+the $\phi$-function congruence class are resolved by a maximum independent set
+heuristic.  Both methods are correct except for a detail about the live-out sets
+to consider when testing for interferences \cite{Boissinot:2009:CGO}.
 
-\end{itemize}
+\paragraph{Leung \& George \cite{Leung:1999:PLDI}} are the first to address the
+problem of satisfying the {same resource} and the {dedicated register} operand
+naming constraints of the SSA form on machine code. They identify that
+Chaitin-style coalescing after SSA form destruction is not sufficient, and that
+adapting the SSA optimizations to enforce operand naming constraints is not
+practical.  They operate in three steps: collect the renaming constraints; mark
+the renaming conflicts; and reconstruct code, which adapts the SSA destruction
+of Briggs et al. \cite{Briggs:1998:SPE}. This work is also the first to make
+explicit use of parallel COPY operations.
+
+\paragraph{Budimli\'c et al. \cite{Budimlic:2002:PLDI}} propose a lightweight SSA form
+destruction motivated by JIT compilation. It uses the (strict) SSA form property
+of dominance of variable definitions over uses to avoid the maintenance of an
+explicit interference graph. Unlike previous approaches to SSA form destruction
+that coalesce increasingly larger sets of non-interfering $\phi$-related (and
+COPY-related) variables, they first construct SSA-webs with early pruning of
+obviously interfering variables, then de-coalesce the SSA webs into
+non-interfering classes.  They propose the \emph{dominance forest} explicit
+data-structure to speed-up these interference tests. This SSA form destruction
+technique does not handle the operand naming constraints, and also requires
+critical edge splitting.
+
+\paragraph{Rastello et al. \cite{Rastello:2004:CGO}} revisit the problem of
+satisfying the \emph{same resource} and \emph{dedicated register} operand naming
+constraints of the SSA form on machine code, motivated by erroneous code
+produced by the technique of Leung \& George \cite{Leung:1999:PLDI}. Inspired by
+work of Sreedhar et al.  \cite{Sreedhar:1999:SAS}, they include the
+$\phi$-related variables as candidates in the coalescing that optimizes the
+operand naming constraints.  This work avoids the patent of Sreedhar et al. (US
+patent 6182284).
+
+%Errors in missing parallel copies in case of W shaped CFG, the copies in the pointy edge need to be in parallel
+
+\paragraph{Boissinot et al. \cite{Boissinot:2009:CGO}} analyze the previous
+contributions to SSA form destruction to their root principles, and propose a
+generic approach to SSA form destruction that is proved correct, handles
+operand naming constraints, and can be optimized for speed. The foundation of
+the approach is to transform the program to conventional SSA form by isolating
+the $\phi$-functions like in Method~I of Sreedhar et al.
+\cite{Sreedhar:1999:SAS}.  However, the COPY operations inserted are parallel,
+so a parallel COPY sequentialization algorithm is provided. The task of
+improving the conventional SSA form is then seen as a classic aggressive
+variable coalescing problem, but thanks to the SSA form the
+interference relation between SSA variables is made precise and frugal to
+compute.  Interference is obtained by combining the intersection of SSA live
+ranges, and the equality of values which is easily tracked under the SSA form
+across COPY operations. Moreover, the use of the dominance forest data-structure
+of Budimli\'c et al.  \cite{Budimlic:2002:PLDI} to speed-up interference tests
+between congruence classes is obviated by a linear traversal of these classes in
+pre-order of the dominance tree. Finally, the same resource operand constraints
+are managed by pre-coalescing, and the dedicated register operand constraints
+are represented by pre-coloring the congruence classes. Congruence classes with
+a different pre-coloring always interfere.
+
+%Pereira \& Palsberg \cite{Pereira:2009:CC}
 
 
-\begin{itemize}
 
-\item Budimli\'c et al. ``Fast Copy Coalescing and Live-Range Identification''
-[PLDI'02]
+%\subsection{Insights of modern SSA form destruction}
+%
+%When there is no interference between any two
 
-\begin{itemize}
-\item lightweight SSA destruction motivated by JIT compilation
-\item use the SSA form dominance of definitions over uses to avoid explicit
-interference graph
-\item construct SSA-webs with early pruning of interfering variables, then
-partition into non-interfering classes
-\item introduce the ``dominance forest'' data-structure to avoid quadratic
-number of interference tests
-\item critical edge splitting is required
-\end{itemize}
+%A summary of the SSA form destruction techniques is that correctness issues of
+%the original out-of-SSA translation of Cytron et al. \cite{Cytron:1991:TOPLAS} were
+%addressed first. The focus then moved to the handling of ISA and
+%ABI operand naming constraints. Simultaneously, the time and space constraints of
+%JIT compilation motivated new approaches to SSA variable interference checks.
+%State-of-the-art algorithms %such as those presented in
+%%Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}
+%fix the remaining
+%correctness issues, handle all ISA and ABI operand naming constraints, support
+%aggressive coalescing, and can be adapted to JIT compilation constraints.
 
-\item Sreedhar et al. ``Translating Out of Static Single Assignment Form''
-[SAS'99] (US patent 6182284):
-
-\begin{itemize}
-\item Method~1 inserts COPY for the arguments of $\Phi$-functions in the
-predecessors \emph{and} for the $\Phi$-functions targets in the current block,
-then applies a new SSA-based coalescing algorithm
-\item Method~3 maintains liveness and interference graph to insert COPY that will not
-be removed by the new SSA-based coalescing algorithm
-\item the new SSA-based coalescing algorithm is more effective than register allocation
-coalescing
-%\item Both methods yield significantly better code than Briggs et al. [SPE 28(8) 1998]
-%or Budimli\'c et al. [PLDI'02]
-\end{itemize}
-
-\item Leung \& George ``Static Single Assignment Form for Machine Code'' [PLDI'99]
-
-\begin{itemize}
-\item handles the operand constraints of machine-level SSA form
-\item builds on the algorithm by Briggs et al. [SPE 28(8) 1998]
-\item Errors in missing parallel copies in case of W shaped CFG, the copies in
-the pointy edge need to be in parallel
-\end{itemize}
-
-\item Rastello et al. ``Optimizing Translation Out of SSA using Renaming
-Constraints'' [CGO'04] (STMicroelectronics)
-\begin{itemize}
-\item fix bugs and generalize Leung \& George [PLDI'99]
-\item generalize Sreedhar et al. [SAS'99] (and avoid patent)
-\end{itemize}
-
-\end{itemize}
-
+\begin{comment}
 
 \begin{center} \underline{Sreedhar et al. [SAS~1999] Liveness and Congruence Example}
 \end{center}
 
-%\input{ssa-live.latex}
+\begin{figure}
+\input{ssa-live.latex}
+\caption{Congruence classes.}
+\end{figure}
 
 \begin{itemize}
 
@@ -813,10 +913,10 @@ blocks and $\Phi$ targets are live-in of $\Phi$ block
 \item SSA form is \emph{conventional} if no two members of a $\Phi$-congruence
 class interfere under this liveness
 
-\item correct SSA destruction is the removal of $\Phi$-functions from
+\item correct SSA form destruction is the removal of $\Phi$-functions from
 a conventional SSA form
 
-\item after SSA construction (without COPY propagation), the SSA form is
+\item after SSA form construction (without COPY propagation), the SSA form is
 conventional
 
 \item Methods 1 -- 3 restore a conventional SSA form
@@ -829,6 +929,10 @@ as the SSA form remains conventional
 % virtual swap & lost copy: need parallel copies and critical arc splitting
 % critical arc splitting required when folded copy and multiple edges from same
 % predecessor
+
+%\end{comment}
+%
+%\begin{comment}
 
 \subsection{Register allocation}
 
@@ -846,4 +950,7 @@ Issue with predicated or conditional instructions.
 Issue with aliased registers.
 
 Pre conditioning to reduce MaxLive, saturation, sufficiency
+
+\end{comment}
+
 
