@@ -460,8 +460,8 @@ Chapter~\ref{chapter:constant_propagation_is_easier}.
 \begin{algorithm}[t!]
 %  \textsf{function back\_propagate}(transfer\_functions $\cal G$)\\
 $\var{worklist} \gets \emptyset$\;
- \lForEach{$v \in \textrm{vars}$}{$\val{v} \gets \top$}\;
- \lForEach{$i \in \textrm{insts}$}{push(\var{worklist}, $i$)}\;
+ \lForEach{$v \in \textrm{vars}$}{$\val{v} \gets \top$}
+ \lForEach{$i \in \textrm{insts}$}{push(\var{worklist}, $i$)}
  \While{$\var{worklist}\neq \emptyset$}{
    $i \gets \textrm{pop}(\var{worklist}$)\;
    \ForEach{$v \in \var{i.uses}$}{
@@ -477,8 +477,8 @@ $\var{worklist} \gets \emptyset$\;
 
 \begin{algorithm}[t!]
 $\var{worklist} \gets \emptyset$\;
- \lForEach{$v \in \textrm{vars}$}{$\val{v} \gets \top$}\;
- \lForEach{$i \in \textrm{insts}$}{push(\var{worklist}, $i$)}\;
+ \lForEach{$v \in \textrm{vars}$}{$\val{v} \gets \top$}
+ \lForEach{$i \in \textrm{insts}$}{push(\var{worklist}, $i$)}
  \While{$\var{worklist}\neq \emptyset$}{
    $i \gets \textrm{pop}(\var{worklist}$)\;
    \ForEach{$v \in \var{i.defs}$}{
@@ -837,7 +837,7 @@ We describe each of these phases in the rest of this section.
     % \end{function}
   }
 \caption{\label{fig:SSIfy} Split the live-ranges of $v$ to convert it to SSI 
-form}.
+form.}
 \end{figure}
 
 \subsection{Splitting live-ranges}
@@ -861,38 +861,51 @@ $\textit{DF}^+$.
 That is, the post-dominance frontier is the dominance frontier in a CFG where
 direction of edges have been reversed. Note that, just as the notion of dominance requires the existence of a unique entry node that can reach every CFG node, the notion of post dominance requires the existence of a unique exit node reachable by any CFG node. For control-flow graphs that contain several exit nodes or loops with no exit, we can ensure the single-exit property by creating a dummy common exit node and inserting some never-taken exit edges into the program.
 
-\begin{figure}[t!]
-\begin{small}
-  {\defall
-    \begin{tabular}{rl}
-      $_1$&{\sf function split}(var \var{v}, Splitting\_Strategy
-      $\SS_v = I_\downarrow \cup I_\uparrow$)\\
-      $_2$&\1 ``compute the set of split nodes"\\
-      $_3$&\1$S_\uparrow = \emptyset$\\
-      $_4$&\1\Foreach $i \in I_\uparrow$:\\
-      $_5$&\1\1 \If $i.\textrm{is\_join}$:\\
-      $_6$&\1  \2 \Foreach $e\in \textit{incoming\_edges}(i)$:\\
-      $_7$&\1     \3  $S_\uparrow = S_\uparrow \bigcup \Out(pDF^+(e))$\\
-      $_8$&\1\1 \Else:\\
-      $_9$&\1  \2 $S_\uparrow = S_\uparrow \bigcup \Out(pDF^+(i))$\\
-      $_{10}$&\1$S_\downarrow = \emptyset$\\
-      $_{11}$&\1\Foreach $i \in S_\uparrow \bigcup \Defs(v) \bigcup I_\downarrow$:\\
-      $_{12}$&\1\1 \If $i.\textrm{is\_branch}$:\\
-      $_{13}$&\1  \2 \Foreach $e \in \textit{outgoing\_edges}(i)$\\
-      $_{14}$&\1      \3 $S_\downarrow = S_\downarrow \bigcup \In(DF^+(e))$\\
-      $_{15}$&\1\1 \Else:\\
-      $_{16}$&\1  \2 $S_\downarrow = S_\downarrow \bigcup \In(DF^+(i))$\\
-      $_{17}$&\1$S = \SS_v \bigcup S_\uparrow \bigcup S_\downarrow$\\
-      $_{18}$&\1 ``Split live-range of $v$ by inserting $\phi$, $\sigma$, and copies"\\
-      $_{19}$&\1\Foreach  $i \in S$:\\
-      $_{20}$&\1\1 \If $i$ does not already contain any definition of $v$:\\
-      $_{21}$&\1   \2  \If $i.\textrm{is\_join}$: insert ``$v=\phi(v,...,v)$" at $i$\\
-      $_{22}$&\1   \2  \Else \If $i.\textrm{is\_branch}$: insert ``$(v,...,v)= \sigma(v)$" at  $i$\\
-      $_{23}$&\1   \2 else: insert a copy ``$v=v$" at $i$\\
-    \end{tabular}
-  }
-\caption{\label{fig:Spliting} live-range splitting. We use $\In(l)$ to denote a program point immediately before $l$, and $\Out(l)$ to denote a program point immediately after $l$.} 
-\end{small}
+\begin{figure}[htbp]
+  \def\Sup{S_{\kern.4pt\uparrow}}
+  \def\Sdown{S_\downarrow}
+  \def\DF{\textit{DF}}
+  \def\pDF{\textit{pDF}}
+  \begin{algorithm}[H]
+    \Fn{\ssiSplit{var \var{v},  Splitting\_Strategy $\SS_v = I_\downarrow \cup I_\uparrow$}}{
+    \tcc{compute the set of split nodes}
+      $\Sup \gets \emptyset$\;
+      \ForEach{$i \in I_\uparrow$}{
+        \If{$i.\textrm{is\_join}$}{
+          \ForEach{$e\in \textit{incoming\_edges}\,(i)$}{
+               $\Sup \gets \Sup \cup \Out(\pDF^+(e))$\;
+             }
+           }
+         \lElse{ $\Sup \gets \Sup \cup \Out(\pDF^+(i))$}
+      }
+      $\Sdown \gets \emptyset$\;
+      \ForEach{$i \in \Sup \cup \Defs(v) \cup I_\downarrow$}{
+         \If{$i.\textrm{is\_branch}$}{
+           \ForEach{$e \in \textit{outgoing\_edges}\,(i)$}{
+               $\Sdown \gets \Sdown \cup \In(\DF^+(e))$\;
+             }
+          }
+         \lElse{
+           $\Sdown \gets \Sdown \cup \In(\DF^+(i))$
+         }
+      }
+      $S \gets \SS_v \cup \Sup \cup \Sdown$\;
+       \tcc{Split live-range of $v$ by inserting $\phi$, $\sigma$, and copies}
+       \ForEach{$i \in S$}{
+         \If{$i$ does not already contain any definition of $v$}{
+           \lIf{$i.\textrm{is\_join}$}{insert ``$v\gets\phi(v,...,v)$'' at $i$}
+           \Else{
+             \lIf{$i.\textrm{is\_branch}$}{insert ``$(v,...,v)\gets \sigma(v)$" 
+             at $i$}
+             \lElse{insert a copy ``$v\gets v$" at $i$}
+           }
+         }
+       }
+     }
+  \end{algorithm}
+  \caption{Live-range splitting. $\In(l)$ denotes a program point immediately 
+  before $l$, and $\Out(l)$ a program point immediately after $l$.}
+  \label{fig:Spliting}
 \end{figure}
 
 Figure~\ref{fig:Spliting} shows the algorithm that we use to create new
@@ -917,51 +930,59 @@ These new definitions might be created by $\sigma$ functions (due to $\SS_v$ or
 to the splitting in lines 3-9); by \phifuns (due to $\SS_v$ or to the
 splitting in lines 10-16); or by parallel copies.
 
-\begin{figure}[t!]
-\begin{small}
-  {\defall
-    \begin{tabular}{rl}
-      $_{1}$&{\sf function rename(var $v$)}\\
-      $_{2}$&\1 ``Compute use-def \& def-use chains"\\
-      $_{3}$&\1 ``We consider here that $\textsf{stack.peek}()=\bot$ if
-      {\sf stack.isempty()},\\
-      $_{4}$&\1~~~and that $def(\bot)=entry$"\\
-      $_{5}$&\1$stack = \emptyset$\\
-      $_{6}$&\1\Foreach CFG node $n$ in dominance order:\\
-      $_{7}$&\1\1 \If exists $v =\phi(v: l^1, \ldots, v: l^q)$ in $\In(n)$:\\
-      $_{8}$&\1  \2 $\textsf{stack.set\_def}(v =\phi(v: l^1, \ldots, v: l^q))$\\
-      $_{9}$&\1\1 \Foreach instruction $u$ in $n$ that uses $v$:\\
-      $_{10}$&\1  \2 $\textsf{stack.set\_use}(u)$\\
-      $_{11}$&\1\1 \If exists instruction $d$ in $n$ that defines $v$:\\
-      $_{12}$&\1  \2 $\textsf{stack.set\_def}(d)$\\
-      $_{13}$&\1\1 \Foreach instruction $(\ldots) =\sigma(v)$ in $\Out(n)$:\\
-      $_{14}$&\1  \2 $\textsf{stack.set\_use}((\ldots) =\sigma(v))$\\
-      $_{15}$&\1\1 \If exists $(v: l^1, \ldots, v: l^q) =\sigma(v)$ in $\Out(n)$:\\
-      $_{16}$&\1  \2 \Foreach $v: l^i = v$ in $(v: l^1, \ldots, v: l^q) =\sigma(v)$:\\
-      $_{17}$&\1     \3 $\textsf{stack.set\_def}(v: l^i = v)$\\
-      $_{18}$&\1\1 \Foreach $m$ in $successors(n)$:\\
-      $_{19}$&\1  \2 \If exists $v =\phi(\dots, v:l^n, \ldots)$ in $\In(m)$:\\
-      $_{20}$&\1     \3 $\textsf{stack.set\_use}(v = v: l^n)$\\  
-    \end{tabular}
+\begin{figure}[htbp]
+  \begin{algorithm}[H]
+    \Fn{\ssiRename{var \var{v}}}{
+      \tcc{Compute use-def \& def-use chains.}
+      \tcc{We consider here that $\textrm{stack.peek}()=\bot$ if
+      {\rm stack.isempty()}, and that $\textrm{def}(\bot)=\textrm{entry}$}
+      $\textrm{stack} \gets \emptyset$\;
+      \ForEach{CFG node $n$ in dominance order}{
+        \If{$\exists v \gets\phi(v: l^1, \ldots, v: l^q)$ in $\In(n)$}{
+          $\textrm{stack.set\_def}(v \gets\phi(v: l^1, \ldots, v: l^q))$\;
+        }
+        \ForEach{instruction $u$ in $n$ that uses $v$}{
+          $\textrm{stack.set\_use}(u)$\;
+        }
+        \If{$\exists$ instruction $d$ in $n$ that defines $v$}{
+          $\textrm{stack.set\_def}(d)$\;
+        }
+        \ForEach{instruction $(\ldots) \gets\sigma(v)$ in $\Out(n)$}{
+          $\textrm{stack.set\_use}((\ldots) \gets\sigma(v))$\;
+        }
+        \If{$\exists (v: l^1, \ldots, v: l^q) \gets\sigma(v)$ in $\Out(n)$}{
+          \ForEach{$v: l^i \gets v$ in $(v: l^1, \ldots, v: l^q) 
+          \gets\sigma(v)$}{
+            $\textrm{stack.set\_def}(v: l^i \gets v)$\;
+          }
+        }
+        \ForEach{$m$ in $\textit{successors}\,(n)$}{
+          \If{$\exists v \gets\phi(\dots, v:l^n, \ldots)$ in $\In(m)$}{
+            $\textrm{stack.set\_use}(v \gets v: l^n)$\;
+          }
+        }
+      }
+    }
+  \end{algorithm}
+  \defall
 
     \begin{tabular}{rl}
-      $_{21}$&\textsf{function stack.set\_use(instruction \var{inst})}:\\
-      $_{22}$&\1\While $def(\textsf{stack.peek()})$ does not dominate inst: \textsf{stack.pop()}\\
-      $_{23}$&\1$v_i = \textsf{stack.peek()}$\\
+      $_{21}$&\textrm{function stack.set\_use(instruction \var{inst})}:\\
+      $_{22}$&\1\While $def(\textrm{stack.peek()})$ does not dominate inst: \textrm{stack.pop()}\\
+      $_{23}$&\1$v_i = \textrm{stack.peek()}$\\
       $_{24}$&\1replace the uses of $v$ by $v_i$ in inst\\
-      $_{25}$&\1\If $v_i\neq \bot$: set $\Uses(v_i)=\Uses(v_i) \bigcup$ inst
+      $_{25}$&\1\If $v_i\neq \bot$: set $\Uses(v_i)=\Uses(v_i) \cup$ inst
     \end{tabular}
 
     \begin{tabular}{rl}
-      $_{26}$&\textsf{function stack.set\_def}(instruction inst):\\
+      $_{26}$&\textrm{function stack.set\_def}(instruction inst):\\
       $_{27}$&\1let $v_i$ be a fresh version of $v$\\
       $_{28}$&\1replace the defs of $v$ by $v_i$ in inst\\
       $_{29}$&\1set $\Def(v_i)=$ inst\\
-      $_{30}$&\1$\textsf{stack.push}(v_i)$
+      $_{30}$&\1$\textrm{stack.push}(v_i)$
     \end{tabular}
-  }
-\end{small}
-\caption{\label{fig:Rename} Versioning} 
+    \caption{Versioning}
+    \label{fig:Rename}
 \end{figure}
 
 \subsection{Variable Renaming}
