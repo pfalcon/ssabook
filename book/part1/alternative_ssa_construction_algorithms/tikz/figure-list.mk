@@ -1,0 +1,6 @@
+FIGS= \
+      cfglive \
+      cfgdj
+
+SUBFIGS= \
+
