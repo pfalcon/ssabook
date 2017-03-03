@@ -26,9 +26,11 @@ In SSA form every variable is assigned only once.
 At control-flow merge points \phifuns are added to ensure that every use of a variable corresponds to exactly one definition. 
 In the rest of this chapter we will present three different approaches for placing \phifuns at appropriate merge nodes. 
 Recall that SSA construction falls into two phases of $\phi$-placement and variable renaming. 
-Here we present different approaches for the first phase for minimal SSA form. 
-We first present some properties of the \DJ-graph\index{DJ-graph@\DJ-graph} that allow to compute the iterated dominance frontier of some set of nodes $S$ by traversing the \DJ-graph from leafs to root. 
-\phifuns can then be placed using the \iDF set.
+Here we present different approaches for the first phase for minimal SSA form.  
+We first present some properties of the \DJ-graph\index{DJ-graph@\DJ-graph} 
+that allow to compute the iterated dominance frontier of a given set of nodes 
+$S$ by traversing the \DJ-graph from leafs to root.  \phifuns can then be 
+placed using the \iDF set.
 Based on the same properties, we then present an alternative scheme for computing \iDF-graph based on data-flow equations, this time using a traversal of the \DJ-graph from root to leafs. 
 Finally we describe another approach for computing the iterated dominance frontier based on the loop nesting forest.
 
@@ -43,9 +45,13 @@ The dominance frontier\index{dominance frontier} $\DF(x)$ of a node $x$ is the s
 %Thus, from the point of view of $x$, the \DF nodes are the earliest appearance of paths joining the flow without passing through $x$.
 For example, $\DF(8)= \{ 6, 8 \}$ in Figure~\ref{fig:cfg}. 
 %FAB: Removed the mentions of complexity as the problem is not clearly stated (cost for the placement for one variable, for all...)
-Basic algorithm for the placement of \phifuns consists of computing the iterated dominance frontier (\iDF) for a set of all definition points (or nodes where variables are defined). 
-Let $\Defs{v}$ be the set of nodes where variable $v$ is defined. 
-Given that the dominance frontier for a set of nodes is just the union of the \DF set of each node, we can compute $\iDF(\Defs{v})$ as a limit of the following recurrence equation (where $S$ is initially $\Defs{v}$):
+The basic algorithm for the placement of \phifuns consists in computing the 
+iterated dominance frontier (\iDF) for a set of all definition points (or nodes 
+where variables are defined).  Let $\Defs{v}$ be the set of nodes where 
+variable $v$ is defined.  Given that the dominance frontier for a set of nodes 
+is just the union of the \DF set of each node, we can compute $\iDF(\Defs{v})$ 
+as a limit of the following recurrence equation (where $S$ is initially 
+$\Defs{v}$):
 \begin{eqnarray*}
 \iDF_1(S) &=& \DF(S) \\
 \iDF_{i+1} (S) &=& \DF(S \cup \iDF_i(S)) 
@@ -54,20 +60,27 @@ A \phifun is then placed at each merge node in the  $\iDF(\Defs{v})$ set.
 
 \section{Computation of $\iDF(S)$ using \DJ-graphs}
 \label{section:alternative_ssa_construction_algorithms:sreedhar}
-We now propose a linear time algorithm for computing, for a given set of nodes $S$, the $\iDF(S)$ set without the need for explicitly pre-computing the full \DF set. 
-The proposed algorithm uses the \DJ-graph (See Section~\ref{sec:classical_construction_algorithm:phiinsertion} and Figure~\ref{fig:classical_construction_algorithm:iDF-J}) representation of a CFG. 
-The \DJ-graph for our example CFG is also shown in Figure~\ref{fig:cfg}(b). 
-Rather than explicitly computing the \DF set, this algorithm uses a \DJ-graph to compute the $\iDF(\Defs{v})$ on the fly. 
+We now present a linear time algorithm for computing the $\iDF(S)$ set of
+a given set of nodes $S$ without the need for explicitly pre-computing the full 
+\DF set.  The algorithm uses the \DJ-graph (See 
+Section~\ref{sec:classical_construction_algorithm:phiinsertion} and 
+Figure~\ref{fig:classical_construction_algorithm:iDF-J}) representation of 
+a CFG.  The \DJ-graph for our example CFG is also shown in 
+Figure~\ref{sub:alt:DJ}.  Rather than explicitly computing the \DF set, this 
+algorithm uses a \DJ-graph to compute the $\iDF(\Defs{v})$ on the fly. 
 
 \subsection{Key Observations} 
  
 Now let us try to understand how to compute the \DF set for a \emph{single node} using the \DJ-graph.
 %FAB: add key observation that J-edge is going up (important to understand the other key observation)
 %FAB: replaced level by depth (to disambiguate between low level / high in the figure)
-Consider the \DJ-graph shown in Figure~\ref{fig:cfg}(b) where the depth of a node is the  distance from the root in the dominator tree.
-The first key observation is that a \DF-edge never goes down to a higher depth.
-To give a row intuition, suppose there is a \DF-edge from 8 to 7, this would mean there exists a path from 3 to 7 through 8 without flowing through 6:
-This would contradict the dominance of 7 by 6. 
+Consider the \DJ-graph shown in Figure~\ref{sub:alt:DJ} where the depth of 
+a node is the  distance from the root in the dominator tree.
+The first key observation is that a \DF-edge never goes down to a greater depth.
+To give a raw intuition of why this property holds, suppose there were 
+a \DF-edge from 
+8 to 7, then there would be a path from 3 to 7 through 
+  8 without flowing through 6, which contradicts the dominance of 7 by 6. 
 
 
 As a consequence, to compute $\DF(8)$ we can simply walk down the dominator (D) tree from node 8 and from each visited node $y$, identify all join (J) edges $y \st{J} z$ such that $z.\depth \leq 8.\depth$. 
@@ -83,9 +96,11 @@ $$\dominated{x} = \{ y\mid x\dom y \}$$
   % \centerline{\includegraphics[scale=0.4]{cfglive_new.pdf}}
   \subfloat[][CFG]{
     \tikzfigure{cfglive}
+    \label{sub:alt:cfg}
   }
   \subfloat[][\DJ-graph]{
     \tikzfigure{cfgdj}
+    \label{sub:alt:DJ}
   }
   \caption{A motivating example.}
   \label{fig:cfg}
@@ -99,13 +114,17 @@ If $\DF(x)$ has already been computed before the computation of $\DF(w)$, the tr
 This is because nodes reachable from $\dominated{x}$ are already in $\DF(x)$. 
 However, the converse may not be true, and therefore the order of the computation of \DF is crucial.
 
-To illustrate the key observation consider the example \DJ-graph in Figure~\ref{fig:cfg}(b), and let us compute $\iDF(\{3,8\})$. 
-It is clear from the recursive definition of \iDF that we have to compute $\DF(3)$ and $\DF(8)$ as a first step. 
-Now supposing we start with node $3$ and compute $\DF(3)$. 
-The resulting \DF set is $\DF(3) = \{2\}$. 
-Now supposing we next compute the \DF set for node $8$, and the resulting set is $\DF(8) = \{6,8\}$. 
-Notice here that we have already visited node $8$ and its sub-tree when visiting node $3$. 
-We can avoid such duplicate visits by ordering the computation of \DF set so that we first compute $\DF(8)$ and then during the computation of $\DF(3)$ we avoid visiting the sub-tree of node $8$, and use the result $\DF(8)$ that was previously computed.
+To illustrate the key observation consider the example \DJ-graph in 
+Figure~\ref{sub:alt:DJ}, and let us compute $\iDF(\{3,8\})$.  It is clear from 
+the recursive definition of \iDF that we have to compute $\DF(3)$ and $\DF(8)$ 
+as a first step.  Now supposing we start with node $3$ and compute $\DF(3)$.  
+The resulting \DF set is $\DF(3) = \{2\}$.  Now supposing we next compute the 
+\DF set for node $8$, and the resulting set is $\DF(8) = \{6,8\}$.  Notice here 
+that we have already visited node $8$ and its sub-tree when visiting node $3$.  
+We can avoid such duplicate visits by ordering the computation of \DF set so 
+that we first compute $\DF(8)$ and then during the computation of $\DF(3)$ we 
+avoid visiting the sub-tree of node $8$, and use the result $\DF(8)$ that was 
+previously computed.
 
 Thus, to compute $\DF(w)$, where $w$ is an ancestor of $x$ in the \DJ-graph, we do not need to compute it from scratch as we can re-use the information computed as part of $\DF(x)$ as shown. 
 For this, we need to compute the \DF of deeper (based on depth) nodes (here, $x$), before computing the \DF of a shallower node (here, $w$).
@@ -156,7 +175,7 @@ To ensure that the nodes are processed according to the above observation we use
   \ForEach{J-edge $y \st{J} z$}{
     \If{$z.\depth \leq \textit{current\_x}.\depth$}{
       \If{$z \not \in \iDF$}{
-        $\iDF \gets \iDF \cup \{z\}$\;   \label{C:idf}
+        $\iDF \gets \iDF \cup \{z\}$\;   \label{line:alt:idf}
         \lIf{$z \not  \in S$}{
           $\insertN(z)$ \label{C:insert}
         }
@@ -175,11 +194,15 @@ To ensure that the nodes are processed according to the above observation we use
 In Algorithm~\ref{algo:IDFMain}, at first we insert all nodes belonging to $S$ in the \textit{OrderedBucket}. 
 Then the nodes are processed in a bottom-up fashion over the \DJ-graph from deepest node depth to least node depth by calling \ref{proc:visit}($x$). 
 The procedure \ref{proc:visit}($x$) essentially walks top-down in the \DJ-graph avoiding already visited nodes. 
-During this traversal it also peeks at destination nodes of J-edges. 
-Whenever it notices that the depth number of the destination node of a J-edge is less than or equal to the depth number of the $\textit{current\_x}$, the destination node is added to the $\iDF$ set (Line~\ref{C:idf}) if it is not present in \iDF already. 
-Notice that at Line~\ref{C:insert} the destination node is also inserted in the {\it OrderedBucket} if it was never inserted before. 
-Finally at Line~\ref{C:dedges} we continue to process the nodes in the sub-tree by visiting over the D-edges. 
-When the algorithm terminates, the set $\iDF$ contains the iterated dominance frontier for the initial set $S$.
+During this traversal it also peeks at destination nodes of J-edges.  Whenever 
+it notices that the depth number of the destination node of a J-edge is less 
+than or equal to the depth number of the $\textit{current\_x}$, the destination 
+node is added to the $\iDF$ set (Line~\ref{line:alt:idf}) if it is not present 
+in \iDF already.  Notice that at Line~\ref{C:insert} the destination node is 
+also inserted in the {\it OrderedBucket} if it was never inserted before.  
+Finally at Line~\ref{C:dedges} we continue to process the nodes in the sub-tree 
+by visiting over the D-edges.  When the algorithm terminates, the set $\iDF$ 
+contains the iterated dominance frontier for the initial set $S$.
 
 \begin{figure}[htb]
     \centerline{\includegraphics[scale=0.3]{sreedhargao.pdf}}
@@ -193,16 +216,17 @@ The \textit{OrderedBucket} is populated with the nodes $1,3,4$ and $7$ correspon
 The nodes are placed in the buckets corresponding to the depths at which they appear. 
 Hence, node~1 which appears at depth~0 is in the 0-th bucket, node~3 is in bucket~2 and so on. 
 Since the nodes are processed bottom-up, the first node that is visited is node~7. 
-The J-edge $7 \st{J} 2$ is considered, and the $\iDF$ set is empty: 
-the $\iDF$ set is updated to hold node~2 according to Line~\ref{C:idf} of the Visit procedure. 
-In addition, $\insertN(2)$ is invoked and node~2 is placed in bucket~2. 
-The next node visited is node~4. 
-The J-edge $4 \st{J} 5$ is considered which results in the new $\iDF = \{2,5\}$. 
-The final $\iDF$ set converges to $\{2,5,6\}$ when node~5 is visited. 
-Subsequent visits of other nodes do not add anything to the $\iDF$ set. 
-An interesting case arises when node~3 is visited. 
-Node~3 finally causes nodes 8, 9 and 10 also to be visited (Line~\ref{C:dedges} during the down traversal of the D-graph). 
-However, when node~10 is visited, considering J-edge $10 \st{J} 8$ does not result in an update of the $\iDF$ set as the depth of node~8 is deeper than that of node~3.
+The J-edge $7 \st{J} 2$ is considered, and the $\iDF$ set is empty: the $\iDF$ 
+set is updated to hold node~2 according to Line~\ref{line:alt:idf} of the Visit 
+procedure.  In addition, $\insertN(2)$ is invoked and node~2 is placed in 
+bucket~2.  The next node visited is node~4.  The J-edge $4 \st{J} 5$ is 
+considered which results in the new $\iDF = \{2,5\}$.  The final $\iDF$ set 
+converges to $\{2,5,6\}$ when node~5 is visited.  Subsequent visits of other 
+nodes do not add anything to the $\iDF$ set.  An interesting case arises when 
+node~3 is visited.  Node~3 finally causes nodes 8, 9 and 10 also to be visited 
+(Line~\ref{C:dedges} during the down traversal of the D-graph).  However, when 
+node~10 is visited, considering J-edge $10 \st{J} 8$ does not result in an 
+update of the $\iDF$ set as the depth of node~8 is deeper than that of node~3.
 
 
 \section{Data-flow computation of \iDF-graph using \DJ-graph}
@@ -242,87 +266,140 @@ If some node is found to be inconsistent, multiple passes are required until a f
 
 \subsection{Top Down \iDF Set Computation}
 
+\begin{procedure}
+  \caption{TDMSCMain()}
+  \label{proc:tdmscmain}
+  \KwIn{A \DJ-graph representation of a program.}
+  \KwOut{The \iDF sets for the nodes.}
+  \ForEach{node $x \in$ \DJ-graph}{
+    $\iDF(x) \gets \{\}$
+  }
+  \lRepeat{TDMSC-I(\DJ-graph)}{}
+\end{procedure}
+
+\begin{function}
+  \caption{TDMSC-I(\DJ-graph)}
+  \label{proc:alt:tdmscI}
+  $\textit{RequireAnotherPass} \gets \false$\;
+
+  \lForEach{edge $e$}{
+    $e.\visited \gets \false$
+  }
+  \While{$z \gets$ next node in B(readth) F(irst) S(earch) order of \DJ-graph}{ 
+    \label{line:alt:bfs}
+    \ForEach{incoming edge $e = y \st{J} z$}{ \label{line:alt:jedge}
+      \If{not $e.\visited$}{
+        $e.\visited \gets \true$\;
+        $x \gets y$\;
+              % $\textit{lx} = \nullprog$; %FAB: removed: not necessary
+        \While{$(x.\depth\ge z.\depth)$}{
+          \label{line:alt:mwhiles}
+          $\iDF(x) \gets \iDF(x)\cup \iDF(z)\cup \{z\}$\;
+          $\textit{lx} \gets x$\;
+          $x \gets \textrm{parent}(x)$ \tcc*{dominator tree parent}
+        }
+        \ForEach{incoming edge $e' = y^{'} \st{J} \textit{lx}$}{
+          \label{line:alt:lnode}
+          \If{$e'.\visited$}{
+            \If(\tcc*[f]{Check inconsistency}){$\iDF(y') \not\supseteq 
+              \iDF(\textit{lx})$}{%
+                 $\textit{RequireAnotherPass} \gets \true$;
+            }
+          }
+        }
+      }
+    }
+  }
+  \Return{$\textit{RequireAnotherPass}$}
+\end{function}
+
 %==
-\begin{figure}[!ht]
-\centering
-\begin{minipage}[t]{5in}
-\noindent{\bf Input:} A \DJ-graph representation of a program.
-\noindent{\bf Output:} The \iDF sets for the nodes.
+%\begin{figure}[!ht]
+%\centering
+%\begin{minipage}[t]{5in}
+%\noindent{\bf Input:} A \DJ-graph representation of a program.
+%\noindent{\bf Output:} The \iDF sets for the nodes.
+%
+%\setcounter{linectr}{0}
+%Procedure TDMSCMain
+%\{
+%\begin{code}
+%\x1 $\forall$ node $x \in$ \DJ-graph set $\iDF(x) = \{\}$
+%\x1 {\it done = false};
+%\x1 {\bf while} (! {\it done}) {\bf do}
+%\x2     {\it done} = TDMSC-I(\DJ-graph);
+%\x1 {\bf end while}
+%\end{code}
+%\}
+%
+%%FAB: Added initialization of visited 
+%Procedure TDMSC-I(\DJ-graph)
+%\{
+%\begin{code}
+%%\textbf{Algorithm: Top Down Merge Set Computation (TDMSC-I)}
+%%Input: $\DJ$-graph
+%%Outputs: Complete Merge Sets for every node of the \DJ-graph
+%
+%\x1 $\textit{RequireAnotherPass}=\false$;
+%\x1 {\bf for} ($\forall$ edge $e$) {\bf do} $e.\visited = \false$;
+%
+%\x1 {\bf while} ($z$ = next node in B(readth) F(irst) S(earch) order of \DJ-graph) {\bf do} \label{C:bfs}
+%%\x2      $z$ $=$ Next Node in BFS list
+%\x2      {\bf for} ($\forall$ incoming edge $e = y \st{J} z$) {\bf do} \label{C:jedge}
+%\x3          {\bf if} ($e.\visited=\false$) {\bf then}
+%\x4              $e.\visited=\true$;
+%\x4              $\textit{x} = y$;
+%%\x4              $\textit{lx} = \nullprog$; %FAB: removed: not necessary
+%\x4              {\bf while} $(x.\depth\ge z.\depth)$ {\bf do} \label{C:mwhiles}
+%
+%\x5                   $\iDF(x)=\iDF(x)\cup \iDF(z)\cup \{z\}$;
+%\x5                   $\textit{lx}=x$;
+%\x5                   $x=\textrm{parent}(x)$; //dominator tree parent 
+%\x4              {\bf end while} \label{C:mwhilee}
+%\x4              {\bf for} ($\forall$ incoming edge  $e' = y^{'} \st{J} \textit{lx}$) {\bf do} \label{C:lnode}
+%\x5                  {\bf if} ($e'.\visited=\true$) {\bf then}
+%\x6                     {\bf if} $(\iDF(y') \not\supseteq \iDF(\textit{lx}))$ {\bf then} //Check inconsistency
+%\x7                         $\textit{RequireAnotherPass} = \true$;
+%\x6                     {\bf end if}
+%\x5                  {\bf end if}
+%\x4              {\bf end for}
+%\x3          {\bf end if}
+%\x2     {\bf end for}
+%\x1 {\bf end while}
+%\x1 {\bf return} $\textit{RequireAnotherPass}$;
+%\end{code}
+%\}
+%\end{minipage}
+%\caption{Top Down \iDF Set Computation.}
+%\label{F:tdmsc}
+%\end{figure} 
 
-\setcounter{linectr}{0}
-Procedure TDMSCMain
-\{
-\begin{code}
-\x1 $\forall$ node $x \in$ \DJ-graph set $\iDF(x) = \{\}$
-\x1 {\it done = false};
-\x1 {\bf while} (! {\it done}) {\bf do}
-\x2     {\it done} = TDMSC-I(\DJ-graph);
-\x1 {\bf end while}
-\end{code}
-\}
-
-%FAB: Added initialization of visited 
-Procedure TDMSC-I(\DJ-graph)
-\{
-\begin{code}
-%\textbf{Algorithm: Top Down Merge Set Computation (TDMSC-I)}
-%Input: $\DJ$-graph
-%Outputs: Complete Merge Sets for every node of the \DJ-graph
-
-\x1 $\textit{RequireAnotherPass}=\false$;
-\x1 {\bf for} ($\forall$ edge $e$) {\bf do} $e.\visited = \false$;
-
-\x1 {\bf while} ($z$ = next node in B(readth) F(irst) S(earch) order of \DJ-graph) {\bf do} \label{C:bfs}
-%\x2      $z$ $=$ Next Node in BFS list
-\x2      {\bf for} ($\forall$ incoming edge $e = y \st{J} z$) {\bf do} \label{C:jedge}
-\x3          {\bf if} ($e.\visited=\false$) {\bf then}
-\x4              $e.\visited=\true$;
-\x4              $\textit{x} = y$;
-%\x4              $\textit{lx} = \nullprog$; %FAB: removed: not necessary
-\x4              {\bf while} $(x.\depth\ge z.\depth)$ {\bf do} \label{C:mwhiles}
-
-\x5                   $\iDF(x)=\iDF(x)\cup \iDF(z)\cup \{z\}$;
-\x5                   $\textit{lx}=x$;
-\x5                   $x=\textrm{parent}(x)$; //dominator tree parent 
-\x4              {\bf end while} \label{C:mwhilee}
-\x4              {\bf for} ($\forall$ incoming edge  $e' = y^{'} \st{J} \textit{lx}$) {\bf do} \label{C:lnode}
-\x5                  {\bf if} ($e'.\visited=\true$) {\bf then}
-\x6                     {\bf if} $(\iDF(y') \not\supseteq \iDF(\textit{lx}))$ {\bf then} //Check inconsistency
-\x7                         $\textit{RequireAnotherPass} = \true$;
-\x6                     {\bf end if}
-\x5                  {\bf end if}
-\x4              {\bf end for}
-\x3          {\bf end if}
-\x2     {\bf end for}
-\x1 {\bf end while}
-\x1 {\bf return} $\textit{RequireAnotherPass}$;
-\end{code}
-\}
-\end{minipage}
-\caption{Top Down \iDF Set Computation.}
-\label{F:tdmsc}
-\end{figure} 
-
-The first and direct variant of the approach laid out above is poetically termed TDMSC-I. 
-This variant works by scanning the \DJ-graph in a top-down fashion as shown in Line~\ref{C:bfs} of Figure~\ref{F:tdmsc}. 
-All $\iDF(x)$ sets are set to the empty set before the initial pass of TDMSC-I. 
-The $\iDF(x)$ sets computed in a previous pass are carried over if a subsequent pass is required.
+The first and direct variant of the approach laid out above is poetically 
+termed \ref{proc:alt:tdmscI}.  This variant works by scanning the \DJ-graph in 
+a top-down fashion as shown in Line~\ref{line:alt:bfs} of Function 
+\ref{proc:alt:tdmscI}.
+All $\iDF(x)$ sets are set to the empty set before the initial pass of 
+\ref{proc:alt:tdmscI}.  The $\iDF(x)$ sets computed in a previous pass are 
+carried over if a subsequent pass is required.
 
 The \DJ-graph is visited depth by depth. 
-During this process, for each node $z$ encountered, if there is an \emph{incoming} J-edge $y \st{J} z$ as in Line~\ref{C:jedge}, then a separate bottom-up pass starts at Line~\ref{C:mwhiles}. 
+During this process, for each node $z$ encountered, if there is an \emph{incoming} J-edge $y \st{J} z$ as in Line~\ref{line:alt:jedge}, then a separate bottom-up pass starts at Line~\ref{line:alt:mwhiles}. 
 This bottom-up pass traverses all nodes $x$ such that $x$ dominates $y$ and $x.\depth \geq y.\depth$, updating the $\iDF(x)$ values using the aforementioned data-flow equation. 
-Line~\ref{C:lnode} is used for the inconsistency check. 
+Line~\ref{line:alt:lnode} is used for the inconsistency check. 
 \textit{RequireAnotherPass} is set to \true only if a fixed point is not reached and the inconsistency check succeeds for some node.
 
 There are some subtleties in the algorithm that should be noted. 
-Line~\ref{C:lnode} of the algorithm visits incoming edges to \textit{lx} only when \textit{lx} is at the same depth as $z$, which is the current depth of inspection and the incoming edges to \textit{lx}'s posterity are at a depth greater than that of node $z$ and are unvisited yet.
+Line~\ref{line:alt:lnode} of the algorithm visits incoming edges to \textit{lx} only when \textit{lx} is at the same depth as $z$, which is the current depth of inspection and the incoming edges to \textit{lx}'s posterity are at a depth greater than that of node $z$ and are unvisited yet.
 
 %FAB: Fixed running example that did not fit the algorithm
-Here, we will briefly walk through TDMSC-I using the \DJ-graph of Figure~\ref{fig:cfg}(b). 
-Moving top-down over the graph, the first J-edge encountered is $7 \st{J} 2$. 
-As a result, a bottom-up climbing of the nodes happens, starting at node $7$ and ending at node $2$ and the \iDF sets of these nodes are updated so that $\iDF(7) = \iDF(6) = \iDF(3) = \iDF(2) = \{2\}$. 
-The next J-edge to be visited can be any of $5 \st{J} 6$, $9 \st{J} 6$, $6 \st{J} 5$, $4 \st{J} 5$, or $10 \st{J} 8$ at $\depth = 3$. 
-Assume node 6 is visited first, and thus it is $5 \st{J} 6$, followed by  $9 \st{J} 6$.
+Here, we will briefly walk through TDMSC-I using the \DJ-graph of 
+Figure~\ref{sub:alt:DJ}.  Moving top-down over the graph, the first J-edge 
+encountered is $7 \st{J} 2$.  As a result, a bottom-up climbing of the nodes 
+happens, starting at node $7$ and ending at node $2$ and the \iDF sets of these 
+nodes are updated so that $\iDF(7) = \iDF(6) = \iDF(3) = \iDF(2) = \{2\}$.  The 
+next J-edge to be visited can be any of $5 \st{J} 6$, $9 \st{J} 6$, $6 \st{J} 
+5$, $4 \st{J} 5$, or $10 \st{J} 8$ at $\depth = 3$.  Assume node 
+6 is visited first, and thus it is $5 \st{J} 6$, followed by  $9 \st{J} 6$.
 This results in $\iDF(5) = \iDF(5) \cup \iDF(6) \cup \{6\} = \{2,6\}$, $\iDF(9) = \iDF(9) \cup \iDF(6) \cup \{6\} = \{2,6\}$, and $\iDF(8) = \iDF(8) \cup \iDF(6) \cup \{6\} = \{2,6\}$.
 Now, let $6 \st{J} 5$ be visited. 
 Hence, $\iDF(6) = \iDF(6) \cup \iDF(5) \cup \{5\} = \{2,5,6\}$. 
@@ -429,7 +506,7 @@ We will see later how the \iDF set for the entire graph is computed by consideri
 
   $\iDF \gets \emptyset$\;
   \lForEach{node $n$}{
-    $\textit{UniqueReachingDef}(n) \gets \{\textit{r}\}$\;
+    $\textit{UniqueReachingDef}(n) \gets \{\textit{r}\}$
   }
   \ForEach{node $u \neq \textit{r}$ in topological order}{
     $\textit{ReachingDefs} \gets \emptyset$\; 
