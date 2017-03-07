@@ -4,7 +4,8 @@ FIGS= \
       irred-lnf \
       sreedhargao \
       lnfcfg \
-      lnfred
+      lnfred \
+      example-df \
 
 SUBFIGS= \
       irred-1 \
