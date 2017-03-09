@@ -5,10 +5,11 @@ FIGS= \
       sreedhargao \
       lnfcfg \
       lnfred \
-      example-df \
 
 SUBFIGS= \
       irred-1 \
       irred-2 \
       irred-3 \
+      example-df-1 \
+      example-df-2 \
 
