@@ -49,23 +49,23 @@
 \newcommand{\Comment}{\hfill$\rhd$}
 
 \section{Introduction}
-This chapter illustrates the use of strict SSA properties\index{strict SSA form} to simplify and accelerate \emph{liveness analysis}, \ie an analysis that determines for all variables the set of program points where the variables' values are potentially used by subsequent operations.
+This chapter illustrates the use of strict SSA properties\index{strict SSA form} to simplify and accelerate \emph{liveness analysis}, which determines for all variables the set of program points where they are \emph{live}, i.e., their values are potentially used by subsequent operations.
 Liveness information is essential to solve storage assignment problems, eliminate redundancies, and perform code motion.
 For instance, optimizations like software pipelining, trace scheduling, register-sensitive redundancy elimination, if-conversion, as well as register allocation heavily rely on liveness information.
 
 % What is the problem
 
 Traditionally, liveness information is obtained by data-flow analysis\index{data-)flow analysis}:
-liveness sets are computed for all basic-blocks and variables simultaneously by solving a set of data-flow equations.
+liveness sets are computed for all basic blocks and variables simultaneously by solving a set of data-flow equations.
 These equations are usually solved by an iterative algorithm, propagating information backwards through the control-flow graph (CFG) until a fixed point is reached and the liveness sets stabilize.
 The number of iterations depends on the control-flow structure of the considered program, more precisely on the structure of its loops.
 
 % What is our main result. I think this is simple enough so that is can be put it in the introduction
-In this chapter, we show that, for strict SSA-form programs, the live-range of a variable, say~$v$, has nice properties that can be expressed in terms of loop nesting forest of the CFG and its corresponding directed acyclic graph, the forward-CFG\index{forward control-flow graph}.
-Informally speaking, and restricted to reducible CFGs, those properties are:
+In this chapter, we show that, for strict SSA-form programs, the live-range of a variable has nice properties that can be expressed in terms of loop nesting forest of the CFG and its corresponding directed acyclic graph, the \emph{forward-CFG}\index{forward control-flow graph}.
+Informally speaking, and restricted to reducible CFGs, those properties for a variable $v$ are:
 \begin{itemize}
 \item
-	$v$ is live at a program point~$q$ if and only if $v$ is live at the entry~$h$ of the largest loop/basic-block (highest node in the loop nesting forest\index{loop nesting forest}) that contains~$q$ but not the definition of~$v$.
+	$v$ is live at a program point~$q$ if and only if $v$ is live at the entry~$h$ of the largest loop/basic block (highest node in the loop nesting forest\index{loop nesting forest}) that contains~$q$ but not the definition of~$v$.
 \item
 	$v$ is live at~$h$ if and only if there is a path in the forward-CFG from~$h$ to a use of~$v$ that does not contain the definition.
 \end{itemize}
@@ -81,45 +81,43 @@ Irreducible CFGs can be handled with a slight variation of the algorithm, with n
 
 % Other var-by-var etc approaches for liveness sets computation
 Another approach to liveness analysis more closely follows the classical definition of liveness:
-a variable is live at a program point~$q$, if~$q$ belongs to a path of the CFG leading from a definition of that variable to one of its uses without passing through another definition of the same variable.
-Therefore, the live-range of a variable can be computed using a backward traversal starting on its uses and stopping when reaching its (unique) definition.
+a variable is live at a program point~$q$ if~$q$ belongs to a path of the CFG leading from a definition of that variable to one of its uses without passing through another definition of the same variable.
+Therefore, the live-range of a variable can be computed using a backward traversal starting on its uses and stopping when reaching its definition (unique under SSA).
 
 % Our liveness check solution
-Another application of the properties of live-ranges under strict SSA-form is the design of an extremely simple liveness check algorithm.
+One application of the properties of live-ranges under strict SSA-form is the design of an extremely simple liveness check algorithm.
 In contrast to classical data-flow analyses, liveness check does not provide the set of variables live at a block, but its characteristic function.
-Liveness check provides a query system to answer questions such as ``Is variable~$v$ live at location~$q$?''.
+Liveness check provides a query system to answer questions such as ``Is variable~$v$ live at location~$q$?''
 Its main features are:
 \begin{compactenum}
 \item
 	The algorithm itself consists of two parts, a \emph{pre-computation} part, and an \emph{online} part executed at each liveness query.
-	It is not based on setting up and subsequently solving data-flow equations.
+	It is not based on setting up and subsequently solving data-flow equations;
 \item
-	The pre-computation is \emph{independent of variables,} it only depends on the structure of the control-flow graph.
-	Hence, pre-computed information \emph{remains valid} upon adding or removing variables or their uses.
+	The pre-computation is \emph{independent of variables,} it only depends on the structure of the control-flow graph;
+	Hence, pre-computed information \emph{remains valid} upon adding or removing variables or their uses;
 \item
-	An actual query uses the def-use chain of the variable in question and determines the answer essentially by testing membership in pre-computed sets of basic-blocks.
+	An actual query uses the def-use chain of the variable in question and determines the answer essentially by testing membership in pre-computed sets of basic blocks.
 \end{compactenum}
 
 % Layout
-In the next section we repeat basic definitions relevant in our context and provide the theoretical foundations.
-Thereafter we present algorithms to compute liveness sets:
-The two-pass data-flow algorithm in Section~\ref{sec:data-flow} and the algorithms based on path-exploration in Section~\ref{sec:path-explore}.
-In Section~\ref{sec:live-check}, we present the liveness check algorithm.
-
+We will first need to repeat basic definitions relevant in our context and provide the theoretical foundations in the next section, before presenting multiple algorithms to compute liveness sets: The two-pass data-flow algorithm in Section~\ref{sec:data-flow} and the algorithms based on path-exploration in Section~\ref{sec:path-explore}.
+We finally present the liveness check algorithm last, in Section~\ref{sec:live-check}.
+%% TODO: improve this introduction paragraph by adding some information, or just remove it.
 
 \section{Definitions}
 Liveness\index{liveness} is a property relating program points to sets of variables which are considered to be \emph{live} at these program points.
-Intuitively, a variable is considered live at a given program point when its value is used in the future by any dynamic execution.
-Statically, liveness can be approximated by following paths, backwards, through the control-flow graph leading from uses of a given variable to its definitions - or in the case of SSA form to its unique definition.
-The variable is live at all program points along these paths.
-For a CFG node~$q$, representing an instruction or a basic-block, a variable $\var{v}$ is \emph{live-in} at~$q$ if there is a path, not containing the definition of $\var{v}$, from~$q$ to a node where $\var{v}$ is used.
+Intuitively, a variable is considered live at a given program point when its value will be used in the future of any dynamic execution.
+Statically, liveness can be approximated by following paths backwards on the control-flow graph, connecting the uses of a given variable to its definitions---or, in the case of SSA forms, to its unique definition.
+The variable is said to be \emph{live} at all program points along these paths.
+For a CFG node~$q$, representing an instruction or a basic block, a variable $\var{v}$ is \emph{live-in} at~$q$ if there is a path, not containing the definition of $\var{v}$, from~$q$ to a node where $\var{v}$ is used (including $q$ itself).
 It is \emph{live-out} at~$q$ if it is live-in at some successor of~$q$.
 
-The computation of live-in and live-out sets at the entry and the exit of basic-blocks is usually termed \emph{liveness analysis}.
-It is indeed sufficient to consider only these sets at basic-block boundaries since liveness within a basic-block is trivial to recompute from its live-out set.
+The computation of live-in and live-out sets at the entry and the exit of basic blocks is usually termed \emph{liveness analysis}.
+It is indeed sufficient to consider only these sets at basic block boundaries since liveness within a basic block is trivial to recompute from its live-out set with a backward traversal of the block.
 \emph{Live-ranges}\index{live-range} are closely related to liveness.
 Instead of associating program points with sets of live variables, the live-range of a variable specifies the set of program points where that variable is live.
-Live-ranges in programs under strict SSA form exhibit certain useful properties (see Chapter~\ref{chapter:properties_and_flavours}), some of which can be exploited for register allocation (see Chapter~\ref{chapter:register_allocation}).
+Live-ranges of programs under strict SSA form exhibit certain useful properties (see Chapter~\ref{chapter:properties_and_flavours}), some of which can be exploited for register allocation (see Chapter~\ref{chapter:register_allocation}).
 
 The special behavior of $\phi$-functions often causes confusion on where exactly its operands are actually used and defined.
 For a regular operation, variables are used and defined where the operation takes place.
@@ -127,15 +125,15 @@ However, the semantics\index{liveness!\phifun} of \phifuns\ (and in particular t
 In algorithms for SSA destruction (see Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}), a use in a \phifun is considered live somewhere inside the corresponding predecessor block, but, depending on the algorithm and, in particular, the way copies are inserted, it may or may not be considered as live-out for that predecessor block.
 Similarly, the definition of a \phifun is always considered to be at the beginning of the block, but, depending on the algorithm, it may or may not be marked as live-in for the block.
 %These subtleties need to be taken into account when building liveness sets.
-To make the description of algorithms easier, we follow the same definition as the one used in Section~\ref{sec:alternative_ssa_destruction_algorithm:liveness}):
-For a $\phi$-function $a_0 = \phi(a_1, \ldots, a_n)$ in block~$B_0$, where $a_i$ comes from block~$B_i$
+To make the description of algorithms easier, we follow the same definition as the one used in Chapter~\ref{chap:alternative_ssa_destruction_algorithm}, Section~\ref{sec:alternative_ssa_destruction_algorithm:liveness}:
+For a $\phi$-function $a_0 = \phi(a_1, \ldots, a_n)$ in block~$B_0$, where $a_i$ comes from block~$B_i$:
 \begin{compactitem}
 \item
-	its definition-operand is considered to be at the entry of $B_0$, in other words variable $a_0$ is live-in of $B_0$.
+	Its definition-operand is considered to be at the entry of $B_0$, in other words variable $a_0$ is live-in of $B_0$;
 \item
-	its use-operands are at the exit of the corresponding predecessor basic-blocks, in other words variable $a_i$ for $i>0$ is live-out of basic-block $B_i$.
+	Its use-operands are at the exit of the corresponding predecessor basic blocks, in other words, variable $a_i$ is live-out of basic block $B_i$.
 \end{compactitem}
-This corresponds to placing a copy of $a_i$ to $a_0$ on each edge from $B_i$ to $B_0$.
+This corresponds to placing a copy $a_0\gets a_i$ on each edge from $B_i$ to $B_0$.
 The data-flow equations given hereafter and the presented algorithms follow the same semantics.
 They require minor modifications when other $\phi$-semantics are desired.
 %We will come back to these subtleties in Section~\ref{sec:correctnessdebase}.
@@ -143,12 +141,13 @@ They require minor modifications when other $\phi$-semantics are desired.
 \section{Data-Flow Approaches}
 \label{sec:data-flow}
 
-A well-known and frequently used approach to compute the live-in and live-out sets of basic-blocks is backward data-flow analysis~\index{backward analysis} (see Section~\ref{novillo:sec:preliminaries}).
-The liveness sets are given by a set of \emph{equations} that relate the \emph{upward-exposed uses}\index{upward-exposed use} and the \emph{definitions} occurring within a basic-block to the live-in and live-out sets of the predecessors and successors in the \@CFG.
-A use is said to be \emph{upward-exposed} when a variable is used within a basic-block and no definition of the same variable precedes the use locally within that basic-block.
-The sets of upward-exposed uses and definitions do not change during liveness analysis and can thus be pre-computed.
+A well-known and frequently used approach to compute the live-in and live-out sets of basic blocks is backward data-flow analysis~\index{backward analysis} (see Chapter \ref{chapter:constant_propagation_is_easier}, Section~\ref{novillo:sec:preliminaries}).
+The liveness sets are given by a set of equations that relate \emph{upward-exposed} uses and definitions to live-in and live-out sets.
+We say a use is \emph{upward-exposed} in a block when there is no local definition preceding it, i.e., the live-range ``escapes'' the block at the top.
 
-In the following equations, we denote by $\PhiKill(B)$ the variables defined by \phifuns at entry of the block~$B$ and by $\PhiUses(B)$ the set of variables used in a \phifun at entry of a block successor of the block~$B$.
+The sets of upward-exposed uses and definitions do not change during liveness analysis and can thus be pre-computed.
+%
+In the following equations, we denote $\PhiKill(B)$ the variables defined by \phifuns at the entry of block~$B$ and by $\PhiUses(B)$ the set of variables used in a \phifun at the entry of a successor of the block~$B$.
 
 \begin{eqnarray*}
 	\LiveIn(B) & = & \PhiKill(B) \cup \UpExp(B) \cup \,(\LiveOut(B)\setminus \Kill(B)) \\
@@ -156,6 +155,9 @@ In the following equations, we denote by $\PhiKill(B)$ the variables defined by 
 	\textstyle \bigcup_{S \in \textrm{succs}(B)} (\LiveIn(S) \setminus
 	\PhiKill(S)) \cup\, \PhiUses(B)
 \end{eqnarray*}
+
+Informally, the live-in of block $B$ are the variables defined in the \phifuns of $B$, those used in $B$ and but defined previously, and those which are just ``passing through.'' On the other hand, the live-out are those that must be live for a successor $S$, i.e., either live-in of $S$ (but not defined in a \phifun of $S$) or used in a \phifun of $S$.
+
 
 \subsection{Liveness Sets On Reducible Graphs}
 \label{sec:forreducible}
@@ -181,7 +183,7 @@ Those two properties pave the way for describing the two steps that make up our 
 \item
 	A backward pass propagates partial liveness information upwards using a post-order traversal of the forward-\@CFG.
 \item
-	The partial liveness sets are then refined by traversing the loop nesting forest, propagating liveness from loop-headers down to all basic-blocks within loops.
+	The partial liveness sets are then refined by traversing the loop nesting forest, propagating liveness from loop-headers down to all basic blocks within loops.
 \end{compactenum}
 Algorithm~\ref{alg:twopass} shows the necessary initialization and the high-level structure to compute liveness in two passes.
 
@@ -195,7 +197,7 @@ Algorithm~\ref{alg:twopass} shows the necessary initialization and the high-leve
 
 \begin{algorithm}[H]
     \Func{Compute\_LiveSets\_SSA\_Reducible(CFG)}{
-      \For{each basic-block~$B$}{
+      \For{each basic block~$B$}{
           mark~$B$ as unprocessed\;
       }
       \textsf{DAG\_DFS}($R$); \Comment~$R$ is the CFG root node\\
@@ -207,10 +209,10 @@ Algorithm~\ref{alg:twopass} shows the necessary initialization and the high-leve
   \label{alg:twopass}
 \end{algorithm}
 
-The post-order traversal is shown in Algorithm~\ref{alg:dag_dfs}, which performs a simple depth-first search and associates every basic-block of the CFG with partial liveness sets.
+The post-order traversal is shown in Algorithm~\ref{alg:dag_dfs}, which performs a simple depth-first search and associates every basic block of the CFG with partial liveness sets.
 The algorithm roughly corresponds to the pre-computation step of the traditional iterative data-flow analysis.
 However, back-edges are not considered during the traversal (Line~\ref{alg:dag_dfs:loop_edge}).
-Recalling the definition of liveness for \phifuns, $\PhiUses(B)$ denotes the set of variables live-out of basic-block~$B$ due to uses by \phifuns in~$B$'s successors.
+Recalling the definition of liveness for \phifuns, $\PhiUses(B)$ denotes the set of variables live-out of basic block~$B$ due to uses by \phifuns in~$B$'s successors.
 Similarly, $\PhiKill(B)$ denotes the set of variables defined by a \phifun in~$B$.
 
 \begin{algorithm}[H]
@@ -235,7 +237,7 @@ Similarly, $\PhiKill(B)$ denotes the set of variables defined by a \phifun in~$B
 \end{algorithm}
 
 The next phase, traversing the loop nesting forest, is shown by Algorithm~\ref{alg:loop_dfs}.
-The live-in and live-out sets of all basic-blocks within a loop are unified with the liveness sets of its loop-header.
+The live-in and live-out sets of all basic blocks within a loop are unified with the liveness sets of its loop-header.
 
 \begin{algorithm}[H]
     \Func{LoopTree\_DFS(node~$N$ of the loop nesting forest)}{
@@ -283,7 +285,7 @@ The live-in and live-out sets of all basic-blocks within a loop are unified with
 
 %% The previous algorithms were specialized for the case where $\phi$-functions are interpreted as copies at the CFG edges preceding the $\phi$-functions.
 %% For the correctness proofs, we resort to the following, more generic, $\phi$-semantics.
-%% A $\phi$-function $a_0 = \phi(a_1, \ldots, a_n)$ at basic-block~$B_0$, receiving its arguments from blocks $B_i$, $i>0$, is represented by a fresh variable $a_{\phi}$, a copy $a_0 = a_{\phi}$ at $B_0$, and copies $a_{\phi} = a_i$ at~$B_i$, for $i>0$.
+%% A $\phi$-function $a_0 = \phi(a_1, \ldots, a_n)$ at basic block~$B_0$, receiving its arguments from blocks $B_i$, $i>0$, is represented by a fresh variable $a_{\phi}$, a copy $a_0 = a_{\phi}$ at $B_0$, and copies $a_{\phi} = a_i$ at~$B_i$, for $i>0$.
 %% Now, with respect to this $\phi$-function, $a_i$, for $i>0$, is not live-out at $B_i$ and $a_0$ is not live-in at $B_0$ anymore.
 %% As for $a_{\phi}$, since it is not an SSA variable, it is not covered by the following lemmas.
 %% But its live-range is easily identified:
@@ -464,8 +466,8 @@ In contrast to liveness sets, liveness check\index{liveness check} does not prov
 Such a framework is well suited for tree-scan based register allocation, SSA destruction, or Hyperblock scheduling.
 Most register-pressure aware algorithms such as code-motion are not designed to take advantage of liveness check query system and still require sets.
 Such a query system can obviously be built on top of pre-computed liveness sets.
-Queries in $O(1)$ are possible, at least for basic-block boundaries, providing the use of sparsesets or bitsets to allow for efficient element-wise queries.
-If sets are only stored at basic-block boundaries, to allow a query system at instructions granularity, the list of variables' uses or backward scans can be used.
+Queries in $O(1)$ are possible, at least for basic block boundaries, providing the use of sparsesets or bitsets to allow for efficient element-wise queries.
+If sets are only stored at basic block boundaries, to allow a query system at instructions granularity, the list of variables' uses or backward scans can be used.
 Constant time worst case complexity is lost in this scenario and liveness sets that have to be incrementally updated at each (even minor) code transformation, can be avoided and replaced by less memory consuming data structures that only depend on the \@CFG.
 
 In the following, we consider the live-in query of variable $\var{a}$ at node $q$.
@@ -494,16 +496,16 @@ Correctness is proved from the theorems used for liveness sets.
 \newcommand{\FR}[2]{\textsf{{\reduced}Reachable}(#1,#2)}
 
 Algorithm~\ref{alg:liveinchk} puts a little bit more efforts onto the table to provide a query system at instructions granularity.
-If $q$ is in the same basic-block than $d$ (lines~6-10, then $v$ is live at $q$ if and only if there is a use outside the basic-block, or inside but after $q$.
+If $q$ is in the same basic block than $d$ (lines~6-10, then $v$ is live at $q$ if and only if there is a use outside the basic block, or inside but after $q$.
 If $h$ is a loop-header then $v$ is live at $q$ if and only if a use is forward reachable from $h$ (lines~17-18).
-Otherwise, if the use is in the same basic-block than $q$ it must be after $q$ to bring the variable live at $q$ (lines 15-16).
-In this pseudo-code, upper cases are used for basic-blocks while lower case are used for program points at instructions granularity.
+Otherwise, if the use is in the same basic block than $q$ it must be after $q$ to bring the variable live at $q$ (lines 15-16).
+In this pseudo-code, upper cases are used for basic blocks while lower case are used for program points at instructions granularity.
 \texttt{def(a)} is an operand.
 \texttt{uses(a)} is a set of operands.
-\texttt{\BB{u}} returns the basic-block containing the operand \texttt{u}.
-Given the semantics of the \phifun instruction, the basic-block returned by this function for a \phifun operand can be different from the block where the instruction textually occurs.
-Also, \texttt{u.order} provides the corresponding (increasing) ordering in the basic-block.
-For a \phifun\ operand, the ordering number might be greater than the maximum ordering of the basic-block if the semantics of the \phifun\ places the uses on outgoing edges of the predecessor block.
+\texttt{\BB{u}} returns the basic block containing the operand \texttt{u}.
+Given the semantics of the \phifun instruction, the basic block returned by this function for a \phifun operand can be different from the block where the instruction textually occurs.
+Also, \texttt{u.order} provides the corresponding (increasing) ordering in the basic block.
+For a \phifun\ operand, the ordering number might be greater than the maximum ordering of the basic block if the semantics of the \phifun\ places the uses on outgoing edges of the predecessor block.
 \OLE{Q}{D}\ corresponds to Algorithm~\ref{alg:hnca} given in Section~\ref{sec:ole}.
 \FR{H}{U}\ that tells if $U$ is reachable in the modified forward CFG will be described further.
 
@@ -583,7 +585,7 @@ We explain how we compute the modified-\reduced\ reachability here (i.e. forward
 In practice we do not build explicitly the modified-\reduced\ graph.
 To compute efficiently the modified-\reduced\ reachability we simply need to traverse the modified-\reduced\ graph in a reverse topological order.
 A post-order initiated by a call to the recursive function \textsf{DFS\_Compute\_{\reduced}Reachable}($r$) (Algorithm~\ref{alg:computeFR}) will do the job.
-Bitsets can be used to efficiently implement sets of basic-blocks.
+Bitsets can be used to efficiently implement sets of basic blocks.
 Once forward reachability have been pre-computed this way, $\FR{H}{U}$ returns true if and only if $U\in H.\textrm{{\reduced}Reachable}$.
 
 \begin{algorithm}
@@ -680,7 +682,7 @@ Worklist algorithms focus on blocks that may need
 to be updated because the liveness sets of their successors (for
 backward problems) changed.
 Empirical results by Cooper et al.~\cite{CHK06} indicate that the order in
-which basic-blocks are processed is critical and directly impacts the number of
+which basic blocks are processed is critical and directly impacts the number of
 iterations. They showed that, in practice, a mixed solution, called ``single
 stack worklist'', based on a worklist initialized with a round-robin order, is
 the most efficient one  for liveness analysis. 
