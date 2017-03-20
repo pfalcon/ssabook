@@ -45,8 +45,8 @@
 \def\top{\textrm{top}}
 \def\push{\textrm{push}}
 \def\pop{\textrm{pop}}
-\newcommand{\Func}[2]{\textsf{{\bf Function} #1}\\\Begin{#2}}
-\newcommand{\Comment}{\hfill$\rhd$}
+\newcommand{\Func}[2]{{{\bf Function} #1}\\\Begin{#2}}
+% \newcommand{\Comment}{\hfill$\rhd$}
 
 \section{Introduction}
 This chapter illustrates the use of strict SSA properties\index{strict SSA form} to simplify and accelerate \emph{liveness analysis}, which determines for all variables the set of program points where they are \emph{live}, i.e., their values are potentially used by subsequent operations.
@@ -156,7 +156,11 @@ In the following equations, we denote $\PhiKill(B)$ the variables defined by \ph
 	\PhiKill(S)) \cup\, \PhiUses(B)
 \end{eqnarray*}
 
-Informally, the live-in of block $B$ are the variables defined in the \phifuns of $B$, those used in $B$ and but defined previously, and those which are just ``passing through.'' On the other hand, the live-out are those that must be live for a successor $S$, i.e., either live-in of $S$ (but not defined in a \phifun of $S$) or used in a \phifun of $S$.
+Informally, the live-in of block $B$ are the variables defined in the 
+\phifuns of $B$, those used in $B$ (and not defined in $B$), and those 
+which are just ``passing through.'' On the other hand, the live-out are 
+those that must be live for a successor $S$, i.e., either live-in of $S$ 
+(but not defined in a \phifun of $S$) or used in a \phifun of $S$.
 
 
 \subsection{Liveness Sets On Reducible Graphs}
@@ -166,22 +170,30 @@ Instead of computing a fixed point, we show that liveness information can be der
 The first version of the algorithm requires the CFG to be reducible.
 We then show that arbitrary control-flow graphs can be handled elegantly and with no additional cost, except for a cheap pre-processing step on the loop nesting forest.
 
-The key properties of live-ranges under strict SSA form on a reducible CFG that we exploit for this purpose and that we will formalize later on, can be outlined as follow:
+The key properties of live-ranges under strict SSA form on a reducible CFG that 
+we exploit for this purpose %and that we will formalize later on,
+can be outlined as follow:
 \begin{enumerate}
-\item
-	Let~$q$ be a CFG node that does not contain the definition~$d$ of a variable~$v$, $h$ be the header of the maximal loop containing~$q$ but not~$d$.
-	Let~$h$ be~$q$ if such maximal loop does not exist.
-	Then~$v$ is live-in at~$q$ if and only if there exists a forward path from~$h$ to a use of~$v$ without going through the definition of~$v$.
-\item
-	If~$v$ is live-in at the header of a loop then it is live at all nodes inside the loop.
+  \item
+    Let~$q$ be a CFG node that does not contain the definition~$d$ of 
+    a variable, and $h$ be the header of the maximal loop containing~$q$ 
+    but not~$d$.
+    If such a maximal loop does not exist, then let $h=q$.
+
+    The variable is live-in at~$q$ if and only if there exists a forward path 
+    from~$h$ to a use of the variable without going through the definition $d$.
+
+  \item
+    If a variable is live-in at the header of a loop then it is live at all 
+    nodes inside the loop.
 \end{enumerate}
 
-As an example, consider the code of Figure~\ref{fig:examplecfg_run}. For $q=6$, the header of the largest loop containing $6$ but not $d=3$ is $h=5$. As there exists a forward path (full edges) from $3$ to $5$, $x$ is live-in at $5$. It is thus also live at all nodes inside the loop, i.e. in particular at node $6$. On the other hand, for $q=7$, the largest ``loop'' containing $7$ but not $3$ is $7$ itself. As there is no forward path from $7$ to any use (node $5$), $x$ is not live-in of $7$ (note that $x$ is not live-in of $2$ either).
+As an example, consider the code of Figure~\ref{fig:examplecfg_run}. For $q=6$, the header of the largest loop containing $6$ but not the definition $d$ in $3$ is $h=5$. As there exists a forward path (down edges) from $3$ to $5$, variable $v$ is live-in at $5$. It is thus also live in all nodes inside the loop, in particular in node $6$. On the other hand, for $q=7$, the largest ``loop'' containing $7$ but not $3$ is $7$ itself. As there is no forward path from $7$ to any use (node $5$), $v$ is not live-in of $7$ (note that $v$ is not live-in of $2$ either).
 
 Those two properties pave the way for describing the two steps that make up our liveness set algorithm:
 \begin{compactenum}
 \item
-	A backward pass propagates partial liveness information upwards using a post-order traversal of the forward-\@CFG.
+	A backward pass propagates partial liveness information upwards using a post-order traversal of the forward-CFG;
 \item
 	The partial liveness sets are then refined by traversing the loop nesting forest, propagating liveness from loop-headers down to all basic blocks within loops.
 \end{compactenum}
@@ -189,72 +201,82 @@ Algorithm~\ref{alg:twopass} shows the necessary initialization and the high-leve
 
 \begin{figure}[t]
    \begin{center}
-       \includegraphics{examplecfg_run.pdf}
-       \caption{An example of a reducible CFG. Forward CFG is represented using full edges; back-edges are dotted. Backward pass on forward CFG sets $x$ as live-in of node $5$, but not of node $2$. Forward pass on loop nesting forest then sets $x$ as live at node $6$ but not at node $7$. }
+       % \includegraphics{examplecfg_run.pdf}
+       \tikzfigure{examplecfg_run}
+       \caption{An example of a reducible CFG. Forward CFG is represented using 
+       full edges; back-edges are thickened. Backward pass on forward CFG sets 
+     $v$ as live-in of node $5$, but not of node $2$. Forward pass on loop 
+   nesting forest then sets $v$ as live at node $6$ but not at node $7$. }
        \label{fig:examplecfg_run}
    \end{center}
 \end{figure}
 
+\medskip
 \begin{algorithm}[H]
-    \Func{Compute\_LiveSets\_SSA\_Reducible(CFG)}{
-      \For{each basic block~$B$}{
+    % \Func{Compute\_LiveSets\_SSA\_Reducible(CFG)}{
+      \ForEach{basic block~$B$}{
           mark~$B$ as unprocessed\;
       }
-      \textsf{DAG\_DFS}($R$); \Comment~$R$ is the CFG root node\\
-      \For{each root node~$L$ of the loop nesting forest}{
-        \textsf{LoopTree\_DFS}($L$)
+      {DAG\_DFS}($r$) \Comment*{$r$ is the CFG root node}
+      \ForEach{root node~$L$ of the loop nesting forest}{
+        {LoopTree\_DFS}($L$)\;
       }
-    }
+    % }
     \caption{Two-pass liveness analysis: reducible \@CFG.}
   \label{alg:twopass}
 \end{algorithm}
+\medskip
 
-The post-order traversal is shown in Algorithm~\ref{alg:dag_dfs}, which performs a simple depth-first search and associates every basic block of the CFG with partial liveness sets.
-The algorithm roughly corresponds to the pre-computation step of the traditional iterative data-flow analysis.
-However, back-edges are not considered during the traversal (Line~\ref{alg:dag_dfs:loop_edge}).
-Recalling the definition of liveness for \phifuns, $\PhiUses(B)$ denotes the set of variables live-out of basic block~$B$ due to uses by \phifuns in~$B$'s successors.
+The post-order traversal is shown in Algorithm~\ref{alg:dag_dfs}, which performs a simple depth-first search and gives partial liveness sets to every basic block of the CFG.
+The algorithm roughly corresponds to the pre-computation step of the traditional iterative data-flow analysis;
+However, back-edges are not considered during the traversal.
+Recalling the definition of liveness for \phifuns, $\PhiUses(B)$ denotes the set of variables live-out of basic block~$B$ due to uses by \phifuns in successors of $B$.
 Similarly, $\PhiKill(B)$ denotes the set of variables defined by a \phifun in~$B$.
 
+\medskip
 \begin{algorithm}[H]
     \Func{DAG\_DFS(block~$B$)}{
-      \For{each $S\in\textrm{succs}(B)$ such that $(B,S)$ is not a back-edge}{\label{alg:dag_dfs:loop_edge}
-        \lIf{$S$ is unprocessed}{\textsf{DAG\_DFS}($S$)}\label{alg:dag_dfs:irreducible_dfs}
+      \ForEach{$S\in\textrm{succs}(B)$ such that $(B,S)$ is not a back-edge}{\label{alg:dag_dfs:loop_edge}
+        \lIf{$S$ is unprocessed}{{DAG\_DFS}($S$)}\label{alg:dag_dfs:irreducible_dfs}
       }
-      $\textit{Live}=\PhiUses(B)$\; \label{alg:dag_dfs:phi_use}
-      \For{each $S\in\textrm{succs}(B)$ such that $(B,S)$ is not a back-edge}{
-        $\textit{Live} = \textit{Live} \union (\LiveIn(S) \setminus \PhiKill(S))$ \label{alg:dag_dfs:phi_kill_minus}\label{alg:dag_dfs:irreducible}\;
+      $\textit{Live}\ \gets \PhiUses(B)$\; \label{alg:dag_dfs:phi_use}
+      \ForEach{$S\in\textrm{succs}(B)$ such that $(B,S)$ is not a back-edge}{
+        $\textit{Live}\ \gets \textit{Live}\  \union \ (\LiveIn(S) \setminus \PhiKill(S))$ \label{alg:dag_dfs:phi_kill_minus}\label{alg:dag_dfs:irreducible}\;
       }
-      $\LiveOut(B)=\textit{Live}$\;
-      \For{each program point~$p$ in~$B$, backward}{
+      $\LiveOut(B) \gets \textit{Live}$\;
+      \ForEach{program point~$p$ in~$B$, backwards,}{
         remove variables defined at~$p$ from \textit{Live}\;
         add uses at~$p$ to \textit{Live}\;
       }
-      $\LiveIn(B)=\textit{Live} \union \PhiKill(B)$ \label{alg:dag_dfs:phi_kill_union}\;
+      $\LiveIn(B) \gets \textit{Live}\  \union\  \PhiKill(B)$ \label{alg:dag_dfs:phi_kill_union}\;
       mark~$B$ as processed\;
     }
   \caption{Partial liveness, with post-order traversal.}
   \label{alg:dag_dfs}
 \end{algorithm}
+\medskip
 
-The next phase, traversing the loop nesting forest, is shown by Algorithm~\ref{alg:loop_dfs}.
+The next phase, which traverses the loop nesting forest, is shown in Algorithm~\ref{alg:loop_dfs}.
 The live-in and live-out sets of all basic blocks within a loop are unified with the liveness sets of its loop-header.
 
+\medskip
 \begin{algorithm}[H]
     \Func{LoopTree\_DFS(node~$N$ of the loop nesting forest)}{
       \If{$N$ is a loop node}{
-        Let $B_N = \textrm{Block}(N)$; \Comment The loop-header of~$N$\\
-        Let $\textit{LiveLoop} = \LiveIn(B_N) \setminus \PhiKill(B_N)$ \label{alg:loop_dfs:phi_kill_minus}\;
-        \For{each $M \in \textrm{Children}(N)$}{
-          Let $B_M = \textrm{Block}(M)$; \Comment Loop-header or block\\
-          $\LiveIn(B_M)=\LiveIn(B_M) \union \textit{LiveLoop}$\;
-          $\LiveOut(B_M) = \LiveOut(B_M) \union \textit{LiveLoop}$\;
-          \textsf{LoopTree\_DFS}($M$)\;
+        $B_N \gets \textrm{Block}(N)$; \Comment*{The loop-header of~$N$}
+        $\textit{LiveLoop} \ \gets \LiveIn(B_N) \setminus \PhiKill(B_N)$ \label{alg:loop_dfs:phi_kill_minus}\;
+        \ForEach{$M \in \textrm{Children}(N)$}{
+          $B_M \gets \textrm{Block}(M)$; \Comment*{Loop-header or block}
+          $\LiveIn(B_M) \gets \LiveIn(B_M)\ \union\ \textit{LiveLoop}$\;
+          $\LiveOut(B_M) \gets \LiveOut(B_M)\ \union\ \textit{LiveLoop}$\;
+          {LoopTree\_DFS}($M$)\;
         }
       }
     }
   \caption{Propagate live variables within loop bodies.}
   \label{alg:loop_dfs}
 \end{algorithm}
+\medskip
 
 \begin{example}
 	The CFG of Figure~\ref{fig:liveness_dataflow:a} is a pathological case for iterative data-flow analysis.
@@ -266,13 +288,15 @@ The live-in and live-out sets of all basic blocks within a loop are unified with
 \begin{figure}[t]
    \begin{center}
      \subfloat[Control-flow graph]{
-       \includegraphics{liveness_dataflow_a.pdf}
+       % \includegraphics{liveness_dataflow_a.pdf}
+       \tikzfigure{liveness_dataflow_CFG}
        \hspace{2cm}
        \label{fig:liveness_dataflow:a}
      }
      \subfloat[loop nesting forest]{
        \label{fig:liveness_dataflow:b}
-       \includegraphics{liveness_dataflow_b.pdf}
+       % \includegraphics{liveness_dataflow_b.pdf}
+       \tikzfigure{liveness_dataflow_LNF}
      }
    \end{center}
    \caption{Bad case for iterative data-flow analysis.}
@@ -384,7 +408,7 @@ Redirecting an incoming edge to another node of the loop such as the header, doe
   \label{fig:exampleloop}
 \end{figure}
 
-\newcommand{\OLE}[2]{#1.\textsf{OLE}(#2)}
+\newcommand{\OLE}[2]{#1.{OLE}(#2)}
 
 To avoid building this transformed graph explicitly, an elegant alternative is to modify the CFG traversal (Algorithm~\ref{alg:dag_dfs}).
 Whenever an entry-edge $(s,t)$ is encountered during the traversal, instead of visiting $t$, we visit the header of the largest loop containing $t$ and not $s$.
@@ -400,7 +424,7 @@ Overall, the transformation amounts to replace all occurrences of~$S$ by $\OLE{S
 \subsection{Computing the outermost excluding loop (OLE)}
 \label{sec:ole}
 Our approach involves potentially many outermost excluding loop queries, especially for the liveness check algorithm as developed further.
-An efficient implementation of \textsf{OLE} is required.
+An efficient implementation of {OLE} is required.
 The technique proposed here and shown in Algorithm~\ref{alg:hnca}) is to pre-compute the set of ancestors from the loop-tree for every node.
 Then a simple set operation can find the node we are looking for:
 the ancestor of the definition node are removed from the ancestor of the query point.
