@@ -280,24 +280,29 @@ The live-in and live-out sets of all basic blocks within a loop are unified with
 
 \begin{example}
 	The CFG of Figure~\ref{fig:liveness_dataflow:a} is a pathological case for iterative data-flow analysis.
-	The pre-computation phase does not mark variable \texttt{a} as live throughout the two loops.
+        The pre-computation phase does not mark variable $a$ as live 
+        throughout the two loops.
 	An iteration is required for every loop nesting level until the final solution is computed.
 	In our algorithm, after the CFG traversal, the traversal of the loop nesting forest (Figure~\ref{fig:liveness_dataflow:b}) propagates the missing liveness information from the loop-header of loop $L_2$ down to all blocks within the loop's body and all inner loops, \ie blocks~$3$ and~$4$ of $L_3$.
 \end{example}
 
 \begin{figure}[t]
    \begin{center}
+     \hfill
      \subfloat[Control-flow graph]{
        % \includegraphics{liveness_dataflow_a.pdf}
+       \quad
        \tikzfigure{liveness_dataflow_CFG}
-       \hspace{2cm}
+       \qquad
        \label{fig:liveness_dataflow:a}
      }
-     \subfloat[loop nesting forest]{
+     \hfill
+     \subfloat[Loop nesting forest]{
        \label{fig:liveness_dataflow:b}
        % \includegraphics{liveness_dataflow_b.pdf}
        \tikzfigure{liveness_dataflow_LNF}
      }
+     \hfill\null
    \end{center}
    \caption{Bad case for iterative data-flow analysis.}
    \label{fig:liveness_dataflow}
@@ -320,24 +325,32 @@ The live-in and live-out sets of all basic blocks within a loop are unified with
 %% A similar adjustment appears on Line~\ref{alg:loop_dfs:phi_kill_minus} of Algorithm~\ref{alg:loop_dfs}.
 
 
-The first pass propagates the liveness sets using a post-order traversal of the forward CFG $\mathcal{F}_\mathcal{L}(G)$, obtained by removing all back-edges from the \@CFG $G$.
+The first pass propagates the liveness sets using a post-order traversal of the 
+forward CFG, $\mathcal{F}_\mathcal{L}(G)$, obtained by removing all back-edges 
+from the \@CFG $G$.
 The first two lemmas show that this pass correctly propagates liveness information to the loop-headers of the original \@CFG.
 \begin{lemma}
 	\label{lemma:firstpass}
 	Let~$G$ be a reducible CFG, $\var{v}$ an SSA variable, and~$d$ its definition.
-	If~$L$ is a maximal loop not containing~$d$, then~$\var{v}$ is live-in at the loop-header~$h$ of~$L$ iff there is a path in $\mathcal{F}_\mathcal{L}(G)$ (i.e. back-edge free), not containing~$d$, from~$h$ to a use of $\var{v}$.
+        If~$L$ is a maximal loop not containing~$d$, then~$\var{v}$ is live-in 
+        at the loop-header~$h$ of~$L$ iff there is a path in 
+        $\mathcal{F}_\mathcal{L}(G)$ (i.e., back-edge free) from~$h$ to a use 
+        of $\var{v}$ that does not go through $d$.
 \end{lemma}
 
 \begin{lemma}
 	\label{lemma:firstpass2}
 	Let~$G$ be a reducible CFG, $\var{v}$ an SSA variable, and~$d$ its definition.
 	Let~$p$ be a node of~$G$ such that all loops containing~$p$ also contain~$d$.
-	Then $\var{v}$ is live-in at~$p$ iff there is a path in $\mathcal{F}_\mathcal{L}(G)$, from~$p$ to a use of $\var{v}$, not containing~$d$.
+        Then $\var{v}$ is live-in at~$p$ iff there is a path in 
+        $\mathcal{F}_\mathcal{L}(G)$, from~$p$ to a use of $\var{v}$ that does 
+        not go through $d$.
 \end{lemma}
 
 Pointers to formal proofs are provided in the last section of this chapter.
 The important property used in the proof is the dominance property that enforces the full live-range of a variable to be dominated by its definition $d$.
-As a consequence any back-edge part of the live-range is dominated by $d$, and the associated loop cannot contain $d$.
+As a consequence, any back-edge part of the live-range is dominated by $d$, and 
+the associated loop cannot contain $d$.
 
 Algorithm~\ref{alg:dag_dfs}, which propagates liveness information along the DAG $\mathcal{F}_\mathcal{L}(G)$, can only mark variables as live-in that are indeed live-in.
 Furthermore, if, after this propagation, a variable~$\var{v}$ is missing in the live-in set of a CFG node~$p$, Lemma~\ref{lemma:firstpass2} shows that~$p$ belongs to a loop that does not contain the definition of~$\var{v}$.
@@ -361,84 +374,107 @@ The intuition is straightforward: a loop is a strongly connected component, and 
  \subsection{Liveness Sets on Irreducible Flow Graphs}
 \label{sec:irreducible}
 
-The algorithms based on loops that we described above, are only valid for reducible graphs.
-We can derive an algorithm that works for irreducible graphs as well, in the following way:
-transform, the irreducible\index{irreducible} graph to a reducible graph\index{reducible CFG}, such that the liveness in both graphs is \emph{equivalent}.
+The algorithms based on loops described above are only valid for reducible 
+graphs.
+We can derive an algorithm that works for irreducible graphs as well as 
+follows:
+transform the irreducible\index{irreducible} graph to a reducible 
+graph\index{reducible CFG}, such that the liveness in both graphs is 
+\emph{equivalent}.
 First of all we would like to stress two points:
-\begin{asparaenum}[(1)]
-\item We do not impose the transformed graph to be \emph{semantically equivalent} to the original one, only isomorphism of liveness is required. 
-\item In practice the graph is not actually modified, but Algorithm~\ref{alg:dag_dfs} can be changed to simulate the modification of some edges, on the fly.
-\end{asparaenum}
+\begin{enumerate}
+\item We do not impose the transformed graph to be \emph{semantically 
+equivalent} to the original one, only isomorphism of liveness is required.  
+\item We do not actually modify the graph in practice, but 
+  Algorithm~\ref{alg:dag_dfs} can be changed to simulate the modification of 
+  some edges on the fly.
+\end{enumerate}
 
-There exist loop nesting forest representations with possibly multiple headers per irreducible loop.
-For the sake of clarity (and simplicity of implementation), we consider a representation where each loop as a unique entry node as header.
-In this case, the transformation simply relies in redirecting any edge $(s,t)$ to the header of the outermost loop (if exists) that contain~$t$ but not~$s$.
-The example of Figure~\ref{fig:examplecfg} illustrates this transformation.
-Considering the associated loop nesting forest as depicted in Figure~\ref{fig:exampleloop} (with nodes $2$, $5$, and $8$ as loop headers), edge $(9,6)$ is redirected to node $5$.
+There exists loop nesting forest representations with possibly multiple headers 
+per irreducible loop.
+For the sake of clarity (and simplicity of implementation), we consider a representation where each loop has a unique entry node as header.
+In this case, the transformation simply relies in redirecting any edge $s\rightarrow t$ arriving in the middle of a loop to the header of the outermost loop (if it exists) that contains $t$ but not $s$.
+The example of Figure~\ref{fig:examplecfg} illustrates this transformation, with the modified edge highlighted.
+Considering the associated loop nesting forest (with nodes $2$, $5$, and $8$ as loop headers), edge $9\rightarrow 6$ is redirected to node $5$.
 
-Obviously the transformed code does not have the same semantic than the original one.
+Obviously the transformed code does not have the same semantics than the original one.
 But, because a loop is a strongly connected component, dominance relationship is unchanged.
-As an example, immediate dominator of node $5$ is $3$, both in the original and transformed CFG.
-For this reason, any variable live-in of loop $L_5$, thus live everywhere in the loop, will be live on any path from $3$ to the loop.
-Redirecting an incoming edge to another node of the loop such as the header, does not change this behavior.
+As an example, the immediate dominator of node $5$ is $3$, both in the original and transformed CFG.
+For this reason, any variable live-in of loop $L_5$---thus live everywhere in the loop---will be live on any path from $3$ to the loop.
+Redirecting an incoming edge to another node of the loop---in particular, the header---does not change this behavior.
 
 \begin{figure}[t]
   \begin{center}
-    \subfloat[Irreducible CFG~$G$] {
+    % \hfill
+    \subfloat[Irreducible CFG] {
       \label{fig:examplecfg:a}
-      \includegraphics{examplecfg_a.pdf}
+      % \includegraphics{examplecfg_a.pdf}
+      % \quad
+      \tikzsubfigure[1]{examplecfg}
+      \quad
     }
-    \hspace{4mm}
-    \subfloat[~~Reducible CFG] {
-      \includegraphics{examplecfg_c.pdf}
+    \hfill
+    \subfloat[Reducible CFG] {
+      % \includegraphics{examplecfg_c.pdf}
+      % \quad
+      \tikzsubfigure[2]{examplecfg}
+      % \quad
       \label{fig:examplecfg:c}
     }
+    \hfill
+    \subfloat[Loop nesting forest]{
+      \tikzfigure{exampleloop}
+      \label{sub:examplecfgLNF}
+    }
+    % \hfill\strut
   \end{center}
   \caption{%
-	  A reducible CFG derived from an irreducible CFG, using the loop nesting forest depicted in Figure~\ref{fig:exampleloop}.
-	  The transformation reduces to redirect incoming edges to the loop header.}
+	  A reducible CFG derived from an irreducible CFG, using the loop nesting forest.
+	  The transformation redirects edges arriving inside a loop to the loop header (here $9\rightarrow 6$ into $9\rightarrow 5$).}
   \label{fig:examplecfg}
 \end{figure}
 
-\begin{figure}[t]
-  \begin{center}
-    \includegraphics{exampleloop.pdf}
-  \end{center}
-  \caption{A rooted loop-nested forest for the CFG of Figure~\ref{fig:examplecfg}.}
-  \label{fig:exampleloop}
-\end{figure}
+% \begin{figure}[t]
+  % \begin{center}
+    % \includegraphics{exampleloop.pdf}
+    % \tikzfigure{exampleloop}
+  % \end{center}
+  % \caption{A rooted loop-nested forest for the CFG of Figure~\ref{fig:examplecfg}.}
+  % \label{fig:exampleloop}
+% \end{figure}
 
-\newcommand{\OLE}[2]{#1.{OLE}(#2)}
+\newcommand{\OLE}[2]{#1.\textit{OLE}\,(#2)}
 
-To avoid building this transformed graph explicitly, an elegant alternative is to modify the CFG traversal (Algorithm~\ref{alg:dag_dfs}).
-Whenever an entry-edge $(s,t)$ is encountered during the traversal, instead of visiting $t$, we visit the header of the largest loop containing $t$ and not $s$.
+To avoid building this transformed graph explicitly, an elegant alternative is to modify the CFG traversal in Algorithm~\ref{alg:dag_dfs}.
+Whenever an entry-edge $s\rightarrow t$ is encountered during the traversal, instead of visiting $t$, we visit the header of the largest loop containing $t$ and not $s$.
 This header node is nothing else than the highest ancestor of~$t$ in the loop nesting forest that is not an ancestor of~$s$.
 We represent such as node as $\OLE{t}{s}$ (for ``Outermost Loop Excluding'').
-As an example in Figure~\ref{fig:exampleloop}, considering edge $(s,t)=(9,6)$, the highest ancestor of $6$ not an ancestor of $9$ is $\OLE{9}{6}=L_5$. 
-Overall, the transformation amounts to replace all occurrences of~$S$ by $\OLE{S}{B}$ at Lines~\ref{alg:dag_dfs:irreducible_dfs} and~\ref{alg:dag_dfs:irreducible} of Algorithm~\ref{alg:dag_dfs}, in order to handle irreducible flow graphs.
+As an example in Figure~\ref{fig:examplecfg},
+considering edge $9\rightarrow 6$, the highest ancestor of $6$ not an ancestor of $9$ is $\OLE{9}{6}=L_5$. 
+Overall, the transformation amounts to replacing all occurrences of~$S$ by $\OLE{S}{B}$ at Lines~\ref{alg:dag_dfs:irreducible_dfs} and~\ref{alg:dag_dfs:irreducible} of Algorithm~\ref{alg:dag_dfs}, which allows it to handle irreducible control-flow graphs.
 
 
 \newcommand{\couple}[2]{\langle#1,#2\rangle}
 \def\sep{,$ $}
 
-\subsection{Computing the outermost excluding loop (OLE)}
+\subsection{Computing the Outermost Excluding Loop (\textit{OLE})}
 \label{sec:ole}
 Our approach involves potentially many outermost excluding loop queries, especially for the liveness check algorithm as developed further.
-An efficient implementation of {OLE} is required.
-The technique proposed here and shown in Algorithm~\ref{alg:hnca}) is to pre-compute the set of ancestors from the loop-tree for every node.
-Then a simple set operation can find the node we are looking for:
-the ancestor of the definition node are removed from the ancestor of the query point.
+An efficient implementation of \textit{OLE} is required.
+The technique proposed here and shown in Algorithm~\ref{alg:hnca} is to pre-compute the set of ancestors from the loop-tree for every node.
+A simple set operation can then find the node we are looking for:
+the ancestors of the definition node are removed from the ancestors of the query point.
 From the remaining ancestors, we pick the shallowest.
 Using bitsets for encoding the set of ancestors of a given node, indexed with a topological order of the loop tree, this operations are easily implemented.
-The removal is a \texttt{bit-inversion} followed by a \texttt{bitwise-and} operation, and the shallowest node is found by searching for the \texttt{first-bit-set} in the bitset.
+The removal is a bit inversion followed by a bitwise ``and'' operation, and the shallowest node is found by searching for the first set bit in the bitset.
 Since the number of loops (and thus the number loop-headers) is rather small, the bitsets are themselves small as well and this optimization does not result in much wasted space.
 
 Consider a topological indexing of loop-headers: $n.\textrm{LTindex}$ ($n$~being a loop-header) or reciprocally $i.\textrm{node}$ ($i$~being an index).
 For each node, we associate a bitset (indexed by loop-headers) of all its ancestors in the loop tree:
 $n.\textrm{ancestors}$.
 This can be computed using any topological traversal of the loop-tree by a call of \textsc{DFS\_compute\_ancestors}($L_r$).
-Notice that some compiler intermediate representation sometimes consider $L_r$ as a loop header.
-Considering so in \textsc{DFS\_compute\_ancestors} will not spoil the behavior of \@OLE.
+Notice that some compiler intermediate representations sometimes consider $L_r$ as a loop header.
+Considering so in \textsc{DFS\_compute\_ancestors} will not spoil the behavior of \@\textit{OLE}.
 
 \begin{algorithm}
   \Func{DFS\_compute\_ancestors(node~$n$)}{
@@ -446,12 +482,12 @@ Considering so in \textsc{DFS\_compute\_ancestors} will not spoil the behavior o
       $n.\textrm{ancestors} \gets n.\textrm{LTparent.ancestors}$\;
     }
     \Else{
-      $n.\textrm{ancestors} \gets \textit{bitset\_empty}$\;
+      $n.\textrm{ancestors} \gets \emptyset$\Comment*{empty bitset}
     }
     \If{$n.\textrm{isLoopHeader}$}{
       $n.\textrm{ancestors.add}(n.\textrm{LTindex})$
     }
-    \For{$s$ in $n.\textrm{LTchildren}$}{
+    \ForEach{$s$ in $n.\textrm{LTchildren}$}{
       \textsc{DFS\_compute\_ancestors}($s$)
     }
   }
@@ -459,7 +495,7 @@ Considering so in \textsc{DFS\_compute\_ancestors} will not spoil the behavior o
 \label{alg:ancestors}
 \end{algorithm}
 
-Using this information, finding the outermost excluding loop can be done by simple bitset operations as done in Algorithm~\ref{alg:hnca}.
+Using this information, finding the outermost excluding loop can be done by simple bitset operations as in Algorithm~\ref{alg:hnca}.
 
 \begin{algorithm}
   \Func{OLE(node \textit{self}, node~$b$)}{
@@ -475,9 +511,9 @@ Using this information, finding the outermost excluding loop can be done by simp
 \end{algorithm}
 
 \begin{example}
-	Consider the example of Figure~\ref{fig:exampleloop} again and suppose the loops $L_2$, $L_8$, and $L_5$ are respectively indexed~$0$,$1$, and~$2$.
-	Using big-endian notations for bitsets Algorithm~\ref{alg:ancestors} would give the labels to nodes~$9$ and~$6$, $110$ and $101$ respectively.
-	The outermost loop containing~$6$ but not~$9$ is given by the leading bit of $101\wedge \lnot 110=001$ \ie $L_5$.
+	Consider the example of Figure~\ref{sub:examplecfgLNF} again and suppose the loops $L_2$, $L_8$, and $L_5$ are respectively indexed~$0$,$1$, and~$2$.
+	Using big-endian notations for bitsets, Algorithm~\ref{alg:ancestors} would give labels $110$ to node $9$ and $101$ to node $6$.
+	The outermost loop containing~$6$ but not~$9$ is given by the leading bit of $101\wedge \lnot 110=001$, \ie $L_5$.
 \end{example}
 
 
@@ -605,7 +641,8 @@ In line~4, if $q$ is equal to $d$ it cannot be live-in while it might be live-ou
 
 The liveness check query system relies on pre-computations for efficient \textsf{OLE} and \textsf{{\reduced}Reachable} queries.
 The outermost excluding loop is identical to the one used for liveness set.
-We explain how we compute the modified-\reduced\ reachability here (i.e. forward-reachability on transformed CFG to handle irreducibility).
+We explain how we compute the modified-\reduced\ reachability here (i.e., 
+forward-reachability on transformed CFG to handle irreducibility).
 In practice we do not build explicitly the modified-\reduced\ graph.
 To compute efficiently the modified-\reduced\ reachability we simply need to traverse the modified-\reduced\ graph in a reverse topological order.
 A post-order initiated by a call to the recursive function \textsf{DFS\_Compute\_{\reduced}Reachable}($r$) (Algorithm~\ref{alg:computeFR}) will do the job.
