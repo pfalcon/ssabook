@@ -10,9 +10,12 @@ while (my $indexref=<GREP>) {
     if ($indexref =~ s/^\.\/back\///) {
       next ;
     }
+    if ($indexref =~ s/^\.\/headers\///) {
+      next;
+    }    
     if ($indexref =~ s/^\.\/(part\d)\/([^\/]+)\/.+://) {
 	($part,$section)=($1,$2);
-    } else { die "pb parsing grep".$indexref; }
+    } else { die "pb parsing grep ".$indexref; }
     while ($indexref=~ s/index\{($BALBRACE)\}//) {
 	$indexes{$1}{$section}++;
     }
