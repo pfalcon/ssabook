@@ -28,55 +28,81 @@ was still TODO macros: \the\todocount.^^J}\fi}
 \def\regs{\ensuremath{R}\xspace}
 \def\irc{Iterated Register Coalescing\xspace}
 
-% \chapterauthor{Bouchez, Hack}
+
+
 
 Register allocation maps the variables of a program to physical memory locations.
 The compiler determines the location for each variable and each program point.
 Ideally, as many operations as possible should draw their operands from processor registers without loading them from memory beforehand.
-Due to the huge latency of the memory hierarchy (even loading from L1 cache takes three to ten times longer than accessing a register), register allocation is one of the most important optimizations in a compiler. 
-
+Due to the large latency of the memory hierarchy, register allocation is one of the most important optimizations in a compiler. 
 There is only a small number of registers available in a CPU, with usual values ranging from~8 to~128.
 Hence, the task of register allocation is not only assigning the variables to registers but also deciding which variables should be evicted from registers and when to store and load them from memory (spilling).
-Furthermore, register allocation has to remove spurious copy operations (copy coalescing) inserted by previous phases in the compilation process, and to deal with allocation restrictions that the instruction set architecture and the runtime system impose (register targeting).
-
+Furthermore, register allocation has to remove spurious copy operations (copy coalescing) inserted by previous phases in the compilation process, and to deal with allocation restrictions that the instruction set architecture and the run-time system impose (register targeting).
+Classical register allocation algorithms address those different issues with complex and sometimes expensive schemes.
+The goal of this Chapter is to illustrate how SSA form can help in designing both simpler and faster schemes with similar or even better quality than the most complex existing ones.
 
 \section{Introduction}
+Register allocation is usually performed per procedure. 
+In each procedure, a liveness analysis (see Chapter~\ref{chapter:liveness}) determines for each variable the program points where the variable is alive. 
+Wherever it is alive, storage needs to be allocated for that variable; 
+ideally a register. 
+The set of all program points where a variable is alive is called the \emph{live-range} of the variable. 
+The resource conflict of two variables is called \emph{interference} and is usually defined via liveness: 
+Two variables interfere if (and only if) there exists a program point where they are simultaneously alive.\footnote{ This definition of interference by liveness is an over-approximation (see Section~\ref{sec:properties_and_flavors:ultimate_interference}). 
+  There are refined definitions that create less interferences (see Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}). 
+  However, in this chapter we will restrict ourselves to this definition and assume that two interfering variables cannot be assigned the same register. 
+} The number of simultaneously alive variables at a program point is called the \emph{register pressure} at that program point. 
+The maximum register pressure over all program points in a procedure is called the register pressure of that procedure, or ``\maxlive.'' 
+One can observe that \maxlive expresses the minimum required number of available registers for a spill-free register assignment. 
+Interestingly, for a straight-line code (basic-block), \maxlive constitutes also a sufficient number of registers. 
+As one can illustrate through the example of Figure~\ref{fig:ra:linearscan}, a greedy assignment considering live intervals from top to bottom always succeeds with \maxlive registers (equal to two in this example). 
+Assume one have only two registers available (denoted $R1$ and $R2$): 
+variable $a$ can be assigned $R1$; 
+$d$ must then be assigned $R2$; 
+at definition point of $e$, $R1$ is released (end of live-range of $a$), so $e$ can be assigned to $R1$...
+Note that, the order along which live-ranges are assigned to registers is important.
+As an example, by not following the program order e.g. $(a,e,d)$ (as opposed to ($a,d,e$)), a greedy assignment could fail (e.g. if $a$ is assigned to $R1$, $e$ to $R2$).
+That important observation gave rise to the linear scan register allocation scheme widely adopted by just-in-time compilers.
 
-Register allocation is usually performed per procedure. In each procedure,
-a liveness analysis determines for each variable the program points where the variable is live.
+\newsavebox{\linearscanbox}
+\begin{lrbox}{\linearscanbox}
+  \begin{minipage}{0.55\textwidth}
+    \small
+\begin{verbatim}
+Linear_Scan(B)
+  foreach prog point p in B from top to bottom:
+    foreach liverange v ending at p
+      available[color(v)] = True       
+    foreach liverange v starting at p
+      c = choose_color(v, available)   
+      available[c] = False
+      color(v) = c
+\end{verbatim}        
+\end{minipage}
+\end{lrbox}
 
-A variable is live at a program point if there exists a path from this point on which the variable will be used later on and is not overwritten before that use.
-Hence, storage needs to be allocated for that variable; ideally a register.
-The set of all program points where a variable is live is called the \emph{live-range} of the variable.
-The resource conflict of two variables is called \emph{interference} and is usually defined via liveness:
-Two variables interfere if (and only if) there exists a program point where they are simultaneously live.\footnote{
-This definition of interference by liveness is an overapproximation.
-There are refined definitions that create less interferences.
-However, in this chapter we will restrict ourselves to this definition.
-}
-The number of live variables at a program point is called the \emph{register pressure} at that program point. 
-The maximum register pressure over all program points in a procedure is called the register pressure of that procedure, or ``\maxlive.''
+\begin{figure}[htbp]
+  \subfloat[Example]{\includegraphics[width=0.27\textwidth]{figures/ra_linearscan.pdf}}
+  \hfill
+  \subfloat[Linear scan]{\usebox{\linearscanbox}}
+    \caption{\label{fig:ra:linearscan}Linear scan assignment scheme on a basic-block: assigning registers to live intervals from top to bottom ($a$, then $d$, followed by $e$) always succeeds if \maxlive (here two) does not exceed the number of available registers. }
+\end{figure}
 
-It is helpful to think of interferences as an undirected \emph{interference graph:} The nodes are the variables of the program, and two nodes are connected if they interfere.
-The set of variables live at some program point form a \emph{clique} in this graph:
-Any two variables in this set interfere, hence their nodes are all mutually connected.
-The size of the largest clique in the interference graph is called its \emph{clique number}, denoted $\omega$.
+However, for a general control-flow graph, classical register allocation schemes like to think of interferences as an undirected \emph{interference graph:} The nodes are the variables of the program, and two nodes are connected if they interfere.
 A \emph{coloring} of this graph with~$k$ colors corresponds to a valid register allocation with~$k$ registers.
 Hence, we will use the terms ``register'' and ``color'' interchangeably in this chapter.
-A $k$-coloring is a mapping from the nodes of the graph to the first~$k$ natural numbers (called colors) such that two neighbouring nodes have different colors.
-The smallest~$k$ for which a coloring exists is called the \emph{chromatic number}, denoted $\chi$.
-Of course $\chi\ge\omega$ holds for every graph, because the nodes of a clique must all have different colors.
+A $k$-coloring is a mapping from the nodes of the graph to the first~$k$ natural numbers (called colors) such that two neighboring nodes have different colors.
+Unfortunately graph $k$-coloring is known to be NP-complete problem, and for any arbitrary undirected graph, there is a program whose interference graph is this graph.
+This is the major nuisance of classical register allocation:
+The compiler cannot efficiently determine if spilling is necessary.
+This means one might need more registers than \maxlive.
+The somewhat non intuitive result is that, even if at every program point there are no more than \maxlive variables alive, we still might need more than $\maxlive$ registers for a correct register allocation!
+The causes of this problem are control-flow merges, as can be seen in Figure~\ref{fig:ra:exprg}.
+In that example, the register pressure is at most two at every program point.
+However, the interference graph cannot be colored with two colors. 
+Its chromatic number is three.
+The inequality between \maxlive and the chromatic number is caused by the cycle in the interference graph.
 
-Chaitin et al.~\cite{chaitin:1981:register} showed that for every undirected graph, there is a program whose interference graph is this graph.
-From the NP-completeness of graph coloring then follows the NP-completeness of register allocation.
-Hence, determining the chromatic number of an interference graph is not possible in polynomial time unless P=NP.
-
-This the major nuisance of classical register allocation:
-The compiler cannot efficiently determine how many registers are needed.
-This means one might need more registers than \maxlive, \maxlive being only a lower bound on the chromatic number.
-The somewhat unintuitive result is that, even if at every program point there are no more than \maxlive variables live, we still might need more than $\maxlive$ registers for a correct register allocation!
-The causes of this problem are control-flow merges, %since they create cycles in the interference graph,
-as can be seen in Figure~\ref{fig:ra:exprg}.
 
 \begin{figure}[htbp]
 	\begin{center}
@@ -90,53 +116,50 @@ as can be seen in Figure~\ref{fig:ra:exprg}.
 	\label{fig:ra:exprg}
 \end{figure}
 
-In that example, the register pressure is at most two at every program point.
-However, the interference graph cannot be colored with two colors. 
-Its chromatic number is three.
-The inequality between \maxlive and the chromatic number is caused by the cycle in the interference graph.\footnote{
-In theory, the gap between the chromatic number and \maxlive can even be arbitrarily large.
-This can be shown using by applying Chaitin's proof of the NP-completeness of register allocation to Mycielski graphs.}
 
-This situation changes if we permit \emph{live-range splitting.} That is, inserting a copy (move) instruction at a program point that creates a new variable.
-Thus, the value of the variables is allowed to reside in different registers at different times.
-In Figure~\ref{sub:ra:exprg:prog}, assume we split the live-range of~$e$ in the left block: we rename it by~$e'$ and add a copy~$e \gets e'$ at the end of the block.
-Then, the node~$e$ in the graph is split into two nodes, $e$ and~$e'$, that do not interfere: this breaks the cycle in the graph, making its chromatic number equal to two, i.e., \maxlive.
-%(cf.~the SSA version of the program shown in Figure~\ref{fig:ra:exprgssa}).
-
-% \begin{figure}[htbp]
-% 	\begin{center}
-% 		\subfloat[Example program with live-range of~$e$ split]{ \includegraphics{figures/prog_split_lr.pdf} }
-% 		\qquad
-% 		\subfloat[Interference graph]{ \includegraphics[scale=1.1]{figures/prog_split_ig.pdf} }
-% 	\end{center}
-% 	\caption{Example Program with spit live-range and its interference graph}
-% 	\label{fig:ra:exprgsplit}
-% \end{figure}
-
-In an extreme setting, one could split the live-ranges of all variables after every instruction.
-The interference graph degenerates into several disconnected components and its chromatic number drops to \maxlive.
-Of course, such an extreme live-range splitting introduces \emph{a lot} of shuffle code, which degrades the runtime of the compiled program.
+This situation changes if we permit \emph{live-range splitting.} 
+That is, inserting a copy (move) instruction at a program point that creates a new variable. 
+Thus, the value of a variable is allowed to reside in different registers at different times. 
+In Figure~\ref{sub:ra:exprg:prog}, assume we split the live-range of~$e$ in the left block: 
+we rename it by~$e'$ and add a copy~$e \gets e'$ at the end of the block. 
+Then, the node~$e$ in the graph is split into two nodes, $e$ and~$e'$, that do not interfere: 
+this breaks the cycle in the graph, making its chromatic number equal to two, i.e., \maxlive. 
+(cf.~the SSA version of the program shown in Figure~\ref{fig:ra:exprgssa}). 
+In an extreme setting, one could split the live-ranges of all variables after every instruction. 
+The interference graph degenerates into several disconnected components and its chromatic number drops to \maxlive. 
+Of course, such an extreme live-range splitting introduces \emph{a lot} of shuffle code, which degrades the run-time of the compiled program. 
 This interplay between live-range splitting and colorability is the key issue in register allocation.
 
-\subsection{Non-SSA Register Allocators}
-As finding a valid $k$-coloring is NP-complete, assigning registers is performed by some heuristic algorithm.
+\begin{figure}[htbp]
+	\begin{center}
+		\subfloat[Example program with live-range of~$e$ split]{ \includegraphics{figures/prog_split_lr.pdf} }
+		\qquad
+		\subfloat[Interference graph]{ \includegraphics[scale=1.1]{figures/prog_split_ig.pdf} }
+	\end{center}
+	\caption{Example Program with spit live-range and its interference graph}
+	\label{fig:ra:exprgsplit}
+\end{figure}
+
+
+\subsection{Making the spill test efficient: splitting or not splitting}
+As finding a valid $k$-coloring is NP-complete, assigning registers is performed in classical register allocators by some heuristic algorithm.
 If that algorithm fails to assign a register to a variable, then it either spills this variable to memory, or frees a register by spilling the variable it contains.
 The problem here is that the spilling decision is made to revive the coloring heuristic, and not because the variable that gets spilled is in itself a good candidate for spilling. 
 Even worse, we might spill a variable because the heuristic is ``not good enough,'' and not because we are actually out of registers.
-
-At the same time, classical algorithms perform copy coalescing (i.e.,~undoing live-range splitting) during coloring.
+Whatever the coloring heuristic that is used, live-range splitting (up to the extreme setting of splitting at every program point) will always allow to overcome over spilling decisions.
+But if one wants to avoid spill code (memory loads and stores) as much as possible, too many register-to-register copies should be avoided also.
+For that purpose, at the same time coloring and spilling decisions are made, classical algorithms also perform copy coalescing (i.e.,~undoing live-range splitting).
 However, if done aggressively, coalescing may increase the chromatic number of the graph, or make the graph harder to color for the heuristic.
-Both cases generate additional spills.
-This is of course unacceptable because we never want to add memory accesses in favor of an eliminated copy.
 Thus, existing techniques often apply \emph{conservative} coalescing approaches which are guaranteed not to increase the chromatic number of the graph, at the expense of the quality of the coalescing.
+The main issue with conservative coalescing is that, with an extreme solution that would split all live-ranges at every basic-block boundaries, it is either slow or inefficient in removing most of the spurious introduced copies.
+Thus, the splitting or not splitting trade-off that has to be addressed by the register allocator.
+SSA form based live-range splitting is an elegant solution to this trade-off problem as it is sufficient in bringing the interference graph \maxlive-colorable without blowing-up the number of live-ranges.
 
-\subsection{SSA form to the rescue of register allocation}
-
-The live-ranges in an SSA form program all have a certain property:
-SSA requires that all uses of a variable are dominated by its definition.
+As already mentioned in Section~\ref{sec:properties_and_flavours:domprop} of Chapter~\ref{chapter:properties_and_flavors}, the live-ranges in an SSA form program with dominance property have interesting structural properties:
+In that flavor SSA requires that all uses of a variable are dominated by its definition.
 Hence, the whole live-range is dominated by the definition of the variable.
 Dominance, however, induces a tree on the control-flow graph.
-Thus, the live-ranges of SSA variables are all tree-shaped~\cite{Bouchez05:RR,brisk:2006:poly,HGG:2006:RA_SSA}.
+Thus, the live-ranges of SSA variables are all tree-shaped.
 They can branch downwards on the dominance tree but have a single root:
 the program point where the variable is defined.
 Hence a situation like in Figure~\ref{fig:ra:exprg} can no longer occur:
@@ -154,73 +177,36 @@ The argument and result variables of that \phifun constitute new live-ranges, gi
 	\label{fig:ra:exprgssa}
 \end{figure}
 
-This special structure of the live-ranges leads to a special class of interference graphs:
-Gavril~\cite{gavril:1974:trees} showed that the intersection graphs of subtrees are the \emph{chordal graphs}.
-Chordal graphs can be optimally colored in linear a time with respect to the number of edges in the graph.
-Furthermore, they are \emph{perfect}, which means that for every subgraph, the clique number equals the chromatic number. 
-This is a very important property for register allocation because it means that \maxlive equals the chromatic number of the graph;\footnote{
-This also implies that chordal graphs do not have ``holes'' like the interference graph in Figure~\ref{fig:ra:exprg}.
-Every cycle is spanned by \emph{chords.}
-}
-It has even been shown~\cite{Bouchez05:RR,HGG:2006:RA_SSA} that, for every clique in the interference graph, there is one program point where all the variables of that clique are live.
-This allows to decouples spilling from coloring:
-First, lower the register pressure to~$k$ everywhere in the program;
+This structural property is interesting as it allows a coloring scheme, called the tree scan, that is a simple generalization of the linear scan mentioned above: 
+it always succeeds to color the tree-shaped live-ranges with \maxlive colors. 
+This greedy assignment scans the dominance tree, coloring the variables from the root to the leaves in a top-down order. 
+This means the variables are simply colored in the order of their definitions, first come first served! 
+We give the pseudo-code in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}; 
+Intuitively, when the scanning arrives at the definition of a variable, the only colored variables are ``above'' it and since there is at most $\maxlive-1$ other variables live at the definition, there is always a free color. 
+The direct consequence is that, as opposed to general form programs, the only case where spilling is required is here when $\maxlive > k$. 
+This allows to decouples spilling from coloring: 
+First, lower the register pressure to~$k$ everywhere in the program; 
 Then, color the interference graph with~$k$ colors in polynomial time.
 
 
-\subsection{Maxlive and colorability of graphs}
-\todo{Florent: This part does not seem to be useful, but double-check my words !}
-
-\todo{seb: do we need this? doing  a standard liveness analysis does the job. we can also refer to Appel's liveness algo.}
-
-{\sl
-\begin{itemize}
-  \item definition of Maxlive
-  \item show that Maxlive is the minimum number of colors required
-  \item scan of the dominance tree sufficient to know Maxlive: pseudo-code
-  \item Fab: MAXLIVE minimum if interference graph==intersection graph. Clearly we do not want to go into such details but be careful to use precise and correct terms.
-\end{itemize}
-}
-    
-The register pressure at a program point is the number of variables alive at 
-this point.\footnote{Considering all simultaneously alive variables interfere.}
-The greatest register pressure over all a program is called \maxlive, 
-since it is the maximum number of simultaneously alive variables. Obviously, 
-spilling is mandatory if \maxlive is strictly greater than $R$, the number of 
-registers.
-Under SSA, the good news is that this is the only case where spilling is 
-required, i.e., if \maxlive $\leq R$, there is no need for spilling. Indeed, 
-\maxlive is the coloring number of the chordal interference graph of the 
-program (\todo{ref to chapter 2?}). So, we can devise a polynomial test to know 
-whether spilling is necessary or not by computing \maxlive. This can be done by 
-checking on every program point the number of variables that are alive. If 
-liveness information is available on the whole program, the order does not 
-matter. However, in the case of SSA, this is not required as \maxlive can 
-easily be computed without liveness information by performing a scan of the 
-dominance tree, starting from the root. We only need to know which uses are 
-``last-uses.'' The pseudo-code is given on Figure~\ref{code:compute-maxlive}.
-\todo{check \maxlive scan needs last uses}.
-
-
-\begin{figure}[ht]
+\begin{figure}
   \begin{verbatim}
-  function compute-branch (p, live)
-    live <- live - { uses in p that are last uses }
-    live <- live + { definitions of p }
-    maxlive <- max( maxlive, #live )
-    foreach child c of p
-      compute-branch (c, live)
+Tree_Scan(T)
+  function assign_color(p, available)
+    for each v last use at p
+      available[color(v)] = True     /* colors not used anymore */
+    for each v defined at p
+      c = choose_color(v, available)  /* choose available color */
+      available[c] = False
+      color(v) = c
+    for each child p' of p
+      assign_color(p', available)
+  assign_color(root(T), [True, True, ..., True])
 
-  function compute-maxlive
-    maxlive <- 0
-    compute-branch (root, {})
   \end{verbatim}
-  \caption{Pseudo-code for \maxlive}
-  \label{code:compute-maxlive}
+  \caption{Tree scan coloring algorithm for SSA.}
+  \label{code:assign-tree-scan}
 \end{figure}
-
-
-
 
 
 \section{Spilling}
@@ -636,59 +622,37 @@ For the register assignment problem, we now know that the existing greedy scheme
 However, it requires constructing and maintaining the interference graph, a structure judged to big and cumbersome to be used in a JIT context, where compilation time and memory prints matter more. 
 We will now show how to perform a fast register assignment for SSA after spilling that does not need more than the dominance tree and def-use chains. 
 
-The algorithm we propose scans the dominance tree, coloring the variables from the root to the leaves in a top-down order.
-This means the variables are simply colored in the order of their definitions, first come first served!
-We give the pseudo-code in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}; It works because it mimics the effect of the greedy scheme (``leaves'' are simplified first hence colored \emph{last}), without actually performing any simplification.
+%% The algorithm we propose scans the dominance tree, coloring the variables from the root to the leaves in a top-down order.
+%% This means the variables are simply colored in the order of their definitions, first come first served!
+%% We give the pseudo-code in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}; It works because it mimics the effect of the greedy scheme (``leaves'' are simplified first hence colored \emph{last}), without actually performing any simplification.
 
-Intuitively, when the scanning arrives at the definition of a variable, the only colored variables are ``above'' it and since there is at most $R-1$ other variables live at the definition, there is always a free color.
-We will now prove more formally that this method always work;
-The key observation is that the order in which variables are considered corresponds to a reverse order of simplification, i.e., a valid order of the nodes on the stack after the greedy simplification scheme.
+%% Intuitively, when the scanning arrives at the definition of a variable, the only colored variables are ``above'' it and since there is at most $R-1$ other variables live at the definition, there is always a free color.
+%% We will now prove more formally that this method always work;
+%% The key observation is that the order in which variables are considered corresponds to a reverse order of simplification, i.e., a valid order of the nodes on the stack after the greedy simplification scheme.
 
-\begin{proof}
-  \def\order{o}
-  Let us consider an ordering $v_1, v_2, \ldots, v_n$ of the nodes of the nodes based on the dominance:
-  if $v_i$ dominates $v_j$, then $v_j$ appear before $v_i$ in the ordering ($j < i$).
-  We will show that this order correspond to a greedy simplification.
-  Suppose $v_1, \ldots, v_{i-1}$ have been simplified by the greedy scheme (for $i=1$, this is the initial graph).
-  If $v_i$ dominates any variable, say $v_j$, then $j < i$ and the node has already been simplified;
-  So, there is no variable defined after $v_i$ on the dominance tree:
-  the live-range of $v_i$ is a ``leaf'' of the subtree representation (see proof in Section~\ref{sec:regalloc:ssa-greedy}).
-  So, $v_i$ can be chosen for simplification, and by induction the ordering $v_1, \ldots, v_n$ is a valid order of simplification. 
-  As we have seen previously in Section~\ref{sec:regalloc:greedy-col}, this means the reverse order $v_n, v_{n-1}, \ldots, v_1$ is a valid order for coloring.
-\end{proof}
-
-
-\begin{important}
-It is important to understand why this method does not work in the general non-SSA case.
-Under SSA, the variables are ``split'' at join points by the use of \phifuns.
-If this was not the case, we would have live-ranges that spans on multiple branches of the dominance tree, creating cycles in the representation.
-In that case, coloring a branch would constrain the coloring on leaves on a different branch; Under SSA form, such live-ranges are split and their colorings are independent.
-See Figure~\ref{TODO} for an example.
-\end{important}
+%% \begin{proof}
+%%   \def\order{o}
+%%   Let us consider an ordering $v_1, v_2, \ldots, v_n$ of the nodes of the nodes based on the dominance:
+%%   if $v_i$ dominates $v_j$, then $v_j$ appear before $v_i$ in the ordering ($j < i$).
+%%   We will show that this order correspond to a greedy simplification.
+%%   Suppose $v_1, \ldots, v_{i-1}$ have been simplified by the greedy scheme (for $i=1$, this is the initial graph).
+%%   If $v_i$ dominates any variable, say $v_j$, then $j < i$ and the node has already been simplified;
+%%   So, there is no variable defined after $v_i$ on the dominance tree:
+%%   the live-range of $v_i$ is a ``leaf'' of the subtree representation (see proof in Section~\ref{sec:regalloc:ssa-greedy}).
+%%   So, $v_i$ can be chosen for simplification, and by induction the ordering $v_1, \ldots, v_n$ is a valid order of simplification. 
+%%   As we have seen previously in Section~\ref{sec:regalloc:greedy-col}, this means the reverse order $v_n, v_{n-1}, \ldots, v_1$ is a valid order for coloring.
+%% \end{proof}
 
 
-\begin{figure}
-  \begin{verbatim}
-Tree_Scan(T)
+%% \begin{important}
+%% It is important to understand why this method does not work in the general non-SSA case.
+%% Under SSA, the variables are ``split'' at join points by the use of \phifuns.
+%% If this was not the case, we would have live-ranges that spans on multiple branches of the dominance tree, creating cycles in the representation.
+%% In that case, coloring a branch would constrain the coloring on leaves on a different branch; Under SSA form, such live-ranges are split and their colorings are independent.
+%% See Figure~\ref{TODO} for an example.
+%% \end{important}
 
-  function assign_color(p, available)
-    for each v last use at p
-      available[color(v)] = True     /* colors not used anymore */
 
-    for each v defined at p
-      c = choose_color(v, available)  /* choose available color */
-      available[c] = False
-      color(v) = c
-
-    for each child p' of p
-      assign_color(p', available)
-
-  assign_color(root(T), [True, True, ..., True])
-
-  \end{verbatim}
-  \caption{Tree scan coloring algorithm for SSA.}
-  \label{code:assign-tree-scan}
-\end{figure}
 
 
 The tree-scan coloring algorithm is really fast as it only needs one traversal of the dominance tree. 
@@ -1024,9 +988,16 @@ References to give:
   \item Bouchez et al.~\cite{BouchezDR07:spill} showed that it is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive just by one.
 \end{itemize}
 
+Thus, the live-ranges of SSA variables are all tree-shaped~\cite{Bouchez05:RR,brisk:2006:poly,HGG:2006:RA_SSA}.
 
 
+In theory, the gap between the chromatic number and \maxlive can even be arbitrarily large.
+This can be shown by applying Chaitin's proof of the NP-completeness of register allocation to Mycielski graphs.
 
-
+This special structure of the live-ranges leads to a special class of interference graphs:
+Gavril~\cite{gavril:1974:trees} showed that the intersection graphs of subtrees are the \emph{chordal graphs}.
+Chordal graphs can be optimally colored in linear a time with respect to the number of edges in the graph.
+Furthermore, they are \emph{perfect}, which means that for every subgraph, the clique number equals the chromatic number. 
+This is a very important property for register allocation because it means that \maxlive equals the chromatic number of the graph;
 \endofchapter
 }
