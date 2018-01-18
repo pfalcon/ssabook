@@ -212,31 +212,50 @@ Tree_Scan(T)
 \section{Spilling}
 
 The term spilling is heavily overloaded:
-In the graph-coloring setting it often means to spill a node of the interference graph and thus the \emph{entire} live-range of a variable.
+In the graph-coloring setting it often means to spill a node of the interference graph and thus the \emph{entire} live-range of a variable (spill everywhere).
 This implies inserting load instructions in front of every use and store instructions after each definition of the (non-SSA) variables.
-Other approaches, like some linear scan allocators, are able to keep parts of the live-range of a variable in a register such that multiple uses can potentially reuse the same reload.
+In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, allow multiple uses of a spilled variable to reuse the same reload.
+This corresponds to keep parts of the live-range of a spilled variable in a register.
+Linear scan allocators, do natively, perform such local optimization.
+In this section, we will consider the two approaches: the graph-based approach with a spill-everywhere scheme, and scan-based approach that allows partial live-range spilling.
 
-\subsection{Spilling under the SSA Form}
-
-As stated above, lowering \maxlive to~\regs ensures that a register allocation with \regs registers can be found in polynomial time for SSA programs.
+In both cases, we will assume that the program was in SSA before spilling, and consider the spilling phase as an SSA program transformation that establishes $\maxlive\le\regs$ (\maxlive lowering) by inserting loads and stores into the program.
+Indeed, as stated above, lowering \maxlive to~\regs ensures that a register allocation with \regs registers can be found in polynomial time for SSA programs.
 Thus, spilling should takes place before registers are assigned \emph{and} yield a program in SSA form.
-For the moment, let us ignore \emph{how} to choose ``what'' to spill and ``where,'' and concentrate on the implications of spilling in SSA programs.
-Because many compilers use SSA heavily, it is a reasonable assumption that the program was in SSA before spilling.
-Hence, we consider spilling as an SSA program transformation that establishes $\maxlive\le\regs$ by inserting loads and stores into the program.
+In such a decoupled register-allocation scheme, the spilling phase is an optimization problem for which:
+1. the constraints that describe the universe of possible solutions expresses that the resulting code should be \regs-colorable;
+2. the objective function expresses the fact that the (weighted) amount of inserted loads and stores should be minimized.
 
+In a greedy scheme, the constraints give rise to the spill test which can be expressed as: 
+is more spilling necessary or not? 
+As for the objective, it expresses itself with the following profitability test: 
+among all variables, which one is more profitable to spill? 
+The main implication of spilling in SSA programs is that the spill test which amounts to checking whether \maxlive has been lowered to \regs or not, becomes precise. 
+The other (related) implication of the use of SSA form follows from the following observation: 
+consider a variable such that for any program point in its entire live-range the register pressure is lower than \regs, then spilling this variable is useless with regard to the colorability of the code.
+In other words, spilling such a variable will never be profitable. 
+We will call this yes-or-no criteria, enabled by the use of SSA form, the usefulness test.
+Among all useful-to-spill variables, the question is whether the use of SSA form allow to improve the quality of the profitability test.
+While there are no experimental results that allow to assess the correctness of this assertion, it seems that the enabled capability to decouple spilling  (allocation) to coloring (assignment) allows to better account for the program structure in the spilling decision, and thus improve the overall quality of register allocated code.
+After a brief description of how the usefulness test can be implemented in a graph coloring based scheme, the goal of the next section is to argue in favor of a scan based scheme for spilling decision.
 
-\subsection{Finding Spilling Candidates}
+\subsection{Finding Spilling Candidates: Graph versus Scan}
 
 We need to find program points to place loads and stores such that $\maxlive\le\regs$.
 Let us start with a simplistic setting where the location of loads and stores is not optimized:
 loads are placed directly in front of uses and stores directly after the definition.
-Furthermore we consider a \emph{spill everywhere} setting:
+Most existing graph coloring schemes consider a \emph{spill everywhere} setting:
 a variable is either spilled completely or not at all;
 If spilled, the live-range of a variable then degenerates into small intervals: one from the definition and the store, and one from each load to its subsequent use.
 \todo{figure? Flo: if space allows it, yes.}
 However, even in this simplistic setting, it is NP-complete to find the minimum number of nodes to establish $\maxlive\le\regs$.
 It is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive just by one!
-Finding spill candidates is not facilitated by SSA.
+Existing graph coloring schemes greedily spill variables (graph nodes) using a weight that usually combines its node degree (number of interfering uncolored variables) and an estimated spill cost (estimated execution frequency of inserted loads and stores).
+The node degree amounts to evaluate the profitability of spilling the node in terms of colorability.
+This criteria can be enhanced by adding a usefulness tag as follow.
+
+In other words, assuming a graph coloring scheme, finding spill candidates is not facilitated by SSA.
+
 
 
 Moreover, formulations like \emph{spill everywhere} are often not appropriate for practical purposes,
@@ -988,6 +1007,8 @@ References to give:
   \item Bouchez et al.~\cite{BouchezDR07:spill} showed that it is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive just by one.
 \end{itemize}
 
+Talk about innital notion of live-range splitting that spills only parts of the live-range (splitting instead of spilling).
+
 Thus, the live-ranges of SSA variables are all tree-shaped~\cite{Bouchez05:RR,brisk:2006:poly,HGG:2006:RA_SSA}.
 
 
@@ -1001,3 +1022,7 @@ Furthermore, they are \emph{perfect}, which means that for every subgraph, the c
 This is a very important property for register allocation because it means that \maxlive equals the chromatic number of the graph;
 \endofchapter
 }
+
+%%% Local Variables:
+%%% ispell-local-dictionary: "american"
+%%% End:
