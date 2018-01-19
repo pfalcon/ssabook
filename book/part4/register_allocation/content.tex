@@ -247,15 +247,24 @@ loads are placed directly in front of uses and stores directly after the definit
 Most existing graph coloring schemes consider a \emph{spill everywhere} setting:
 a variable is either spilled completely or not at all;
 If spilled, the live-range of a variable then degenerates into small intervals: one from the definition and the store, and one from each load to its subsequent use.
-\todo{figure? Flo: if space allows it, yes.}
 However, even in this simplistic setting, it is NP-complete to find the minimum number of nodes to establish $\maxlive\le\regs$.
 It is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive just by one!
 Existing graph coloring schemes greedily spill variables (graph nodes) using a weight that usually combines its node degree (number of interfering uncolored variables) and an estimated spill cost (estimated execution frequency of inserted loads and stores).
 The node degree amounts to evaluate the profitability of spilling the node in terms of colorability.
-This criteria can be enhanced by adding a usefulness tag as follow.
+This criteria can be enhanced by adding a usefulness tag as follow:
 
-In other words, assuming a graph coloring scheme, finding spill candidates is not facilitated by SSA.
+The interference graph is built through a simple traversal of the CFG: To an interference-graph node $p$ is associated an SSA program variable $p.\textit{var}$ and vis-versa. There is an interference edge from $v$ to $p$ if and only if $v.\textit{var}$ is alive at $p.\textit{var}$ definition point. Observe that, as opposed to standard interference graphs, we consider directed edges here. Also, to each node $p$, we associate a field $p.\textit{pressure}$ that corresponds to the number of variable alive at definition point of $p.\textit{var}$. As the edge $(v,p)$ is added to the graph, a boolean $(v,p).\textit{high}$ is set with value true if and only if $p.\textit{pressure}>\regs$. Another field $v.\textit{useful}$, that is attached to every node $v$ is also updated: if $p.\textit{pressure}>\regs$ then $p.\textit{useful}$ is set to 1 (otherwise set to 0), and for all $(v,p)$, $p.\textit{pressure}$ gets incremented by one. At the end of the build process, $v.\textit{useful}$ expresses the number of program points that belong to the live-range of $v.\textit{var}$ for which the register pressure is greater than \regs. In other words,
+$$v.\textit{useful}=\left|\lbrace p,\ \left(\exists (v,p) \wedge (v,p).\textit{pressure}>\regs\right) \vee \left( v=p \wedge p.\textit{pressure}>\regs\right) \rbrace\right|$$
+Defined as it, if $v.\textit{useful}=0$, then it can be considered to be be useless to spill $v$.
+If not, it means that $v$ belongs to a clique of size greater than $\regs$, and that one of the nodes of the clique must be spilled. 
+Spilling $v$ is useful as it would reduce the size of the clique by one.
 
+Those additional fields of the interference graph can be updated as variables/nodes are spilled. 
+When a node $n$ is spilled:
+1.~for all its incoming edges $(v,n)$, $v.\textit{useful}$ is decremented by one;
+2.~for all its high outgoing edges $(n,p)$, $p.\textit{pressure}$ is decremented by one; if following this decrement $p.\textit{pressure}$ becomes equal to \regs, then for all the incoming edges of $p$ $(v,p)$, $v.\textit{useful}$ is decremented by one.
+
+I AM HERE
 
 
 Moreover, formulations like \emph{spill everywhere} are often not appropriate for practical purposes,
