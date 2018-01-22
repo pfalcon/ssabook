@@ -219,12 +219,16 @@ This corresponds to keep parts of the live-range of a spilled variable in a regi
 Linear scan allocators, do natively, perform such local optimization.
 In this section, we will consider the two approaches: the graph-based approach with a spill-everywhere scheme, and scan-based approach that allows partial live-range spilling.
 
-In both cases, we will assume that the program was in SSA before spilling, and consider the spilling phase as an SSA program transformation that establishes $\maxlive\le\regs$ (\maxlive lowering) by inserting loads and stores into the program.
-Indeed, as stated above, lowering \maxlive to~\regs ensures that a register allocation with \regs registers can be found in polynomial time for SSA programs.
-Thus, spilling should takes place before registers are assigned \emph{and} yield a program in SSA form.
-In such a decoupled register-allocation scheme, the spilling phase is an optimization problem for which:
-1. the constraints that describe the universe of possible solutions expresses that the resulting code should be \regs-colorable;
-2. the objective function expresses the fact that the (weighted) amount of inserted loads and stores should be minimized.
+In both cases, we will assume that the program was in SSA before spilling. 
+This is important to notice that there are pros and cons of assuming so. 
+In particular, the inability to coalesce or move the shuffle code associated to \phifuns can lead to spurious load and store instructions on CFG-edges. 
+However, we do make the exercise of considering this assumption here, and consider the spilling phase as an SSA program transformation.
+Its objective is to establish $\maxlive\le\regs$ (\maxlive lowering) by inserting loads and stores into the program. 
+Indeed, as stated above, lowering \maxlive to~\regs ensures that a register allocation with \regs registers can be found in polynomial time for SSA programs. 
+Thus, spilling should takes place before registers are assigned \emph{and} yield a program in SSA form. 
+In such a decoupled register-allocation scheme, the spilling phase is an optimization problem for which: 
+1.~the constraints that describe the universe of possible solutions expresses that the resulting code should be \regs-colorable; 
+2.~the objective function expresses the fact that the (weighted) amount of inserted loads and stores should be minimized.
 
 In a greedy scheme, the constraints give rise to the spill test which can be expressed as: 
 is more spilling necessary or not? 
@@ -239,7 +243,7 @@ Among all useful-to-spill variables, the question is whether the use of SSA form
 While there are no experimental results that allow to assess the correctness of this assertion, it seems that the enabled capability to decouple spilling  (allocation) to coloring (assignment) allows to better account for the program structure in the spilling decision, and thus improve the overall quality of register allocated code.
 After a brief description of how the usefulness test can be implemented in a graph coloring based scheme, the goal of the next section is to argue in favor of a scan based scheme for spilling decision.
 
-\subsection{Finding Spilling Candidates: Graph versus Scan}
+\subsection{Graph-based approach}
 
 We need to find program points to place loads and stores such that $\maxlive\le\regs$.
 Let us start with a simplistic setting where the location of loads and stores is not optimized:
@@ -253,234 +257,86 @@ Existing graph coloring schemes greedily spill variables (graph nodes) using a w
 The node degree amounts to evaluate the profitability of spilling the node in terms of colorability.
 This criteria can be enhanced by adding a usefulness tag as follow:
 
-The interference graph is built through a simple traversal of the CFG: To an interference-graph node $p$ is associated an SSA program variable $p.\textit{var}$ and vis-versa. There is an interference edge from $v$ to $p$ if and only if $v.\textit{var}$ is alive at $p.\textit{var}$ definition point. Observe that, as opposed to standard interference graphs, we consider directed edges here. Also, to each node $p$, we associate a field $p.\textit{pressure}$ that corresponds to the number of variable alive at definition point of $p.\textit{var}$. As the edge $(v,p)$ is added to the graph, a boolean $(v,p).\textit{high}$ is set with value true if and only if $p.\textit{pressure}>\regs$. Another field $v.\textit{useful}$, that is attached to every node $v$ is also updated: if $p.\textit{pressure}>\regs$ then $p.\textit{useful}$ is set to 1 (otherwise set to 0), and for all $(v,p)$, $p.\textit{pressure}$ gets incremented by one. At the end of the build process, $v.\textit{useful}$ expresses the number of program points that belong to the live-range of $v.\textit{var}$ for which the register pressure is greater than \regs. In other words,
-$$v.\textit{useful}=\left|\lbrace p,\ \left(\exists (v,p) \wedge (v,p).\textit{pressure}>\regs\right) \vee \left( v=p \wedge p.\textit{pressure}>\regs\right) \rbrace\right|$$
+The interference graph is built through a simple traversal of the CFG: 
+To an interference-graph node $p$ is associated an SSA program variable $p.\textit{var}$ and vis-versa. 
+There is an interference edge $(v,p)$ from $v$ to $p$ if and only if $v.\textit{var}$ is alive at $p.\textit{var}$ definition point. 
+Observe that, as opposed to standard interference graphs, we consider directed edges here. 
+Also, to each node $p$, we associate a field $p.\textit{pressure}$ that corresponds to the number of variable alive at definition point of $p.\textit{var}$. 
+As the edge $(v,p)$ is added to the graph, a boolean $(v,p).\textit{high}$ is set with value \true if and only if $p.\textit{pressure}>\regs$. 
+Another field $v.\textit{useful}$, that is attached to every node $v$ is also updated: 
+if $p.\textit{pressure}>\regs$ then $p.\textit{useful}$ is set to 1 (otherwise set to 0), and for all $(v,p)$, $p.\textit{pressure}$ gets incremented by 1 (other nothing is done). 
+At the end of the build process, $v.\textit{useful}$ expresses the number of program points that belong to the live-range of $v.\textit{var}$ and for which the register pressure is greater than \regs. 
+In other words,
+$$v.\textit{useful}=\left|\lbrace p,\ p.\textit{pressure}>\regs \wedge\left(\exists (v,p) \vee v=p \right) \rbrace\right|$$
 Defined as it, if $v.\textit{useful}=0$, then it can be considered to be be useless to spill $v$.
 If not, it means that $v$ belongs to a clique of size greater than $\regs$, and that one of the nodes of the clique must be spilled. 
-Spilling $v$ is useful as it would reduce the size of the clique by one.
+In that case, spilling $v$ is useful as it would reduce the size of the clique by one.
 
-Those additional fields of the interference graph can be updated as variables/nodes are spilled. 
-When a node $n$ is spilled:
+Whenever a node $n$ is spilled (assume only useful nodes are spilled), those additional fields of the interference graph are updated as follow:
 1.~for all its incoming edges $(v,n)$, $v.\textit{useful}$ is decremented by one;
 2.~for all its high outgoing edges $(n,p)$, $p.\textit{pressure}$ is decremented by one; if following this decrement $p.\textit{pressure}$ becomes equal to \regs, then for all the incoming edges of $p$ $(v,p)$, $v.\textit{useful}$ is decremented by one.
 
-I AM HERE
-
-
-Moreover, formulations like \emph{spill everywhere} are often not appropriate for practical purposes,
-and putting the whole live-range to memory is too simplistic.
-A variable might be spilled because at some program point the pressure is too high;
-However, if that same variable is later used in a loop where the register pressure is low,
-a spill everywhere will place a superfluous (and costly!) load in that loop.
-Spill everywhere approaches try to minimize this behavior by adding costs to variables, to make the spilling of such a variable less likely.
-These bring in a flow-insensitive information that a variable reside an frequently executed area.
-However, such approximations are often too coarse to give good performance.
+As one can observe, as spilling and coloring decisions are fully decoupled now, encoding the information using a graph does not seem to help much. 
+Moreover, formulations like \emph{spill everywhere} are often not appropriate for practical purposes, and putting the whole live-range to memory is too simplistic. 
+A variable might be spilled because at some program point the pressure is too high; 
+However, if that same variable is later used in a loop where the register pressure is low, a spill everywhere will place a superfluous (and costly!) load in that loop. 
+Spill everywhere approaches try to minimize this behavior by adding costs to variables, to make the spilling of such a variable less likely. 
+These bring in a flow-insensitive information that a variable reside an frequently executed area. 
+However, such approximations are often too coarse to give good performance. 
 Hence, it is imperative to cleverly split the live-range of the variable according to the \emph{program structure} and spill only parts of it.
 
-\bigskip
 
-In the context of a basic block, a simple algorithm that works well is the ``furthest first'' algorithm.
-The idea is to scan the block from to bottom,
-whenever where the register pressure is too high, we spill the variable whose next use is the furthest away;
-And we spill it only \emph{up to this next use}.
-Spilling this variable frees a register for the longest time, hence diminishing the chances to have to spill other variables later.
-This algorithm is not optimal since the first time a variable is spilled, a load and a store are added;
-For subsequent spilling of the same variable (but on a different part of its live-range), only a load must be added.
+\subsection{Scan-based approach}
+In the context of a basic block, a simple algorithm that works well is the ``furthest first'' algorithm (see Figure~\ref{fig:ra:ff}). 
+The idea is to scan the block from top to bottom.
+Whenever the register pressure is too high, the spilled variable is the one whose next use is the furthest away; 
+And it is spilled only \emph{up to this next use}. 
+Spilling this variable frees a register for the longest time, hence diminishing the chances to have to spill other variables later. 
+This algorithm is not optimal since the first time a variable is spilled, a load and a store are added; 
+For subsequent spilling of the same variable (but on a different part of its live-range), only a load must be added. 
 Hence this algorithm may produce more stores than necessary (e.g., by spilling two variables while spilling an other part of the first one would have been enough), but it gives good results on ``straight-line code,'' i.e., basic blocks.
 
+\begin{figure}
+\begin{verbatim}
+Further_First(B)
+  function spill(p, &in_regs, &in_mem, &to_store, in_solidstate)
+    while |in_regs|>R
+      let v in in_regs - in_solidstate with further next_use_after(p)
+      if v not in in_mem 
+         to_store = to_store U {v}
+         in_mem = in_mem U {v}
+      in_regs = in_regs \ {v}
 
-We will present in the next section an algorithm that extends this ``furthest first'' algorithm to general control-flow graphs.
+  foreach prog point p in B from top to bottom
+    var_to_store = var_to_load = emptyset
+    foreach v used at p
+       if v not in var_in_regs 
+          var_to_load = var_to_load U {v}
+          var_in_regs = var_in_regs U {v}
+    spill(p, var_in_regs, var_in_mem, var_to_store, var_to_load)
+    foreach v last use at p  
+      var_in_regs = var_in_regs \ {v}
+    foreach v defined at p
+      var_in_regs = var_in_regs U {v}
+    spill(p, var_in_regs, var_in_mem, var_to_store, {v defined at p})
+    foreach v in var_to_load
+      insert a load of v from memory just before p
+    foreach v in var_to_store
+      insert a store of v to memory just before p
+ 
+
+\end{verbatim}
+\caption{\label{fig:ra:ff}Further First spilling algorithm for straight-line code}
+\end{figure}
+
+We now present an algorithm that extends this ``furthest first'' algorithm to general control-flow graphs.
 The idea is to use a data-flow analysis to approximately compute the next use values on the control-flow graph.
 In this next use calculation, loops are virtually unrolled by a large factor such that code ``behind'' loops appears far away from code in front of the loop.
 This forces the spilling algorithm to prefer variables that are not used in loops and to leave in registers the parts of live-ranges that are used inside loops.
 We then have to find how and in which order to process the basic blocks of the control-flow graph in order to determine a reasonable initial register occupation for each block.
 
 
-
-\begin{comment}
-
-\section{The problem of spilling}
-\subsection{Lowering Maxlive}
-
-{\sl
-\begin{itemize}
-  \item The min number of colors is Maxlive. Variables must be stored in memory 
-    to lower the register pressure at points where it is $>R$.
-  \item Whenever, Maxlive $\leq R$, we know for sure that spilling more in 
-    unnecessary.
-  \item Fab: if MAXLIVE$\leq R$ spilling is unecessary under some conditions (we color SSA code, going out of SSA code might require some additionnal spilling. Also without naming constraints). So again be careful about what you say. I think that the idea is to have a register allocator under SSA as simple as possible with a very simple modeling and nice properties. Then we cope with real world issues during the colored-SSA destruction.
-\end{itemize}
-}
-
-Usually, there are too many variables in a program and \maxlive is greater than 
-$R$. In that case, we need to lower the register pressure at program points 
-where it exceeds $R$ by spilling, i.e., storing variables in memory instead of 
-registers. Whenever we reach a point where \maxlive $\leq R$, it will be 
-possible to color all SSA variables with the $R$ registers. For now, the 
-difficulty lies in choosing which variables to spill, and where to spill them. 
-Indeed, a careful choice will lead to performance, while making bad decisions 
-can lead to big slowdowns. As accesses to variables in memory require more time 
-that accesses to registers, it is for instance better to avoid spilling 
-variables used inside frequently executed code regions like loops.
-
-\todo{spilling while keeping SSA property}
-
-
-\subsection{Spilling is a difficult problem}
-
-The problem of spilling is a difficult one in the literature, even under one of 
-its simpler forms, the spill everywhere problem, where spilled variables stay 
-so on their entire live-range~\cite{todo}. This spilling is advocated on the 
-first graph-coloring algorithms~\cite{chaitin:1981:register} and even in subsequent 
-algorithms~\cite{IRC} because it fits better the graph-coloring representation. 
-In these schemes, this amounts to removing nodes from a non $R$-colorable graph 
-until it becomes $R$-colorable. Although this node deletion problem is known to 
-be NP-complete, this allows the writing of simple heuristics based on the 
-number of neighbours in the graph and a cost attached to nodes representing the 
-overhead incurred in case they were to be spilled. An added problem is the fact 
-that, for many architectures like RISC, spilled variables cannot be accessed 
-directly from memory but must instead by copied back to the registers, when 
-they are used, or which must be in a register when defined, just before being 
-copied to memory. This creates new variables with very short live-ranges at the 
-definition and use points, which must be accounted for register allocation. 
-This explains why algorithms such as \irc must rebuild the interference graph 
-after a phase of spilling and start again, until no more spilling is required.
-
-
-The actual spilling problem is even more difficult, as variables do not have to 
-be spilled on their entire live-range.
-% borrowed from sebastian's CC'09 paper
-Consider a loop with excessive register pressure and a variable that is defined 
-before the loop and used afterwards. Ideally, a compiler would store (spill) 
-the variable in front of the loop and load (reload) the variable after the 
-loop. If the variable was reloaded inside the loop, the reload would be 
-executed in each loop iteration. Another example is a variable that is used in 
-a loop but has already been spilled before the loop. Reloading this variable 
-directly before its use in the loop will cause memory traffic in each loop 
-iteration. Thus, it is preferable to put the reload in front of the loop.
-% end of borrowing
-This poses a new problem on top of choosing which variables to spill: now we 
-need also to choose where to spill them, i.e., where to put {\tt load} and {\tt 
-store} instructions. This more general problem where the goal is to minimize 
-the overhead of these added instructions is called the load-store optimization 
-problem and is known to be NP-complete, even for a 
-basic-block~\cite{Liberatore00}.  
-
-
-\subsection{SSA does not help for spilling}
-{\sl
-\begin{itemize}
-  \item easy spill method: spill everywhere
-  \item SSA split points are good for coloring, but not really for spilling 
-    (see article spill everywhere under SSA)
-  \item other split points to avoid spill everywhere are probably better
-  \item Fab: if you need an example to illustrate that SSA does not really help 
-    in practice for spilling ask Quentin. It does help a little bit (dynamic 
-    programming possible for spill everywhere with few registers; further first 
-    can be generalized). But what you want to point it here is the fact that 
-    the disadvantages seem more important than advantages.
-  \item Fab: the LCTES spill everywhere article does not discuss practical issues (such as the fact that it might insert a load or a store inside a loop...). It is more algorithmical issues.
-  \item Seb: Want do we want to say here?
-  	  I think the title of the section is too negative. 
-  	  Perhaps we should merge the section with the last.
-  	  I think it would be good to first talk about different definitions for spilling,
-  	  then give an overview over your results (LCTES paper).
-\end{itemize}
-}
-
-For the spilling problem, the SSA is not really of much help. Over a blind 
-spill everywhere algorithm on the initial program, it has however the slight 
-advantage of allowing the spilling of SSA variables, i.e., sub-variables of the 
-initial variables. One major disadvantage is the added complexity when spilling
-variables defined in \phifuns \todo{explain the problem if not all args are 
-spilled, or if spilled in $\neq$ locations}.
-\todo{Seb: complexity? perhaps slight complications :)}
-
-{\sl Examples by Quentin}
-\begin{minipage}{.45\textwidth}
-\begin{verbatim}
-CSSA :
-   a =
-   b =
- /       \
-c= a   d = b
- \       /
- e = phi(c,d)
- = e
-\end{verbatim}
-\end{minipage}
-\begin{minipage}{.45\textwidth}
-After spilling spill :
-\begin{verbatim}
-   a =
-   b =
- /          \
-c= a     d = b
-C=st c  D = st d
- \          /
- E = phi(C,D)
- e = ld E
- = e
-\end{verbatim}
-\end{minipage}
-In that case, memory locations C, D and E can be the same. But this does not 
-mean that placement of {\tt store} instruction is the best one.
-
-\begin{minipage}{.45\textwidth}
-\begin{verbatim}
-SSA :
-   a =
-   b =
- /         \
- \         /
- e = phi(a,b)
- = e
-\end{verbatim}
-\end{minipage}
-\begin{minipage}{.45\textwidth}
-Spill supposing {\tt store}s are after definition
-\begin{verbatim}
-   a =
-   A = st a
-   b =
-   B = st b
- /         \
- \ <--     / <--
- E = phi(A,B)
- e = ld E
- = e
-\end{verbatim}
-\end{minipage}
-
-On the two edges pointed by arrows (or on the preceding basic block if they are 
-not critical), additional memory transactions must reconcile the values:
-\begin{verbatim}
-tmp = ld X
-Y = st tmp
-\end{verbatim}
-
-This can induce more spill, unforeseen.
-Without SSA, this problem does not exist: for instance, with spill everywhere, 
-the same memory slot is affected to all definitions of the same variable so no 
-post-treatment is required as it is under SSA.
-
-
-\end{comment}
-
-\subsection{Spilling under SSA}
-Still, we give a possibility to perform spilling under SSA
-\begin{itemize}
-  \item Hack's algorithm: simplified version?
-  \item \`a la Belady following dominance tree?
-
-  \item Fab: The last Algorithm from Sebastian is Belady like. So yes try to simplify it, provide the pseudo code and give the intuitions on how the full version improves it.
-  \item Seb: I think it's ok to briefly outline the approaches that are out there and refer to the papers.
-
-\end{itemize}
-\todo{Ask Sebastian to do it.}
-
-
-\cite{Braun:2009:CC}\todo{file braun09cc.pdf in biblio}
+I AM HERE (FAB)
 
 
 \section{Coloring and coalescing}
@@ -1016,10 +872,14 @@ References to give:
   \item Bouchez et al.~\cite{BouchezDR07:spill} showed that it is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive just by one.
 \end{itemize}
 
+
+\cite{Braun:2009:CC}\todo{file braun09cc.pdf in biblio}
+
 Talk about innital notion of live-range splitting that spills only parts of the live-range (splitting instead of spilling).
 
 Thus, the live-ranges of SSA variables are all tree-shaped~\cite{Bouchez05:RR,brisk:2006:poly,HGG:2006:RA_SSA}.
 
+Cross-reference to SSA-PRE
 
 In theory, the gap between the chromatic number and \maxlive can even be arbitrarily large.
 This can be shown by applying Chaitin's proof of the NP-completeness of register allocation to Mycielski graphs.
