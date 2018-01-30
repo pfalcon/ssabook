@@ -306,9 +306,9 @@ Hence this algorithm may produce more stores than necessary (e.g., by spilling t
 Further_First(B)
   function evict(p, &in_regs, &in_mem, in_solidstate)
     while |in_regs|>R
-      let v in (in_regs - in_solidstate) with max V.distance_to_next_use_after(p)
+      let v in (in_regs - in_solidstate) with max v.distance_to_next_use_after(p)
       if v not in in_mem 
-         insert a store of v to memory just after its definition point
+         insert a store of v to memory just before p
          in_mem = in_mem U {v}
       in_regs = in_regs \ {v}
 
@@ -325,9 +325,6 @@ Further_First(B)
     foreach v defined at p
       var_in_regs = var_in_regs U {v}
     evict(p, var_in_regs, var_in_mem, {vars defined at p})
-      
- 
-
 \end{verbatim}
 \caption{\label{fig:ra:ff}Further First spilling algorithm for straight-line code}
 \end{figure}
@@ -378,11 +375,39 @@ This, for example, would lead as illustrated below in our running example, to ex
 Hence,
 \begin{enumerate}
 \item assuming low register pressure within the loop, we have $x.\texttt{HP}(p_0)=\{p_0\}$, and $y.\texttt{HP}(p_0)=\{p_0,p_3\}$. 
-  This leads to $\texttt{x.spill\_profitability}(p_0)=1$ and $\texttt{y.spill\_profitability}(p_0)=1+0.5=1.5$, ie. evicting $y$.
-\item now assume register pressure to be high at $p_1$, then $x.\texttt{HP}(p_0)=\{p_0,p_1\}$, and $y.\texttt{HP}(p_0)=\{p_0,p_3\}$. This leads to $\texttt{x.spill\_profitability}(p_0)=1+50=51$ and $\texttt{y.spill\_profitability}(p_0)=1.5$, i.e. evicting $x$.
+  This leads to $x.\texttt{spill\_profitability}(p_0)=1$ and $y.\texttt{spill\_profitability}(p_0)=1+0.5=1.5$, ie. evicting $y$.
+\item now assume register pressure to be high at $p_1$, then $x.\texttt{HP}(p_0)=\{p_0,p_1\}$, and $y.\texttt{HP}(p_0)=\{p_0,p_3\}$. This leads to $x.\texttt{spill\_profitability}(p_0)=1+50=51$ and $y.\texttt{spill\_profitability}(p_0)=1.5$, i.e. evicting $x$.
 \end{enumerate}
 
 \paragraph{Initial Register Filling at the Beginning of a Basic-Block}
+For each visited basic-block $B$, the set of variables that must reside in a register is stored in \verb+B.vars_in_regs+.
+For each basic-block, initial value of this set has to be computed prior to starting processing it.
+The heuristic for computing this set is different for a ``normal'' basic-block and for a loop entry.
+For a normal basic-block, as we assume a topological order traversal of the CFG, all its predecessors have been processed yet.
+Live-in variables fall into three sets:
+\begin{enumerate}
+\item the ones that are available in all predecessor basic-blocks:
+  $$B.\texttt{allpreds\_in\_regs}=\bigcap_{P\in \textrm{pred}(B)} P.\texttt{in\_regs}$$
+\item the ones that are available in some of the predecessor basic-blocks:
+  $$B.\texttt{somepreds\_in\_regs}= \bigcup_{P\in \textrm{pred}(B)} P.\texttt{in\_regs}$$
+\item the ones that are available in none of them.
+\end{enumerate}
+As detailed in Figure~\ref{fig:ra:initnormal}, $B.\texttt{in\_regs}$ is initialized with $B.\texttt{allpreds\_in\_regs}$ plus, as space allows, elements of $B.\texttt{somepreds\_in\_regs}$ sorted in decreasing order of their \texttt{spill\_profitability} metric.
+
+\begin{figure}
+\begin{verbatim}
+Init_inregs(B)
+  allpreds_in_regs = Union for all P in B.preds of P.in_regs
+  somepreds_in_regs = Intersection for all P in B.preds of P.in_regs
+  B.in_regs = allpreds_in_regs
+  while |B.inregs| < R and |somepreds| > |B.inregs|
+    let v in (somepreds - B.inregs) with min v.spill_profitability(B.entry)
+      B.inregs = B.inregs U {v}
+\end{verbatim}
+\end{figure}
+
+For a basic-block at the entry of a loop, as illustrated by the example of Figure~\ref{fig:ra:loopentry_example}, one do not want to account for allocation on predecessor basic-block, but start from scratch instead.
+
 I AM HERE
 
 \section{Coloring and coalescing}
