@@ -44,25 +44,27 @@ The goal of this Chapter is to illustrate how SSA form can help in designing bot
 \section{Introduction}
 Register allocation is usually performed per procedure. 
 In each procedure, a liveness analysis (see Chapter~\ref{chapter:liveness}) determines for each variable the program points where the variable is alive. 
-Wherever it is alive, storage needs to be allocated for that variable; 
-ideally a register. 
-The set of all program points where a variable is alive is called the \emph{live-range} of the variable. 
+The set of all program points where a variable is alive is called the \emph{live-range} of the variable, and all along this live-range, storage needs to be allocated for that variable, ideally a register. 
+
 The resource conflict of two variables is called \emph{interference} and is usually defined via liveness: 
-Two variables interfere if (and only if) there exists a program point where they are simultaneously alive.\footnote{ This definition of interference by liveness is an over-approximation (see Section~\ref{sec:properties_and_flavors:ultimate_interference}). 
-  There are refined definitions that create less interferences (see Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}). 
+two variables interfere if (and only if) there exists a program point where they are simultaneously alive,%
+\footnote{ This definition of interference by liveness is an over-approximation (see Section~\ref{sec:properties_and_flavors:ultimate_interference}), and there are refined definitions that create less interferences (see Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}). 
   However, in this chapter we will restrict ourselves to this definition and assume that two interfering variables cannot be assigned the same register. 
-} The number of simultaneously alive variables at a program point is called the \emph{register pressure} at that program point. 
+}
+i.e., their live-ranges intersect. It represents the fact that those two variables cannot share the same register.
+
+The number of simultaneously alive variables at a program point is called the \emph{register pressure} at that program point. 
 The maximum register pressure over all program points in a procedure is called the register pressure of that procedure, or ``\maxlive.'' 
-One can observe that \maxlive expresses the minimum required number of available registers for a spill-free register assignment. 
-Interestingly, for a straight-line code (basic-block), \maxlive constitutes also a sufficient number of registers. 
-As one can illustrate through the example of Figure~\ref{fig:ra:linearscan}, a greedy assignment considering live intervals from top to bottom always succeeds with \maxlive registers (equal to two in this example). 
-Assume one have only two registers available (denoted $R1$ and $R2$): 
-variable $a$ can be assigned $R1$; 
-$d$ must then be assigned $R2$; 
-at definition point of $e$, $R1$ is released (end of live-range of $a$), so $e$ can be assigned to $R1$...
-Note that, the order along which live-ranges are assigned to registers is important.
-As an example, by not following the program order e.g. $(a,e,d)$ (as opposed to ($a,d,e$)), a greedy assignment could fail (e.g. if $a$ is assigned to $R1$, $e$ to $R2$).
-That important observation gave rise to the linear scan register allocation scheme widely adopted by just-in-time compilers.
+One can observe that \maxlive expresses the \emph{minimum} number of required registers for a spill-free register assignment, i.e., an allocation that does not require memory.
+In general, a procedure might require more than \maxlive registers to be spill-free (more on this later), but interestingly, for a straight-line code (basic-block), \maxlive constitutes also a sufficient number of registers. 
+
+Let us see an example in Figure~\ref{fig:ra:linearscan}: in such a case, a greedy assignment considering live intervals from top to bottom always succeeds with \maxlive registers.
+In our example, $\maxlive = 2$; Let us assume we have only two registers available (denoted $R_1$ and $R_2$). The greedy algorithm will
+assign variable $a$ to $R_1$, then $d$ must be assigned to $R_2$. Finally,
+at the definition point of $e$, $R_1$ is released as this is the end of the live-range of $a$, so $e$ can be assigned to $R_1$.
+Note that the order of assignment of live-ranges to registers is important.
+As an example, a greedy assignment that does not follow the program order could fail, e.g., by assigning $a$ to $R_1$, then $e$ to $R_2$, there is no register available for $d$.
+
 
 \newsavebox{\linearscanbox}
 \begin{lrbox}{\linearscanbox}
@@ -88,19 +90,21 @@ Linear_Scan(B)
     \caption{\label{fig:ra:linearscan}Linear scan assignment scheme on a basic-block: assigning registers to live intervals from top to bottom ($a$, then $d$, followed by $e$) always succeeds if \maxlive (here two) does not exceed the number of available registers. }
 \end{figure}
 
-However, for a general control-flow graph, classical register allocation schemes like to think of interferences as an undirected \emph{interference graph:} The nodes are the variables of the program, and two nodes are connected if they interfere.
-A \emph{coloring} of this graph with~$k$ colors corresponds to a valid register allocation with~$k$ registers.
-Hence, we will use the terms ``register'' and ``color'' interchangeably in this chapter.
+
+
+That important observation gave rise to the linear scan register allocation scheme widely adopted by just-in-time compilers, as the algorithm is very fast.
+However, for a general control-flow graph, the algorithm is not optimal, so classical register allocation schemes like to think of interferences as an undirected \emph{interference graph}: the nodes are the variables of the program, and two nodes are connected if they interfere.
+A \emph{coloring} of this graph with~$k$ colors corresponds to a valid register allocation with~$k$ registers.\footnote{Hence the terms ``register'' and ``color'' will be used interchangeably in this chapter.}
 A $k$-coloring is a mapping from the nodes of the graph to the first~$k$ natural numbers (called colors) such that two neighboring nodes have different colors.
-Unfortunately graph $k$-coloring is known to be NP-complete problem, and for any arbitrary undirected graph, there is a program whose interference graph is this graph.
+Unfortunately, graph $k$-coloring is known to be an NP-complete problem, and for any arbitrary undirected graph, there is a program whose interference graph is this graph.
 This is the major nuisance of classical register allocation:
-The compiler cannot efficiently determine if spilling is necessary.
-This means one might need more registers than \maxlive.
-The somewhat non intuitive result is that, even if at every program point there are no more than \maxlive variables alive, we still might need more than $\maxlive$ registers for a correct register allocation!
+the compiler cannot efficiently determine if spilling is necessary,
+which means one might need more registers than \maxlive.
+
+The somewhat non intuitive result is that, even if at every program point there are no more than \maxlive variables alive, we still might need more than $\maxlive$ registers for a spill-free register allocation!
 The causes of this problem are control-flow merges, as can be seen in Figure~\ref{fig:ra:exprg}.
 In that example, the register pressure is at most two at every program point.
-However, the interference graph cannot be colored with two colors. 
-Its chromatic number is three.
+However, because the variable $e$ is defined in both branches of an if-condition, the interference graph cannot be colored with two colors: its chromatic number is three.
 The inequality between \maxlive and the chromatic number is caused by the cycle in the interference graph.
 
 
@@ -124,11 +128,11 @@ In Figure~\ref{sub:ra:exprg:prog}, assume we split the live-range of~$e$ in the 
 we rename it by~$e'$ and add a copy~$e \gets e'$ at the end of the block. 
 Then, the node~$e$ in the graph is split into two nodes, $e$ and~$e'$, that do not interfere: 
 this breaks the cycle in the graph, making its chromatic number equal to two, i.e., \maxlive. 
-(cf.~the SSA version of the program shown in Figure~\ref{fig:ra:exprgssa}). 
 In an extreme setting, one could split the live-ranges of all variables after every instruction. 
 The interference graph degenerates into several disconnected components and its chromatic number drops to \maxlive. 
-Of course, such an extreme live-range splitting introduces \emph{a lot} of shuffle code, which degrades the run-time of the compiled program. 
-This interplay between live-range splitting and colorability is the key issue in register allocation.
+Of course, such an extreme live-range splitting introduces \emph{a lot of shuffle code}, in the form of register to register copies, which degrades the run-time of the compiled program. 
+This interplay between live-range splitting and colorability is the key issue in register allocation, and we will see in the remainder of this chapter how SSA, which creates live-range splitting at particular locations, can play a role in register allocation.
+% (cf.~the SSA version of the program shown in Figure~\ref{fig:ra:exprgssa}). 
 
 \begin{figure}[htbp]
 	\begin{center}
