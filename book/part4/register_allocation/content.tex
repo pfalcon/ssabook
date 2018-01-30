@@ -104,7 +104,7 @@ which means one might need more registers than \maxlive.
 The somewhat non intuitive result is that, even if at every program point there are no more than \maxlive variables alive, we still might need more than $\maxlive$ registers for a spill-free register allocation!
 The causes of this problem are control-flow merges, as can be seen in Figure~\ref{fig:ra:exprg}.
 In that example, the register pressure is at most two at every program point.
-However, because the variable $e$ is defined in both branches of an if-condition, the interference graph cannot be colored with two colors: its chromatic number is three.
+However, because the variable $e$ is defined in both branches of an if-condition, the interference graph cannot be colored with two colors: its \emph{chromatic number} is three.
 The inequality between \maxlive and the chromatic number is caused by the cycle in the interference graph.
 
 
@@ -149,18 +149,19 @@ This interplay between live-range splitting and colorability is the key issue in
 As finding a valid $k$-coloring is NP-complete, assigning registers is performed in classical register allocators by some heuristic algorithm.
 If that algorithm fails to assign a register to a variable, then it either spills this variable to memory, or frees a register by spilling the variable it contains.
 The problem here is that the spilling decision is made to revive the coloring heuristic, and not because the variable that gets spilled is in itself a good candidate for spilling. 
-Even worse, we might spill a variable because the heuristic is ``not good enough,'' and not because we are actually out of registers.
-Whatever the coloring heuristic that is used, live-range splitting (up to the extreme setting of splitting at every program point) will always allow to overcome over spilling decisions.
-But if one wants to avoid spill code (memory loads and stores) as much as possible, too many register-to-register copies should be avoided also.
+Even worse, we might spill a variable because the heuristic is ``not good enough,'' and not because we are actually out of registers!
+
+In that regard, whatever the coloring heuristic, live-range splitting (up to the extreme setting of splitting at every program point) will never produce ``over-spilling'' decisions.
+But if one wants to avoid spill code (memory loads and stores) as much as possible, too many register-to-register copies should also be avoided.
 For that purpose, at the same time coloring and spilling decisions are made, classical algorithms also perform copy coalescing (i.e.,~undoing live-range splitting).
 However, if done aggressively, coalescing may increase the chromatic number of the graph, or make the graph harder to color for the heuristic.
 Thus, existing techniques often apply \emph{conservative} coalescing approaches which are guaranteed not to increase the chromatic number of the graph, at the expense of the quality of the coalescing.
 The main issue with conservative coalescing is that, with an extreme solution that would split all live-ranges at every basic-block boundaries, it is either slow or inefficient in removing most of the spurious introduced copies.
-Thus, the splitting or not splitting trade-off that has to be addressed by the register allocator.
-SSA form based live-range splitting is an elegant solution to this trade-off problem as it is sufficient in bringing the interference graph \maxlive-colorable without blowing-up the number of live-ranges.
+Thus, the splitting or not splitting trade-off has to be addressed by the register allocator.
+We will see that live-range splitting based on SSA form is an elegant solution to this trade-off problem as it is sufficient in bringing the interference graph \maxlive-colorable without blowing-up the number of live-ranges.
 
 As already mentioned in Section~\ref{sec:properties_and_flavours:domprop} of Chapter~\ref{chapter:properties_and_flavors}, the live-ranges in an SSA form program with dominance property have interesting structural properties:
-In that flavor SSA requires that all uses of a variable are dominated by its definition.
+In that flavor, SSA requires that all uses of a variable are dominated by its definition.
 Hence, the whole live-range is dominated by the definition of the variable.
 Dominance, however, induces a tree on the control-flow graph.
 Thus, the live-ranges of SSA variables are all tree-shaped.
@@ -182,12 +183,12 @@ The argument and result variables of that \phifun constitute new live-ranges, gi
 \end{figure}
 
 This structural property is interesting as it allows a coloring scheme, called the tree scan, that is a simple generalization of the linear scan mentioned above: 
-it always succeeds to color the tree-shaped live-ranges with \maxlive colors. 
+it always succeeds in coloring the tree-shaped live-ranges with \maxlive colors. 
 This greedy assignment scans the dominance tree, coloring the variables from the root to the leaves in a top-down order. 
 This means the variables are simply colored in the order of their definitions, first come first served! 
-We give the pseudo-code in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}; 
+We give the pseudo-code in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}.
 Intuitively, when the scanning arrives at the definition of a variable, the only colored variables are ``above'' it and since there is at most $\maxlive-1$ other variables live at the definition, there is always a free color. 
-The direct consequence is that, as opposed to general form programs, the only case where spilling is required is here when $\maxlive > k$. 
+The direct consequence is that, as opposed to general form programs, the only case where spilling is required is when $\maxlive > k$. 
 This allows to decouples spilling from coloring: 
 First, lower the register pressure to~$k$ everywhere in the program; 
 Then, color the interference graph with~$k$ colors in polynomial time.
