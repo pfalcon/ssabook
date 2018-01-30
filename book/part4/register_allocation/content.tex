@@ -219,31 +219,32 @@ Tree_Scan(T)
 The term spilling is heavily overloaded:
 In the graph-coloring setting it often means to spill a node of the interference graph and thus the \emph{entire} live-range of a variable (spill everywhere).
 This implies inserting load instructions in front of every use and store instructions after each definition of the (non-SSA) variables.
-In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, allow multiple uses of a spilled variable to reuse the same reload.
-This corresponds to keep parts of the live-range of a spilled variable in a register.
-Linear scan allocators, do natively, perform such local optimization.
+In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, keep a reloaded variable in a register between multiple uses (an optimization also used in linear scan allocators).
 In this section, we will consider the two approaches: the graph-based approach with a spill-everywhere scheme, and scan-based approach that allows partial live-range spilling.
 
 In both cases, we will assume that the program was in SSA before spilling. 
 This is important to notice that there are pros and cons of assuming so. 
 In particular, the inability to coalesce or move the shuffle code associated to \phifuns can lead to spurious load and store instructions on CFG-edges. 
 However, we do make the exercise of considering this assumption here, and consider the spilling phase as an SSA program transformation.
-Its objective is to establish $\maxlive\le\regs$ (\maxlive lowering) by inserting loads and stores into the program. 
+Suppose we have $R$ registers, its objective is to establish $\maxlive\le\regs$ (\maxlive lowering) by inserting loads and stores into the program. 
 Indeed, as stated above, lowering \maxlive to~\regs ensures that a register allocation with \regs registers can be found in polynomial time for SSA programs. 
-Thus, spilling should takes place before registers are assigned \emph{and} yield a program in SSA form. 
+Thus, spilling should take place before registers are assigned \emph{and} yield a program in SSA form. 
 In such a decoupled register-allocation scheme, the spilling phase is an optimization problem for which: 
-1.~the constraints that describe the universe of possible solutions expresses that the resulting code should be \regs-colorable; 
-2.~the objective function expresses the fact that the (weighted) amount of inserted loads and stores should be minimized.
+\begin{itemize}
+  \item the \emph{constraints} that describe the universe of possible solutions expresses that the resulting code should be \regs-colorable; 
+  \item the \emph{objective function} expresses the fact that the (weighted) amount of inserted loads and stores should be minimized.
+\end{itemize}
 
-In a greedy scheme, the constraints give rise to the spill test which can be expressed as: 
+In a greedy scheme, the constraints give rise to the ``spill test'' which can be expressed as: 
 is more spilling necessary or not? 
-As for the objective, it expresses itself with the following profitability test: 
+The objective is expressed with the profitability test: 
 among all variables, which one is more profitable to spill? 
-The main implication of spilling in SSA programs is that the spill test which amounts to checking whether \maxlive has been lowered to \regs or not, becomes precise. 
-The other (related) implication of the use of SSA form follows from the following observation: 
-consider a variable such that for any program point in its entire live-range the register pressure is lower than \regs, then spilling this variable is useless with regard to the colorability of the code.
+The main implication of spilling in SSA programs is that the spill test---which amounts to checking whether \maxlive has been lowered to \regs or not---becomes precise. 
+
+The other (related) implication of the use of SSA form follows from this observation: 
+Consider a variable such that for any program point in its entire live-range the register pressure is lower than \regs, then spilling this variable is useless with regard to the colorability of the code.
 In other words, spilling such a variable will never be profitable. 
-We will call this yes-or-no criteria, enabled by the use of SSA form, the usefulness test.
+We will call this yes-or-no criteria, enabled by the use of SSA form, the ``usefulness test.''
 Among all useful-to-spill variables, the question is whether the use of SSA form allow to improve the quality of the profitability test.
 While there are no experimental results that allow to assess the correctness of this assertion, it seems that the enabled capability to decouple spilling  (allocation) to coloring (assignment) allows to better account for the program structure in the spilling decision, and thus improve the overall quality of register allocated code.
 After a brief description of how the usefulness test can be implemented in a graph coloring based scheme, the goal of the next section is to argue in favor of a scan based scheme for spilling decision.
