@@ -35,23 +35,83 @@ Register allocation maps the variables of a program to physical memory locations
 The compiler determines the location for each variable and each program point.
 Ideally, as many operations as possible should draw their operands from processor registers without loading them from memory beforehand.
 Due to the large latency of the memory hierarchy, register allocation is one of the most important optimizations in a compiler. 
-There is only a small number of registers available in a CPU, with usual values ranging from~8 to~128.
-Hence, the task of register allocation is not only assigning the variables to registers but also deciding which variables should be evicted from registers and when to store and load them from memory (spilling).
+As there is only a small number of registers available in a CPU (with usual values ranging from~8 to~128), it is usually not possible to only use registers, and the task of register allocation is also to decide which variables should be evicted from registers and at which program points to store and load them from memory (spilling).
+
 Furthermore, register allocation has to remove spurious copy operations (copy coalescing) inserted by previous phases in the compilation process, and to deal with allocation restrictions that the instruction set architecture and the run-time system impose (register targeting).
-Classical register allocation algorithms address those different issues with complex and sometimes expensive schemes.
+Classical register allocation algorithms address those different issues with either complex and sometimes expensive schemes (usually graph-based), or simpler and faster (but less efficient) algorithms such as linear scan.
+
 The goal of this Chapter is to illustrate how SSA form can help in designing both simpler and faster schemes with similar or even better quality than the most complex existing ones.
 
 \section{Introduction}
+
+Let us first review the basics of register allocation, to help us understand the choices made by graph-based and linear-scan style allocations.
+
 Register allocation is usually performed per procedure. 
 In each procedure, a liveness analysis (see Chapter~\ref{chapter:liveness}) determines for each variable the program points where the variable is alive. 
-The set of all program points where a variable is alive is called the \emph{live-range} of the variable, and all along this live-range, storage needs to be allocated for that variable, ideally a register. 
+The set of all program points where a variable is alive is called the \emph{live-range} of the variable, and all along this live-range, storage needs to be allocated for that variable, ideally a register. When two variables ``exist'' at the same time, they are conflicting for resources, i.e., they cannot reside in the same location.
 
-The resource conflict of two variables is called \emph{interference} and is usually defined via liveness: 
-two variables interfere if (and only if) there exists a program point where they are simultaneously alive,%
+This resource conflict of two variables is called \emph{interference} and is usually defined via liveness: 
+two variables interfere if (and only if) there exists a program point where they are simultaneously alive, i.e., their live-ranges intersect.%
 \footnote{ This definition of interference by liveness is an over-approximation (see Section~\ref{sec:properties_and_flavors:ultimate_interference}), and there are refined definitions that create less interferences (see Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}). 
   However, in this chapter we will restrict ourselves to this definition and assume that two interfering variables cannot be assigned the same register. 
 }
-i.e., their live-ranges intersect. It represents the fact that those two variables cannot share the same register.
+It represents the fact that those two variables cannot share the same register.
+For instance, in Figure~\ref{fig:ra:linearscan}, variables $a$ and $d$ interfere as $a$ is alive at the definition of $d$.
+
+\subsection{Questions for register allocators}
+
+There are multiple questions that arise at that point that a register allocator has to answer:
+\begin{itemize}
+  \item Are there enough registers for all my variables? (\emph{spill test})
+  \item If yes, how do I choose which register to assign to which variable? (\emph{assignment})
+  \item If no, how do I choose which variables to spill to memory? (\emph{spilling})
+\end{itemize}
+
+Without going into the details, let us see how linear-scan and graph-based allocators handle these questions.
+
+\paragraph{Linear-scan} The linear-scan principle is to consider that a procedure is a long basic block, and to scan it from top to bottom.
+When encountering the definition of a variable (i.e., the beginning of a live-range), we check if some registers are free (\emph{spill test}).
+If yes, we pick one to assign the variable to (\emph{assignment}). If no, we choose from the set of currently live variables the one that has the farthest use and spill it (\emph{spilling}).
+When we encounter the last use of a variable (i.e., the end of its live-range), we free the register it was assigned to.
+
+\paragraph{Graph-based}
+Graph-based allocators, such as the ``Iterated Register Coalescing'' allocator (IRC), represent interferences of variables as an undirected \emph{interference graph}: the nodes are the variables of the program, and two nodes are connected if they interfere.
+In this model, two neighbouring nodes must be assigned different registers, so the assignment of variables to registers amounts to \emph{coloring} the graph using at most $R$ colors, the number of registers.\footnote{Hence the terms ``register'' and ``color'' will be used interchangeably in this chapter.}
+
+Here, the allocator will try to color the graph, if it succeeds (\emph{spill test}), then the coloration represents a valid assignment of registers to variables (\emph{assignment}). If not, the allocator will choose some nodes (usually the ones with the highest number of neighbours) and remove them from the graph by storing the corresponding variables in memory (\emph{spilling}).
+
+
+\paragraph{Comparison}
+
+Linear-scan is a very fast allocator that works directly on the procedure.
+In its model, its spill test is exact and its spill minimizes the amount of loads and store.
+However, the model itself has a large flaw as procedures generally are not just straight-line code but involve complex flow structures such as if-conditions and loops.
+In this model, the live-ranges are artificially longer so produce more interference than there actually are.
+
+On the other hand, a graph-based allocator has a much more precise notion of interference.
+Unfortunately, graph $k$-coloring is known to be an NP-complete problem, and the interference graphs of programs are arbitrary.
+This means the allocator will use heuristics to color, and will base its spill decisions on this heuristic.
+
+\medskip
+
+In conclusion, both approaches have an inexact spill test: linear-scan has artificial interferences, and graph coloring uses a coloring heuristic.
+This means both allocators will potentially spill more variables than strictly necessary.
+
+
+\paragraph{Spill everywhere}
+(Flo: mettre ça plus tard)
+
+Using the above allocator naively results in a ``spill everywhere'' strategy, meaning that when a variable is spilled to memory, we remove the \emph{entire} live-range of the variable, which implies inserting load instructions in front of every use and store instructions after each definition of the (non-SSA) variables.
+In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, keep a reloaded variable in a register between multiple uses, and the same optimization can be used in linear scan allocators.
+
+
+FLO IS HERE
+
+We will see how SSA helps
+
+
+
+\medskip
 
 The number of simultaneously alive variables at a program point is called the \emph{register pressure} at that program point. 
 The maximum register pressure over all program points in a procedure is called the register pressure of that procedure, or ``\maxlive.'' 
@@ -95,7 +155,7 @@ Linear_Scan(B)
 That important observation gave rise to the linear scan register allocation scheme widely adopted by just-in-time compilers, as the algorithm is very fast.
 However, for a general control-flow graph, the algorithm is not optimal, so classical register allocation schemes like to think of interferences as an undirected \emph{interference graph}: the nodes are the variables of the program, and two nodes are connected if they interfere.
 A \emph{coloring} of this graph with~$k$ colors corresponds to a valid register allocation with~$k$ registers.\footnote{Hence the terms ``register'' and ``color'' will be used interchangeably in this chapter.}
-A $k$-coloring is a mapping from the nodes of the graph to the first~$k$ natural numbers (called colors) such that two neighboring nodes have different colors.
+A $k$-coloring is a mapping from the nodes of the graph to the first~$k$ natural numbers (called colors) such that two neighbouring nodes have different colors.
 Unfortunately, graph $k$-coloring is known to be an NP-complete problem, and for any arbitrary undirected graph, there is a program whose interference graph is this graph.
 This is the major nuisance of classical register allocation:
 the compiler cannot efficiently determine if spilling is necessary,
@@ -250,6 +310,8 @@ While there are no experimental results that allow to assess the correctness of 
 After a brief description of how the usefulness test can be implemented in a graph coloring based scheme, the goal of the next section is to argue in favor of a scan based scheme for spilling decision.
 
 \subsection{Graph-based approach}
+
+FLO: TODO : parler d'IRC.
 
 We need to find program points to place loads and stores such that $\maxlive\le\regs$.
 Let us start with a simplistic setting where the location of loads and stores is not optimized:
