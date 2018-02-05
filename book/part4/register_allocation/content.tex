@@ -463,15 +463,56 @@ Init_inregs(B)
   allpreds_in_regs = Union for all P in B.preds of P.in_regs
   somepreds_in_regs = Intersection for all P in B.preds of P.in_regs
   B.in_regs = allpreds_in_regs
-  while |B.inregs| < R and |somepreds| > |B.inregs|
-    let v in (somepreds - B.inregs) with min v.spill_profitability(B.entry)
-      B.inregs = B.inregs U {v}
+  while |B.in_regs| < R and |somepreds| > |B.in_regs|
+    let v in (somepreds - B.in_regs) with min v.spill_profitability(B.entry)
+    B.in_regs = B.in_regs U {v}
 \end{verbatim}
+\caption{\label{fig:ra:initnormal}Initial value of $B.\texttt{in\_regs}$ for normal basic-block}
 \end{figure}
 
+\begin{figure}
+  \begin{center}
+    \subfloat[\label{fig:ra:loopentry_example_a}\texttt{in\_regs} at $B$'s entry]{\includegraphics[width=0.15\textwidth]{figures/loopentry_example_a.pdf}}
+    \qquad
+    \subfloat[\label{fig:ra:loopentry_example_b}not \texttt{in\_regs} at $B$'s entry]{\includegraphics[width=0.15\textwidth]{figures/loopentry_example_b.pdf}}
+  \end{center}
+  \caption{\label{fig:ra:loopentry_example}Initial values of $B.\texttt{in\_regs}$ at loop entry. Illustrating examples.}
+\end{figure}
 For a basic-block at the entry of a loop, as illustrated by the example of Figure~\ref{fig:ra:loopentry_example}, one do not want to account for allocation on predecessor basic-block, but start from scratch instead.
+Assume the first basic-block has already been processed and one wants to compute $B.\texttt{in\_regs}$:
+\begin{enumerate}
+\item Take Example~(a): 
+  Even if at the end of the predecessor basic-block , $x$ is not available in a register, one wants to insert a reload of $x$ at $p_1$, i.e. include $x$ in $B.\texttt{in\_regs}$.
+  Not doing so would involve a reload at every iteration of the loop at $p_2$. 
+\item Consider Example~(b): 
+  Even if at the entry of the loop, $x$ is available in a register, one wants to spill it and restore at $p_2$ so as to lower the register pressure that is too high within the loop.
+  This means excluding $x$ from $B.\texttt{in\_regs}$.
+\end{enumerate}
+This leads to the algorithm given in Figure~\ref{fig:ra:initloop} where $B.\texttt{livein}$ represent the set of live-in variables of $B$ and $L.\texttt{MAXLIVE}$ is the maximal register pressure in the whole loop $L$.
+\texttt{Init\_inregs} first fills $B.\texttt{in\_regs}$ with live-in variables that are used within the loop $L$.
+It then, fills with live-through variables, but only those that can survive the loop:
+if $L.\texttt{MAXLIVE}>\regs$, then  $L.\texttt{MAXLIVE}-\regs$ variables will have to be spilled (hopefully some live-through variables);
+so no more than $|B.\texttt{livein}|-(L.\texttt{MAXLIVE}-\regs)$ are allocated to a register at the entry of $B$.
 
-I AM HERE
+\begin{figure}
+\begin{verbatim}
+Init_inregs(B,L)
+  B.in_regs = emptyset
+  while |B.in_regs| < R  and
+        |B.livein| > |B.in_regs| and
+        |B.in_regs| < R + |B.livein| - L.MAXLIVE
+    let v in (B.livein - B.in_regs) with min v.spill_profitability(B.entry)
+    B.in_regs = B.in_regs U {v}
+\end{verbatim}
+\caption{\label{fig:ra:initloop}Initial value of $B.\texttt{in\_regs}$ at the entry of a loop $L$}
+\end{figure}
+
+\paragraph{Putting all Together}
+The overall algorithm for spilling is made-up of several phases:
+First, both liveness, and profitability metric have to be pre-computed.
+Then the traversal in topological order of the CFG can be done, where each basic-block is scanned using initial value of \verb+B.in_regs+ as explained above.
+During this phase, the sets of live-variables respectively available in register and in memory are maintained at basic-block boundaries.
+This allows the insertion of shuffle code (loads and store) performed during the last phase of the algorithm.
 
 \section{Coloring and coalescing}
 
