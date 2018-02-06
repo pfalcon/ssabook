@@ -76,7 +76,7 @@ When we encounter the last use of a variable (i.e., the end of its live-range), 
 
 \paragraph{Graph-based}
 Graph-based allocators, such as the ``Iterated Register Coalescing'' allocator (IRC), represent interferences of variables as an undirected \emph{interference graph}: the nodes are the variables of the program, and two nodes are connected if they interfere.
-In this model, two neighbouring nodes must be assigned different registers, so the assignment of variables to registers amounts to \emph{coloring} the graph using at most $R$ colors, the number of registers.\footnote{Hence the terms ``register'' and ``color'' will be used interchangeably in this chapter.}
+In this model, two neighbouring nodes must be assigned different registers, so the assignment of variables to registers amounts to \emph{coloring} the graph---two neighbouring nodes must have a different color---using at most $R$ colors, the number of registers.\footnote{Hence the terms ``register'' and ``color'' will be used interchangeably in this chapter.}
 
 Here, the allocator will try to color the graph, if it succeeds (\emph{spill test}), then the coloration represents a valid assignment of registers to variables (\emph{assignment}). If not, the allocator will choose some nodes (usually the ones with the highest number of neighbours) and remove them from the graph by storing the corresponding variables in memory (\emph{spilling}).
 
@@ -85,38 +85,65 @@ Here, the allocator will try to color the graph, if it succeeds (\emph{spill tes
 
 Linear-scan is a very fast allocator that works directly on the procedure.
 In its model, its spill test is exact and its spill minimizes the amount of loads and store.
-However, the model itself has a large flaw as procedures generally are not just straight-line code but involve complex flow structures such as if-conditions and loops.
-In this model, the live-ranges are artificially longer so produce more interference than there actually are.
+However, the model itself is very imprecise as procedures generally are not just straight-line codes but involve complex flow structures such as if-conditions and loops.
+In this model, the live-ranges are artificially longer so produce more interferences than there actually are.
 
 On the other hand, a graph-based allocator has a much more precise notion of interference.
 Unfortunately, graph $k$-coloring is known to be an NP-complete problem, and the interference graphs of programs are arbitrary.
+What causes this are precisely the complex control-flow structure as these creates cycles in the interference graph.
 This means the allocator will use heuristics to color, and will base its spill decisions on this heuristic.
+
+\begin{figure}
+  \includegraphics[height=\textheight]{figures/example-initial}
+  \caption{Example}
+  \label{fig:ra:running}
+\end{figure}
+
+Let us look at the example Figure~\ref{fig:ra:running}, that presents a very simple code with an if-condition.
+There are two initial variables $a$ and $b$ that end in the branches, and two variables $x$ and $y$ are defined in those branches.
+Linear scan would decide it needs four registers (spill test), as the live ranges of all variables are artificially increased: for instance, $a$ is marked alive all along the left branch even though in is never used there.
+%
+IRC would create the graph on the right, which presents a 3-clique (a complete sub-graph of size 3), hence would require at least 3 colors.
+This simple graph would actually be easily 3-colorable with a heuristic, hence the spill test would succeed with three registers.
+%
+Still, one could remark that at each point of the procedure, only two variables are alive at the same time.
+But since $x$ interferes with $b$ on the left branch, and with $a$ on the right branch, it is impossible to use only two registers.
 
 \medskip
 
-In conclusion, both approaches have an inexact spill test: linear-scan has artificial interferences, and graph coloring uses a coloring heuristic.
-This means both allocators will potentially spill more variables than strictly necessary.
+In conclusion, linear scan allocators are faster, and graph coloring ones have better results in practice, but both approaches have an inexact spill test: linear-scan has artificial interferences, and graph coloring uses a coloring heuristic.
+Moreover, both require variables to be assigned to \emph{exactly one register} for all their live range.
+This means both allocators will potentially spill more variables than strictly necessary, and we will see how SSA can help with this problem.
+
 
 
 \paragraph{Spill everywhere}
-(Flo: mettre ça plus tard)
+(Flo: TODO mettre ça plus tard)
 
 Using the above allocator naively results in a ``spill everywhere'' strategy, meaning that when a variable is spilled to memory, we remove the \emph{entire} live-range of the variable, which implies inserting load instructions in front of every use and store instructions after each definition of the (non-SSA) variables.
 In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, keep a reloaded variable in a register between multiple uses, and the same optimization can be used in linear scan allocators.
 
-
-FLO IS HERE
-
-We will see how SSA helps
+(Flo: end of TODO)
 
 
+\subsection{Maxlive and variable splitting}
 
-\medskip
 
-The number of simultaneously alive variables at a program point is called the \emph{register pressure} at that program point. 
+
+
+The number of simultaneously alive variables at a program point is called the \emph{register pressure} at that program point.
+%
 The maximum register pressure over all program points in a procedure is called the register pressure of that procedure, or ``\maxlive.'' 
 One can observe that \maxlive expresses the \emph{minimum} number of required registers for a spill-free register assignment, i.e., an allocation that does not require memory.
-In general, a procedure might require more than \maxlive registers to be spill-free (more on this later), but interestingly, for a straight-line code (basic-block), \maxlive constitutes also a sufficient number of registers. 
+For instance, in Figure~\ref{fig:ra:running}, $\maxlive = 2$ so a minimum number of 2 registers is required.
+For a straight-line code (basic-block), \maxlive constitutes also a \emph{sufficient number of registers}.
+% For instance, in Figure~\ref{fig:ra:running}, if the linearized code on the left of Figure~\ref{fig:ra:running} was an actual basic block, it would effectively require exactly four registers.
+But in general, a procedure might require \emph{more than \maxlive registers} to be spill-free, indeed, we have seen that the code example actually requires 3 registers, because of the $a,b,x$ clique of interferences.
+
+
+
+
+\begin{comment}
 
 Let us see an example in Figure~\ref{fig:ra:linearscan}: in such a case, a greedy assignment considering live intervals from top to bottom always succeeds with \maxlive registers.
 In our example, $\maxlive = 2$; Let us assume we have only two registers available (denoted $R_1$ and $R_2$). The greedy algorithm will
@@ -179,30 +206,32 @@ The inequality between \maxlive and the chromatic number is caused by the cycle 
 	\caption{Example program and its interference graph}
 	\label{fig:ra:exprg}
 \end{figure}
+\end{comment}
 
 
 This situation changes if we permit \emph{live-range splitting.} 
-That is, inserting a copy (move) instruction at a program point that creates a new variable. 
+This means inserting a copy (move) instruction at a program point that creates a new version of a variable. 
 Thus, the value of a variable is allowed to reside in different registers at different times. 
-In Figure~\ref{sub:ra:exprg:prog}, assume we split the live-range of~$e$ in the left block: 
-we rename it by~$e'$ and add a copy~$e \gets e'$ at the end of the block. 
-Then, the node~$e$ in the graph is split into two nodes, $e$ and~$e'$, that do not interfere: 
-this breaks the cycle in the graph, making its chromatic number equal to two, i.e., \maxlive. 
-In an extreme setting, one could split the live-ranges of all variables after every instruction. 
-The interference graph degenerates into several disconnected components and its chromatic number drops to \maxlive. 
-Of course, such an extreme live-range splitting introduces \emph{a lot of shuffle code}, in the form of register to register copies, which degrades the run-time of the compiled program. 
+For instance, in Figure~\ref{fig:ra:running} (TODO sub), we can split $x$ in the right branch by changing the definition to $x'$ and using a copy $x \gets x'$ at the end of the block:
+the node $x$ in the graph is split into two nodes, $x$ and $x'$.
+Those node don't interfere, and also interfere differently with the other variables:
+Now, $x$ can use the same register as $a$, because only $x'$ interferes with $a$.
+Conversely, $x'$ can use the same register as $b$, because only $x$ interferes with $b$!
+In this version, we only need $\maxlive = 2$ registers, which means that, if the number of registers was tight, we have traded a spill (here one store and one load) for one move, which is an excellent bargain.
+
+
 This interplay between live-range splitting and colorability is the key issue in register allocation, and we will see in the remainder of this chapter how SSA, which creates live-range splitting at particular locations, can play a role in register allocation.
 % (cf.~the SSA version of the program shown in Figure~\ref{fig:ra:exprgssa}). 
 
-\begin{figure}[htbp]
-	\begin{center}
-		\subfloat[Example program with live-range of~$e$ split]{ \includegraphics{figures/prog_split_lr.pdf} }
-		\qquad
-		\subfloat[Interference graph]{ \includegraphics[scale=1.1]{figures/prog_split_ig.pdf} }
-	\end{center}
-	\caption{Example Program with spit live-range and its interference graph}
-	\label{fig:ra:exprgsplit}
-\end{figure}
+% \begin{figure}[htbp]
+	% \begin{center}
+		% \subfloat[Example program with live-range of~$e$ split]{ \includegraphics{figures/prog_split_lr.pdf} }
+		% \qquad
+		% \subfloat[Interference graph]{ \includegraphics[scale=1.1]{figures/prog_split_ig.pdf} }
+	% \end{center}
+	% \caption{Example Program with spit live-range and its interference graph}
+	% \label{fig:ra:exprgsplit}
+% \end{figure}
 
 
 \subsection{Making the spill test efficient: splitting or not splitting}
