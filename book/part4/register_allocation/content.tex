@@ -38,7 +38,7 @@ Due to the large latency of the memory hierarchy, register allocation is one of 
 As there is only a small number of registers available in a CPU (with usual values ranging from~8 to~128), it is usually not possible to only use registers, and the task of register allocation is also to decide which variables should be evicted from registers and at which program points to store and load them from memory (spilling).
 
 Furthermore, register allocation has to remove spurious copy operations (copy coalescing) inserted by previous phases in the compilation process, and to deal with allocation restrictions that the instruction set architecture and the run-time system impose (register targeting).
-Classical register allocation algorithms address those different issues with either complex and sometimes expensive schemes (usually graph-based), or simpler and faster (but less efficient) algorithms such as linear scan.
+Classical register allocation algorithms address those different issues with either complex and sometimes expensive schemes (usually graph-based), or simpler and faster (but less efficient) algorithms such as linear-scan.
 
 The goal of this Chapter is to illustrate how SSA form can help in designing both simpler and faster schemes with similar or even better quality than the most complex existing ones.
 
@@ -111,7 +111,7 @@ But since $x$ interferes with $b$ on the left branch, and with $a$ on the right 
 
 \medskip
 
-In conclusion, linear scan allocators are faster, and graph coloring ones have better results in practice, but both approaches have an inexact spill test: linear-scan has artificial interferences, and graph coloring uses a coloring heuristic.
+In conclusion, linear-scan allocators are faster, and graph coloring ones have better results in practice, but both approaches have an inexact spill test: linear-scan has artificial interferences, and graph coloring uses a coloring heuristic.
 Moreover, both require variables to be assigned to \emph{exactly one register} for all their live range.
 This means both allocators will potentially spill more variables than strictly necessary, and we will see how SSA can help with this problem.
 
@@ -121,7 +121,7 @@ This means both allocators will potentially spill more variables than strictly n
 (Flo: TODO mettre ça plus tard)
 
 Using the above allocator naively results in a ``spill everywhere'' strategy, meaning that when a variable is spilled to memory, we remove the \emph{entire} live-range of the variable, which implies inserting load instructions in front of every use and store instructions after each definition of the (non-SSA) variables.
-In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, keep a reloaded variable in a register between multiple uses, and the same optimization can be used in linear scan allocators.
+In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, keep a reloaded variable in a register between multiple uses, and the same optimization can be used in linear-scan allocators.
 
 (Flo: end of TODO)
 
@@ -174,12 +174,12 @@ Linear_Scan(B)
   \subfloat[Example]{\includegraphics[width=0.27\textwidth]{figures/ra_linearscan.pdf}}
   \hfill
   \subfloat[Linear scan]{\usebox{\linearscanbox}}
-    \caption{\label{fig:ra:linearscan}Linear scan assignment scheme on a basic-block: assigning registers to live intervals from top to bottom ($a$, then $d$, followed by $e$) always succeeds if \maxlive (here two) does not exceed the number of available registers. }
+    \caption{\label{fig:ra:linearscan}Linear-scan assignment scheme on a basic-block: assigning registers to live intervals from top to bottom ($a$, then $d$, followed by $e$) always succeeds if \maxlive (here two) does not exceed the number of available registers. }
 \end{figure}
 
 
 
-That important observation gave rise to the linear scan register allocation scheme widely adopted by just-in-time compilers, as the algorithm is very fast.
+That important observation gave rise to the linear-scan register allocation scheme widely adopted by just-in-time compilers, as the algorithm is very fast.
 However, for a general control-flow graph, the algorithm is not optimal, so classical register allocation schemes like to think of interferences as an undirected \emph{interference graph}: the nodes are the variables of the program, and two nodes are connected if they interfere.
 A \emph{coloring} of this graph with~$k$ colors corresponds to a valid register allocation with~$k$ registers.\footnote{Hence the terms ``register'' and ``color'' will be used interchangeably in this chapter.}
 A $k$-coloring is a mapping from the nodes of the graph to the first~$k$ natural numbers (called colors) such that two neighbouring nodes have different colors.
@@ -216,7 +216,7 @@ For instance, in Figure~\ref{fig:ra:running} (TODO sub), we can split $x$ in the
 the node $x$ in the graph is split into two nodes, $x$ and $x'$.
 Those node don't interfere, and also interfere differently with the other variables:
 Now, $x$ can use the same register as $a$, because only $x'$ interferes with $a$.
-Conversely, $x'$ can use the same register as $b$, because only $x$ interferes with $b$!
+Conversely, $x'$ can use the same register as $b$, because only $x$ interferes with $b$.
 In this version, we only need $\maxlive = 2$ registers, which means that, if the number of registers was tight, we have traded a spill (here one store and one load) for one move, which is an excellent bargain.
 
 
@@ -234,7 +234,9 @@ This interplay between live-range splitting and colorability is the key issue in
 % \end{figure}
 
 
-\subsection{Making the spill test efficient: splitting or not splitting}
+\subsection{The spill test under SSA}
+
+\begin{comment}
 As finding a valid $k$-coloring is NP-complete, assigning registers is performed in classical register allocators by some heuristic algorithm.
 If that algorithm fails to assign a register to a variable, then it either spills this variable to memory, or frees a register by spilling the variable it contains.
 The problem here is that the spilling decision is made to revive the coloring heuristic, and not because the variable that gets spilled is in itself a good candidate for spilling. 
@@ -247,7 +249,9 @@ However, if done aggressively, coalescing may increase the chromatic number of t
 Thus, existing techniques often apply \emph{conservative} coalescing approaches which are guaranteed not to increase the chromatic number of the graph, at the expense of the quality of the coalescing.
 The main issue with conservative coalescing is that, with an extreme solution that would split all live-ranges at every basic-block boundaries, it is either slow or inefficient in removing most of the spurious introduced copies.
 Thus, the splitting or not splitting trade-off has to be addressed by the register allocator.
+
 We will see that live-range splitting based on SSA form is an elegant solution to this trade-off problem as it is sufficient in bringing the interference graph \maxlive-colorable without blowing-up the number of live-ranges.
+\end{comment}
 
 As already mentioned in Section~\ref{sec:properties_and_flavours:domprop} of Chapter~\ref{chapter:properties_and_flavors}, the live-ranges in an SSA form program with dominance property have interesting structural properties:
 In that flavor, SSA requires that all uses of a variable are dominated by its definition.
@@ -256,12 +260,13 @@ Dominance, however, induces a tree on the control-flow graph.
 Thus, the live-ranges of SSA variables are all tree-shaped.
 They can branch downwards on the dominance tree but have a single root:
 the program point where the variable is defined.
-Hence a situation like in Figure~\ref{fig:ra:exprg} can no longer occur:
-$e$~had two ``roots'' because it was defined twice.
-Under SSA form, the live-range of~$e$ is split by a \phifun.
-The argument and result variables of that \phifun constitute new live-ranges, giving more freedom to the register allocator since they can be assigned to different registers.
+Hence a situation like in Figure~\ref{fig:ra:running} can no longer occur:
+$x$ and $y$ had two ``roots'' because they were defined twice.
+Under SSA form, the live-ranges of those variables are split by \phifuns, which creates the code shown on Figure~\ref{todo}, and we can see the ``tree'' of live-ranges on the right.
+The argument and result variables of the \phifuns constitute new live-ranges, giving more freedom to the register allocator since they can be assigned to different registers.
 
 \begin{figure}[htbp]
+  TODO: update figure for running example.
 	\begin{center}
 		\subfloat[example program in SSA]{ \includegraphics{figures/prog_ssa_lr.pdf} }
 		\qquad
@@ -271,16 +276,33 @@ The argument and result variables of that \phifun constitute new live-ranges, gi
 	\label{fig:ra:exprgssa}
 \end{figure}
 
-This structural property is interesting as it allows a coloring scheme, called the tree scan, that is a simple generalization of the linear scan mentioned above: 
-it always succeeds in coloring the tree-shaped live-ranges with \maxlive colors. 
+This structural property is interesting as we can now perform exact polynomial coloring schemes that work both for graph-based and linear-style allocators.
+
+
+\paragraph{Graph-based} 
+Graph-based allocators such as the Iterated Register Coalescing (IRC) use a \emph{simplification scheme}, that works quite well in practice but is a heuristic for coloring general graphs.
+Interestingly, under SSA, the interference graph becomes a chordal graph, which means the simplification scheme will always manage to color the graph with \maxlive colors.
+Thus the same classical algorithm can be used without any modification, and now becomes an exact spill test.
+
+
+\paragraph{Tree-scan (linear-style)}
+
+Under SSA, the live-ranges are intervals that can ``branch,'' but never ``join.''
+This allows for a simple generalization of the linear-scan mentioned above that we call the \emph{tree-scan},
+and always succeeds in coloring the tree-shaped live-ranges with \maxlive colors.
 This greedy assignment scans the dominance tree, coloring the variables from the root to the leaves in a top-down order. 
-This means the variables are simply colored in the order of their definitions, first come first served! 
+This means the variables are simply colored in the order of their definitions.
+This works because branches of the tree are independent, so coloring one will not add constraints on other parts of the tree, contrary to the general non-SSA case where there are cycles.
+
 We give the pseudo-code in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}.
 Intuitively, when the scanning arrives at the definition of a variable, the only colored variables are ``above'' it and since there is at most $\maxlive-1$ other variables live at the definition, there is always a free color. 
-The direct consequence is that, as opposed to general form programs, the only case where spilling is required is when $\maxlive > k$. 
-This allows to decouples spilling from coloring: 
-First, lower the register pressure to~$k$ everywhere in the program; 
-Then, color the interference graph with~$k$ colors in polynomial time.
+
+\paragraph{Conclusion}
+
+The direct consequence is that, as opposed to general form programs, and whether we consider graph-based or scan-based allocators, the only case where spilling is required is when $\maxlive > R$, the number of registers.
+This allows to decouple spilling from coloring: 
+First, lower the register pressure to at most $R$ everywhere in the program; 
+Then, color the interference graph with $R$ colors in polynomial time.
 
 
 \begin{figure}
@@ -294,7 +316,7 @@ Tree_Scan(T)
       available[c] = False
       color(v) = c
     for each child p' of p
-      assign_color(p', available)
+      assign_color(p', copy of available)
   assign_color(root(T), [True, True, ..., True])
 
   \end{verbatim}
@@ -303,12 +325,14 @@ Tree_Scan(T)
 \end{figure}
 
 
+
+
 \section{Spilling}
 
 The term spilling is heavily overloaded:
 In the graph-coloring setting it often means to spill a node of the interference graph and thus the \emph{entire} live-range of a variable (spill everywhere).
 This implies inserting load instructions in front of every use and store instructions after each definition of the (non-SSA) variables.
-In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, keep a reloaded variable in a register between multiple uses (an optimization also used in linear scan allocators).
+In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, keep a reloaded variable in a register between multiple uses (an optimization also used in linear-scan allocators).
 In this section, we will consider the two approaches: the graph-based approach with a spill-everywhere scheme, and scan-based approach that allows partial live-range spilling.
 
 In both cases, we will assume that the program was in SSA before spilling. 
