@@ -117,15 +117,6 @@ This means both allocators will potentially spill more variables than strictly n
 
 
 
-\paragraph{Spill everywhere}
-(Flo: TODO mettre ça plus tard)
-
-Using the above allocator naively results in a ``spill everywhere'' strategy, meaning that when a variable is spilled to memory, we remove the \emph{entire} live-range of the variable, which implies inserting load instructions in front of every use and store instructions after each definition of the (non-SSA) variables.
-In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, keep a reloaded variable in a register between multiple uses, and the same optimization can be used in linear-scan allocators.
-
-(Flo: end of TODO)
-
-
 \subsection{Maxlive and variable splitting}
 
 
@@ -329,12 +320,24 @@ Tree_Scan(T)
 
 \section{Spilling}
 
-The term spilling is heavily overloaded:
-In the graph-coloring setting it often means to spill a node of the interference graph and thus the \emph{entire} live-range of a variable (spill everywhere).
-This implies inserting load instructions in front of every use and store instructions after each definition of the (non-SSA) variables.
-In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, keep a reloaded variable in a register between multiple uses (an optimization also used in linear-scan allocators).
-In this section, we will consider the two approaches: the graph-based approach with a spill-everywhere scheme, and scan-based approach that allows partial live-range spilling.
+We have seen previously that, under SSA, it is easy to decide in polynomial time whether there is enough registers or not, simply by checking if $\maxlive \leq R$, the number of registers.
+The goal of this section is to present algorithms that will lower the register pressure when it is too high, i.e., when $\maxlive > R$, by \emph{spilling} (assigning) some variables to memory.
 
+Spilling has a different meaning depending on the type of allocator used.
+For a scan-based allocator, the spilling decision happens when we are at a particular program point.
+Although it is actually a bit more complex, the idea when spilling a variable $v$ is that we insert a store at that point, and a load just before its next use, hence we are spilling only a part of the live-range.
+%
+On the other end, a graph-based allocator has no notion of program points since the interferences have been combined in an abstract structure: the interference graph.
+In the graph-coloring setting, spilling means removing a node of the interference graph and thus the \emph{entire} live-range of a variable.
+This is a \emph{spill everywhere} strategy, which implies inserting load instructions in front of every use and store instructions after each definition of the (non-SSA) variables.
+These loads and stores require temporary variables that were not present in the initial graph, which means that whenever the spilling/coloring is done, the interference graph is rebuilt and a new pass of allocation is triggered, until there is no spill required.
+This is where the ``Iterated'' comes from in the IRC name.
+In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, keep a reloaded variable in a register between multiple uses.
+
+\smallskip
+
+In this section, we will consider the two approaches: the graph-based approach with a spill-everywhere scheme, and scan-based approach that allows partial live-range spilling.
+%
 In both cases, we will assume that the program was in SSA before spilling. 
 This is important to notice that there are pros and cons of assuming so. 
 In particular, the inability to coalesce or move the shuffle code associated to \phifuns can lead to spurious load and store instructions on CFG-edges. 
@@ -347,6 +350,8 @@ In such a decoupled register-allocation scheme, the spilling phase is an optimiz
   \item the \emph{constraints} that describe the universe of possible solutions expresses that the resulting code should be \regs-colorable; 
   \item the \emph{objective function} expresses the fact that the (weighted) amount of inserted loads and stores should be minimized.
 \end{itemize}
+
+FLO IS HERE
 
 In a greedy scheme, the constraints give rise to the ``spill test'' which can be expressed as: 
 is more spilling necessary or not? 
