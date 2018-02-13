@@ -372,51 +372,76 @@ However, register allocation under SSA shines the most in a scan-based setting, 
 
 \subsection{Graph-based approach}
 
-FLO: TODO : parler d'IRC.
 
-We need to find program points to place loads and stores such that $\maxlive\le\regs$.
-Let us start with a simplistic setting where the location of loads and stores is not optimized:
-loads are placed directly in front of uses and stores directly after the definition.
-Most existing graph coloring schemes consider a \emph{spill everywhere} setting:
-a variable is either spilled completely or not at all;
-If spilled, the live-range of a variable then degenerates into small intervals: one from the definition and the store, and one from each load to its subsequent use.
+In a graph-based allocator such as the Iterated Register Coalescing (IRC), a \emph{spill everywhere} strategy is used, a variable is either spilled completely or not at all, and loads are placed directly in front of uses and stores directly after the definition.
+When spilled, the live-range of a variable then degenerates into small intervals: one from the definition and the store, and one from each load to its subsequent use.
 However, even in this simplistic setting, it is NP-complete to find the minimum number of nodes to establish $\maxlive\le\regs$.
-It is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive just by one!
-Existing graph coloring schemes greedily spill variables (graph nodes) using a weight that usually combines its node degree (number of interfering uncolored variables) and an estimated spill cost (estimated execution frequency of inserted loads and stores).
-The node degree amounts to evaluate the profitability of spilling the node in terms of colorability.
-This criteria can be enhanced by adding a usefulness tag as follow:
+% It is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive just by one!
+Variables (graph nodes) are spilled greedily using a weight that takes into account its node degree (number of interfering uncolored variables) and an estimated spill cost (estimated execution frequency of inserted loads and stores).
+Good candidates are high-degree nodes of low spill cost, as this means they will lessen coloring constraints on many nodes---their neighbours---while inserting few spill code.
 
-The interference graph is built through a simple traversal of the CFG: 
-To an interference-graph node $p$ is associated an SSA program variable $p.\textit{var}$ and vis-versa. 
-There is an interference edge $(v,p)$ from $v$ to $p$ if and only if $v.\textit{var}$ is alive at $p.\textit{var}$ definition point. 
-Observe that, as opposed to standard interference graphs, we consider directed edges here. 
-Also, to each node $p$, we associate a field $p.\textit{pressure}$ that corresponds to the number of variable alive at definition point of $p.\textit{var}$. 
-As the edge $(v,p)$ is added to the graph, a boolean $(v,p).\textit{high}$ is set with value \true if and only if $p.\textit{pressure}>\regs$. 
-Another field $v.\textit{useful}$, that is attached to every node $v$ is also updated: 
-if $p.\textit{pressure}>\regs$ then $p.\textit{useful}$ is set to 1 (otherwise set to 0), and for all $(v,p)$, $p.\textit{pressure}$ gets incremented by 1 (other nothing is done). 
+The node degree represents the profitability of spilling the node in terms of colorability.
+It is not very precise as it is only a graph property, independent of the control-flow graph.
+We can improve this criteria by using SSA to add a usefulness tag.
+We will now show how to build this criteria, and how to update it.
+
+\paragraph{Building the ``useful'' criteria}
+
+We attach to each variable $v$ a ``useful'' tag, an integer representing the number of program points that would benefit from spilling $v$, i.e., $v.\textit{useful}$ expresses the number of program points that belong to the live-range of $v$ and for which the register pressure is strictly greater than \regs.
+This information can be built at the same time as the interference graph.
+
+Under SSA, the interference graph is built through a simple \emph{bottom-up traversal} of the CFG.
+When encountering the last use of a variable $p$, $p$ is added to the set of currently live variables (live-set) and a corresponding node (that we also call $p$) is added in the graph.
+Arriving at the definition of $p$, it is removed from the current live-set, and we add edges (interferences) to the graph:
+for all variable $v$ in the live-set, there is an edge $(v\to p)$.
+Note that, as opposed to standard interference graphs, we consider directed edges here, where the direction represents the dominance.
+At that point, we also associate the following fields to node $p$ and its interferences: 
+\begin{itemize}
+  \item $p.\textit{pressure}$, that corresponds to the number of variable alive at the definition point of $p$, i.e., $|\textrm{live-set}| + 1$;
+  \item $(v\to p).\textit{high}$, a boolean set to \true if and only if $p.\textit{pressure}>\regs$, meaning this interference belongs to a clique of size more than $R$.
+\end{itemize}
+
+We then create the ``usefulness'' field of $p$. If $p.\textit{pressure} \leq \regs$, then $p.\textit{useful}$ is set to 0. Otherwise, we do the following:
+\begin{itemize}
+  \item $p.\textit{useful}$ is set to 1;
+  \item for all $(v\to p)$, $v.\textit{pressure}$ gets incremented by 1.
+\end{itemize}
+
 At the end of the build process, $v.\textit{useful}$ expresses the number of program points that belong to the live-range of $v.\textit{var}$ and for which the register pressure is greater than \regs. 
-In other words,
-$$v.\textit{useful}=\left|\lbrace p,\ p.\textit{pressure}>\regs \wedge\left(\exists (v,p) \vee v=p \right) \rbrace\right|$$
-Defined as it, if $v.\textit{useful}=0$, then it can be considered to be be useless to spill $v$.
-If not, it means that $v$ belongs to a clique of size greater than $\regs$, and that one of the nodes of the clique must be spilled. 
-In that case, spilling $v$ is useful as it would reduce the size of the clique by one.
+More precisely,
+%
+$$v.\textit{useful}=\left|\lbrace p : (v\to p)\ \textrm{exists}\; \wedge\; p.\textit{pressure}>\regs  \rbrace\right|$$
 
-Whenever a node $n$ is spilled (assume only useful nodes are spilled), those additional fields of the interference graph are updated as follow:
-1.~if $n.\textit{pressure}>\regs$, for all its incoming edges $(v,n)$, $v.\textit{useful}$ is decremented by one;
-2.~for all its high outgoing edges $(n,p)$, $p.\textit{pressure}$ is decremented by one; if following this decrement $p.\textit{pressure}$ becomes equal to \regs, then for all the incoming edges of $p$ $(v,p)$, $v.\textit{useful}$ is decremented by one.
+With this definition, if $v.\textit{useful}=0$, then it can be considered to be be useless to spill $v$, as it will not help in reducing the register pressure.
+If not, it means that $v$ belongs to this number of cliques of size greater than $\regs$.
+Since at least one of the nodes of those cliques must be spilled, spilling $v$ is useful as it would reduce the size of each of those cliques by one.
+Existing coloring scheme such as the IRC can be modified to use the \emph{useful} tag when making spill decisions, the higher the better.
 
-As one can observe, as spilling and coloring decisions are fully decoupled now, encoding the information using a graph does not seem to help much. 
+
+\paragraph{Updating the ``useful'' criteria}
+
+
+Whenever a node $n$ is spilled (assume only useful nodes are spilled), those additional fields of the interference graph must be updated as follows:
+\begin{enumerate}
+  \item if $n.\textit{pressure}>\regs$, for all its incoming edges $(v\to n)$, $v.\textit{useful}$ is decremented by one;
+  \item for all its successors $p$ such that $(n\to p).\textit{high} = \textrm{True}$, $p.\textit{pressure}$ is decremented by one; if, following this decrement, $p.\textit{pressure} \leq \regs$, then for all the incoming edges $(v,p)$ of $p$, $v.\textit{useful}$ is decremented by one.
+\end{enumerate}
+
+
+\paragraph{Thoughts on graph-based spilling}
+
+In an existing graph-based allocation, SSA can bring information to better help the allocator make its spill decisions.
+However, with the spilling and coloring decisions fully decoupled, encoding the information using a graph does not seem as pertinent.
 Moreover, formulations like \emph{spill everywhere} are often not appropriate for practical purposes, and putting the whole live-range to memory is too simplistic. 
-A variable might be spilled because at some program point the pressure is too high; 
-However, if that same variable is later used in a loop where the register pressure is low, a spill everywhere will place a superfluous (and costly!) load in that loop. 
-Spill everywhere approaches try to minimize this behavior by adding costs to variables, to make the spilling of such a variable less likely. 
-These bring in a flow-insensitive information that a variable reside an frequently executed area. 
-However, such approximations are often too coarse to give good performance. 
-Hence, it is imperative to cleverly split the live-range of the variable according to the \emph{program structure} and spill only parts of it.
+A variable might be spilled because at some program point the pressure is too high, however, if that same variable is later used in a loop where the register pressure is low, a spill everywhere will place a superfluous (and costly!) load in that loop. 
+Spill everywhere approaches try to minimize this behavior by adding costs to variables, to make the spilling of such a variable less likely.
+These bring in a flow-insensitive information that a variable reside an frequently executed area, but such approximations are often too coarse to give good performance.
+Hence, it is imperative to cleverly split the live-range of the variable according to the \emph{program structure} and spill only parts of it, which is why we prefer to recommend a scan-based approach of the register allocation under SSA.
 
 
 \subsection{Scan-based approach}
 \label{sec:ra:spill-scan}
+
 
 In the context of a basic block, a simple algorithm that works well is the ``furthest first'' algorithm (see Figure~\ref{fig:ra:ff}). 
 The idea is to scan the block from top to bottom.
