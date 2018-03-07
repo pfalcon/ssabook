@@ -430,31 +430,34 @@ Whenever a node $n$ is spilled (assume only useful nodes are spilled), those add
 
 \paragraph{Thoughts on graph-based spilling}
 
-In an existing graph-based allocation, SSA can bring information to better help the allocator make its spill decisions.
-However, with the spilling and coloring decisions fully decoupled, encoding the information using a graph does not seem as pertinent.
-Moreover, formulations like \emph{spill everywhere} are often not appropriate for practical purposes, and putting the whole live-range to memory is too simplistic. 
+In an existing graph-based allocation, SSA can bring information to better help the allocator in making its spill decisions.
+However, with the spilling and coloring fully decoupled, encoding the information using a graph does not seem as pertinent.
+Moreover, formulations like \emph{spill everywhere} are often not appropriate for practical purposes, as putting the whole live-range to memory is too simplistic. 
 A variable might be spilled because at some program point the pressure is too high, however, if that same variable is later used in a loop where the register pressure is low, a spill everywhere will place a superfluous (and costly!) load in that loop. 
 Spill everywhere approaches try to minimize this behavior by adding costs to variables, to make the spilling of such a variable less likely.
-These bring in a flow-insensitive information that a variable reside an frequently executed area, but such approximations are often too coarse to give good performance.
+These bring in a flow-insensitive information that a variable reside in a frequently executed area, but such approximations are often too coarse to give good performances.
 Hence, it is imperative to cleverly split the live-range of the variable according to the \emph{program structure} and spill only parts of it, which is why we prefer to recommend a scan-based approach of the register allocation under SSA.
 
 
-\subsection{Scan-based approach}
+\subsection{Scan-based approach}% (a.k.a. ``Tree-scan'')}
 \label{sec:ra:spill-scan}
 
 
-In the context of a basic block, a simple algorithm that works well is the ``furthest first'' algorithm (see Figure~\ref{fig:ra:ff}). 
-The idea is to scan the block from top to bottom.
-Whenever the register pressure is too high, the spilled variable is the one whose next use is the furthest away (expressed as maximizing \verb+distance_to_next_use_after(p)+ in function \verb+evict+ of Figure~\ref{fig:ra:ff}); 
-And it is spilled only \emph{up to this next use}. 
-Spilling this variable frees a register for the longest time, hence diminishing the chances to have to spill other variables later. 
-This algorithm is not optimal since the first time a variable is spilled, a load and a store are added; 
-For subsequent spilling of the same variable (but on a different part of its live-range), only a load must be added. 
-Hence this algorithm may produce more stores than necessary (e.g., by spilling two variables while spilling an other part of the first one would have been enough), but it gives good results on ``straight-line code,'' i.e., basic blocks.
+In the context of a basic block, a simple algorithm that works well is the ``furthest first'' algorithm that is presented in Figure~\ref{fig:ra:ff}.
+The idea is to scan the block from top to bottom:
+whenever the register pressure is too high, we will spill the variable whose next use is the furthest away, and it is spilled only \emph{up to this next use}.
+In Figure~\ref{fig:ra:ff}, this correspond to maximizing \verb+distance_to_next_use_after(p)+ in function \verb+evict+.
+%
+Spilling this variable frees a register for the longest time, hence diminishing the chances to have to spill other variables later.
+This algorithm is not optimal because it does not take into account the fact that the first time we spill a variable is more costly than subsequent spills of the same variable (the first time, a store and a load are added, but only a load must be added afterwards).
+However, the general problem is NP-complete, and this heuristic, although it may produce more stores than necessary%
+%(e.g., by spilling two variables while spilling an other part of the first one would have been enough)
+, gives good results on ``straight-line codes,'' i.e., basic blocks.
 
 \begin{figure}
 \begin{verbatim}
-Further_First(B)
+# var_in_regs holds the set of variables in register at entry of B
+Further_First(B: basic block, var_in_regs)
   function evict(p, &in_regs, &in_mem, in_solidstate)
     while |in_regs|>R
       let v in (in_regs - in_solidstate) with max v.distance_to_next_use_after(p)
@@ -483,52 +486,91 @@ Further_First(B)
 We now present an algorithm that extends this ``furthest first'' algorithm to general control-flow graphs.
 The idea is to scan the CFG using a topological order and greedily evict sub live-ranges whenever the register pressure is too high.
 There are two main issues:
-the first is to generalize the priority function \verb+distance_to_next_use_after+ to a general CFG;
-the second is to find a way to initialize the \verb+in_regs+ set when starting to scan a basic-block, in the situation where predecessor basic-blocks have not been processed yet (e.g. at the entry of a loop).
+\begin{enumerate}
+  \item Generalize the priority function \verb+distance_to_next_use_after+ to a general CFG;
+  \item Find a way to initialize the \verb+var_in_regs+ set when starting to scan a basic-block, in the situation where predecessor basic-blocks have not been processed yet (e.g., at the entry of a loop).
+\end{enumerate}
+
 
 \paragraph{Profitability to Spill}
-To illustrate the generalization of further-first priority strategy to a CFG, let us consider the example of Figure~\ref{fig:ra=priority-spill-CFG}.
-In this figure, $\lightning n$ sign denotes regions with (high) register pressure of $\regs+n$.
-Here, at program point $p_0$, register pressure is too high by one variable:
-both $x$ and $y$ are candidate to be spilled to memory.
-\begin{enumerate}
-\item Let us first consider the execution trace ($AB^{100}C$) under the assumption that left branch is taken. 
-  In this branch, next use of $y$ appears in a loop, while next use of $x$ appears way further once the loop have fully executed. 
-  Looking at this execution trace in isolation, and using the further first strategy described above for straight-line code, it is clearly considered to be more profitable to evict variable $x$ (at distance 101).
-\item Consider now the execution trace ($AD$) whenever the right branch is taken. In that case, this is variable $y$ has the further use (at distance 2).
-\item Looking at the example as a whole, it is clear that one would prefer to evict variable $y$. 
-  On the other hand, modifying a little bit the example by assuming a high register pressure within the loop at program point $p_1$, then evicting variable $x$ would be preferred.
-\end{enumerate}
+To illustrate the generalization of further-first priority strategy to a CFG, let us consider the example of Figure~\ref{fig:ra:priority-spill-CFG}.
+In this figure, the $\lightning +n$ sign denotes regions with (high) register pressure of $\regs+n$.
+We suppose we have only $R=2$ registers. At program point $p_0$, register pressure is too high by one variable as we need a register for variable $a$.
+We have two candidates for spilling: $x$ and $y$, and the classical furthest first criteria would depend on which branch is chosen:
+
+\begin{itemize}
+  \item Suppose the left branch is taken, and consider the execution trace ($AB^{100}C$).
+  In this branch, the next use of $y$ appears in a loop, while the next use of $x$ appears way further after the loop has fully executed. 
+  It is clearly considered to be more profitable to evict variable $x$ (at distance 101).
+
+  % Looking at this execution trace in isolation, and using the further first strategy described above for straight-line code
+
+\item Suppose now that the right branch is taken, and consider the execution trace ($AD$).
+  In that case, this is variable $y$ has the further use (at distance 2) so we would evict variable $y$.
+
+\end{itemize}
+
+Looking at the example as a whole, it is however clear that one would prefer to evict variable $y$ as the loop on the left branch is not under pressure: spilling $x$ would only help for program point $p_0$, and one would need to spill another variable in block $D$ ($x$ is used at the beginning of $D$).
+
+On the other hand, modifying a little bit the example by assuming a high register pressure within the loop at program point $p_1$ (e.g., by using $a$), then evicting variable $x$ would be preferred in order to avoid a load and store in a loop!
+
+% \bigskip
+
+
 This dictates the following remarks:
-First, program points with low register pressure can be ignored.
-Second, program points within loops, or more generally said with higher execution frequency should account in the computation of the ``distance'' more than program points with lower execution frequency.
-%
-This leads, for a variable $v$ live at program point $p$ to the following definition of function \verb+v.spill_profitability(p)+ where $q.\texttt{frequency}$ represents the estimated execution frequency for a program point $q$:
+\begin{enumerate}
+  \item Program points with low register pressure can be ignored.
+  \item Program points within loops, or more generally with higher execution frequency should account in the computation of the ``distance'' more than program points with lower execution frequency.
+\end{enumerate}
 
 \begin{figure}
+  (TODO: add variable 'a' defined after 'y' and used everywhere, and set R = 2)
   \includegraphics[width=0.45\textwidth]{figures/priority-spill-CFG.pdf}
-  \caption{\label{fig:ra:priority-spill-CFG}Generalization of \texttt{distance\_to\_next\_use\_after} for a CFG. Illustrating example.}
+
+  \caption{Generalization of \texttt{distance\_to\_next\_use\_after} for a CFG. Illustrating example.}
+  \label{fig:ra:priority-spill-CFG}
 \end{figure}
 
+So we will replace the notion of ``distance'' in the furthest first algorithm with a notion of ``profitability,'' i.e., a measure of the number of program points (weighted by frequency) that would benefit from the spilling of a variable $v$.
+
+%
+% This leads, for a variable $v$ live at program point $p$ to the following definition of function \verb+v.spill_profitability(p)+ where $q.\texttt{frequency}$ represents the estimated execution frequency for a program point $q$:
+%
+
 \begin{definition}[Spill profitability from $p$]
-  Let $p$ be a program point, $v$ a variable live at $p$.
-  Let $v.\texttt{HP}(p)$ be the set of all program points $q$ such that:
-  1.~register pressure at $q$ is greater than \regs;
+%
+  Let $p$ be a program point and $v$ a variable live at $p$.
+  Let $v.\texttt{HP}(p)$ (High-Pressure) be the set of all program points $q$ such that:
+  1.~register pressure at $q$ is strictly greater than \regs;
   2.~$v$ is alive at $q$;
   3.~there exists a path from $p$ to $q$ that does not contain any use or definition of $v$.
   Then,
+
   $$\texttt{v.spill\_profitability}(p) = \sum_{q\in v.\texttt{HP}(p)} q.\texttt{frequency}$$
+  % where
+  % $$v\texttt{HP}(p) = \{ q \in live-range(v) | q.pressure > R and q reachable from p \}$$
 \end{definition}
 
-There is a important subtlety concerning the set of points in $v.\texttt{HP}(p)$, that is aimed to express the set of program points of high register pressure for which the eviction of $v$ would free a register:
-depending on the instruction set architecture, and the way spill code is inserted, it might be desirable to consider the use point of an instruction, just before the instruction itself (where the load would have been to be inserted).
-This, for example, would lead as illustrated below in our running example, to exclude $p_3$ from $x.\texttt{HP}(p_0)$.
-Hence,
-\begin{enumerate}
-\item assuming low register pressure within the loop, we have $x.\texttt{HP}(p_0)=\{p_0\}$, and $y.\texttt{HP}(p_0)=\{p_0,p_3\}$. 
-  This leads to $x.\texttt{spill\_profitability}(p_0)=1$ and $y.\texttt{spill\_profitability}(p_0)=1+0.5=1.5$, ie. evicting $y$.
-\item now assume register pressure to be high at $p_1$, then $x.\texttt{HP}(p_0)=\{p_0,p_1\}$, and $y.\texttt{HP}(p_0)=\{p_0,p_3\}$. This leads to $x.\texttt{spill\_profitability}(p_0)=1+50=51$ and $y.\texttt{spill\_profitability}(p_0)=1.5$, i.e. evicting $x$.
-\end{enumerate}
+There is a important subtlety concerning the set of points in $v.\texttt{HP}(p)$, that is dependent on the instruction set architecture and the way spill code is inserted.
+Consider in our example the set $x.\texttt{HP}(p_0)$, i.e., the set of high-pressure points that would benefit from the spilling of $x$ at point $p_0$.
+The question is the following: `` does the point $p_3$ (just before the instruction using $x$) belong to this set?''
+If the architecture can have an operand in memory, $p_3$ belongs to the set;
+However, if the architecture requires an operand to be loaded in a register before its use, then $x$ would be reloaded at $p_3$ so this point would not benefit from the spilling of $x$ and $p_3$ must be excluded from $x.\texttt{HP}(p_0)$.
+
+Let us see how the profitability applies to our running example with two scenarios: low-pressure and high-pressure in the $B$ loop.
+
+\begin{center}
+  \begin{tabular}{r@{\quad}cc}
+  Loop $B$ & Low-pressure & High-pressure \\
+  \hline
+  $x.\texttt{HP}(p_0)$ & $\{p_0\}$ & $\{p_0,p_1\}$ \\
+  $y.\texttt{HP}(p_0)$ & $\{p_0,p_3\}$ & $\{p_0,p_3\}$ \\
+  $x.\texttt{spill\_profitability}(p_0)$ & $1$ & $51$ \\
+  $y.\texttt{spill\_profitability}(p_0)$ & $1.5$ & $1.5$ \\
+\end{tabular}
+\end{center}
+
+In the first case, we would evict $y$, in the second, we would evict $x$ (plus another variable later, when arriving at $p_3$).
 
 \paragraph{Initial Register Filling at the Beginning of a Basic-Block}
 For each visited basic-block $B$, the set of variables that must reside in a register is stored in \verb+B.vars_in_regs+.
