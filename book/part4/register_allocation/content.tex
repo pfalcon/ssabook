@@ -16,8 +16,8 @@
 \newcount\todocount \todocount=0
 \def\todo#1{\global\advance\todocount by 1 {\color{blue} {\bf TODO:} #1}}
 \newlinechar=`\^^J
-\def\endofchapter{\ifnum\todocount>0\immediate\write16{^^JLaTeX Warning: There 
-was still TODO macros: \the\todocount.^^J}\fi}
+\def\endofchapter{\ifnum\todocount>0\immediate\write16{^^J! WARNING: There was 
+still TODO macros: \the\todocount.^^J}\fi}
 
 
 \def\
@@ -27,7 +27,6 @@ was still TODO macros: \the\todocount.^^J}\fi}
 \def\maxlive{\ensuremath{\mathrm{Maxlive}}\xspace}
 \def\regs{\ensuremath{R}\xspace}
 \def\irc{Iterated Register Coalescing\xspace}
-
 
 
 
@@ -69,9 +68,14 @@ There are multiple questions that arise at that point that a register allocator 
 
 Without going into the details, let us see how linear-scan and graph-based allocators handle these questions.
 
-\paragraph{Linear-scan} The linear-scan principle is to consider that a procedure is a long basic block, and to scan it from top to bottom.
+\paragraph{Linear-scan} The linear-scan principle is to consider that 
+a procedure as a long basic block (\todo{where lr are intervals}), and to scan 
+it from top to bottom.
 When encountering the definition of a variable (i.e., the beginning of a live-range), we check if some registers are free (\emph{spill test}).
 If yes, we pick one to assign the variable to (\emph{assignment}). If no, we choose from the set of currently live variables the one that has the farthest use and spill it (\emph{spilling}).
+\todo{When we encounter the end of its live-range (e.g., , we free the register 
+it was assigned to.)}
+
 When we encounter the last use of a variable (i.e., the end of its live-range), we free the register it was assigned to.
 
 \paragraph{Graph-based}
@@ -94,12 +98,49 @@ What causes this are precisely the complex control-flow structure as these creat
 This means the allocator will use heuristics to color, and will base its spill decisions on this heuristic.
 
 \begin{figure}
+  \todo{ caption linearize: interval = sur-approx de liverange réel.}
+  \todo{ add variable p def au début et use à la fin}
+  \todo{ référencer la figure plus tôt que juste 'comparaison'}
+
   \includegraphics[height=\textheight]{figures/example-initial}
+
   \caption{Example}
+
+  \label{fig:ra:old-running}
+\end{figure}
+
+\begin{figure}
+  \begin{center}
+    \subfloat[Linear scan]{\tikzfigure{linear-scan}}
+    \subfloat[Graph-based]{\tikzsubfigure[1]{running}}
+    \subfloat[Interference graph]{
+      \tikzfigure{running-ig}
+        % \includegraphics[scale=1.1]{figures/prog_ig.pdf}
+    }
+  \end{center}
+  \caption{Linear scan makes an over-approximation of live-ranges as
+    intervals, while graph-based allocator create an interference graph 
+    capturing the exact interferences. Linear scan requires 5 register 
+    in this case while coloring the interference graph can be done with 
+    4 registers.}
   \label{fig:ra:running}
 \end{figure}
 
-Let us look at the example Figure~\ref{fig:ra:running}, that presents a very simple code with an if-condition.
+\begin{figure}
+  \begin{center}
+    \subfloat[Splitting variable $x$]{\tikzsubfigure[2]{running}}
+    \subfloat[SSA version]{\tikzsubfigure[3]{running}}
+  \end{center}
+  \caption{Splitting variable $x$ in the previous example breaks the 
+    interference between $x$ and $a$. Now only 3 registers are required.
+    SSA introduces splitting that guarantees \maxlive registers are enough.
+  }
+  \label{fig:ra:running-split-SSA}
+\end{figure}
+
+
+Let us look at the example Figure~\ref{fig:ra:running}, that presents a very 
+simple code with an if-condition.
 There are two initial variables $a$ and $b$ that end in the branches, and two variables $x$ and $y$ are defined in those branches.
 Linear scan would decide it needs four registers (spill test), as the live ranges of all variables are artificially increased: for instance, $a$ is marked alive all along the left branch even though in is never used there.
 %
@@ -202,8 +243,10 @@ The inequality between \maxlive and the chromatic number is caused by the cycle 
 
 This situation changes if we permit \emph{live-range splitting.} 
 This means inserting a copy (move) instruction at a program point that creates a new version of a variable. 
-Thus, the value of a variable is allowed to reside in different registers at different times. 
-For instance, in Figure~\ref{fig:ra:running} (TODO sub), we can split $x$ in the right branch by changing the definition to $x'$ and using a copy $x \gets x'$ at the end of the block:
+Thus, the value of a variable is allowed to reside in different registers at 
+different times.  For instance, in Figure~\ref{fig:ra:running} (\todo{sub}), we 
+can split $x$ in the right branch by changing the definition to $x'$ and using 
+a copy $x \gets x'$ at the end of the block:
 the node $x$ in the graph is split into two nodes, $x$ and $x'$.
 Those node don't interfere, and also interfere differently with the other variables:
 Now, $x$ can use the same register as $a$, because only $x'$ interferes with $a$.
@@ -257,7 +300,7 @@ Under SSA form, the live-ranges of those variables are split by \phifuns, which 
 The argument and result variables of the \phifuns constitute new live-ranges, giving more freedom to the register allocator since they can be assigned to different registers.
 
 \begin{figure}[htbp]
-  TODO: update figure for running example.
+  \todo{ update figure for running example: from previous part or from part on scan spill }
 	\begin{center}
 		\subfloat[example program in SSA]{ \includegraphics{figures/prog_ssa_lr.pdf} }
 		\qquad
@@ -524,7 +567,9 @@ This dictates the following remarks:
 \end{enumerate}
 
 \begin{figure}
-  (TODO: add variable 'a' defined after 'y' and used everywhere, and set R = 2)
+  \todo{ add variable 'a' defined after 'y' and used everywhere, and set R = 2)
+  => or better : explain there are other code not shown, but for pedagogical purposes we know the pressure and want only to spill x or y.
+}
   \includegraphics[width=0.45\textwidth]{figures/priority-spill-CFG.pdf}
 
   \caption{Generalization of \texttt{distance\_to\_next\_use\_after} for a CFG. Illustrating example.}
