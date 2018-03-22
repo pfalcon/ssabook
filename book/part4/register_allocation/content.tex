@@ -51,11 +51,12 @@ The set of all program points where a variable is alive is called the \emph{live
 
 This resource conflict of two variables is called \emph{interference} and is usually defined via liveness: 
 two variables interfere if (and only if) there exists a program point where they are simultaneously alive, i.e., their live-ranges intersect.%
-\footnote{ This definition of interference by liveness is an over-approximation (see Section~\ref{sec:properties_and_flavors:ultimate_interference}), and there are refined definitions that create less interferences (see Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}). 
+\footnote{ This definition of interference by liveness is an over-approximation (see Section~\ref{sec:properties_and_flavors:ultimate_interference} of Chapter~\ref{chap:properties_and_flavors}), and there are refined definitions that create less interferences (see Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}). 
   However, in this chapter we will restrict ourselves to this definition and assume that two interfering variables cannot be assigned the same register. 
 }
 It represents the fact that those two variables cannot share the same register.
-For instance, in Figure~\ref{fig:ra:linearscan}, variables $a$ and $d$ interfere as $a$ is alive at the definition of $d$.
+For instance, in Figure~\ref{fig:ra:running}, variables $a$ and $b$ interfere 
+as $a$ is alive at the definition of $b$.
 
 \subsection{Questions for register allocators}
 
@@ -67,19 +68,45 @@ There are multiple questions that arise at that point that a register allocator 
 \end{itemize}
 
 Without going into the details, let us see how linear-scan and graph-based allocators handle these questions.
+Figure~\ref{fig:ra:running} will be used in the next paragraphs to illustrate how these allocators work.
 
-\paragraph{Linear-scan} The linear-scan principle is to consider that 
-a procedure as a long basic block (\todo{where lr are intervals}), and to scan 
-it from top to bottom.
+\begin{figure}
+  % \noindent
+  % \begin{center}
+    \subfloat[Linear scan]{
+      \strut\hspace{-3em}
+      \tikzfigure{linear-scan}%
+      \label{sub:ra:running-linear}
+    }
+    \kern-2em
+    \subfloat[Graph-based]{\tikzsubfigure[1]{running}%
+      \label{sub:ra:running-gr}
+    }
+    \subfloat[Interference graph]{%
+      \quad
+      \tikzfigure{running-ig}%
+      \label{sub:ra:running-ig}%
+    }
+  % \end{center}
+  \caption{Linear scan makes an over-approximation of live-ranges as
+    intervals, while graph-based allocator create an interference graph 
+    capturing the exact interferences. Linear scan requires 5 register 
+    in this case while coloring the interference graph can be done with 
+    4 registers.}
+  \label{fig:ra:running}
+\end{figure}
+
+
+\paragraph{Linear-scan} The linear-scan principle is to consider that a procedure is a long basic block and hence live-ranges are approximated as intervals.
+For instance, the procedure shown on Figure~\ref{sub:ra:running-gr} is viewed as the straight-line code of Figure~\ref{sub:ra:running-linear}.
+The algorithm then proceeds in scanning the block from top to bottom.
 When encountering the definition of a variable (i.e., the beginning of a live-range), we check if some registers are free (\emph{spill test}).
 If yes, we pick one to assign the variable to (\emph{assignment}). If no, we choose from the set of currently live variables the one that has the farthest use and spill it (\emph{spilling}).
-\todo{When we encounter the end of its live-range (e.g., , we free the register 
-it was assigned to.)}
-
-When we encounter the last use of a variable (i.e., the end of its live-range), we free the register it was assigned to.
+When we encounter the end of its live-range (e.g., a last use), we free the register it was assigned to.
 
 \paragraph{Graph-based}
-Graph-based allocators, such as the ``Iterated Register Coalescing'' allocator (IRC), represent interferences of variables as an undirected \emph{interference graph}: the nodes are the variables of the program, and two nodes are connected if they interfere.
+Graph-based allocators, such as the ``Iterated Register Coalescing'' allocator (IRC), represent interferences of variables as an undirected \emph{interference graph}: the nodes are the variables of the program, and two nodes are connected if they interfere, i.e., if their live-range intersect.
+For instance, Figure~\ref{sub:ra:running-ig} shows the interference graph of the code example presented in Figure \ref{sub:ra:running-gr}.
 In this model, two neighbouring nodes must be assigned different registers, so the assignment of variables to registers amounts to \emph{coloring} the graph---two neighbouring nodes must have a different color---using at most $R$ colors, the number of registers.\footnote{Hence the terms ``register'' and ``color'' will be used interchangeably in this chapter.}
 
 Here, the allocator will try to color the graph, if it succeeds (\emph{spill test}), then the coloration represents a valid assignment of registers to variables (\emph{assignment}). If not, the allocator will choose some nodes (usually the ones with the highest number of neighbours) and remove them from the graph by storing the corresponding variables in memory (\emph{spilling}).
@@ -97,39 +124,34 @@ Unfortunately, graph $k$-coloring is known to be an NP-complete problem, and the
 What causes this are precisely the complex control-flow structure as these creates cycles in the interference graph.
 This means the allocator will use heuristics to color, and will base its spill decisions on this heuristic.
 
-\begin{figure}
-  \todo{ caption linearize: interval = sur-approx de liverange réel.}
-  \todo{ add variable p def au début et use à la fin}
-  \todo{ référencer la figure plus tôt que juste 'comparaison'}
 
-  \includegraphics[height=\textheight]{figures/example-initial}
+Let us look again at the example Figure~\ref{fig:ra:running}, that presents a very 
+simple code with an if-condition.
+There are two initial variables $a$ and $b$ that end in the branches, and two variables $x$ and $y$ are defined in those branches, as well as a variable $p$ that is always live.
+Linear scan would decide it needs five registers (spill test), as the live ranges of all variables are artificially increased: for instance, $a$ is marked alive all along the left branch even though in is never used there.
+%
+IRC would create the graph on the right, which presents a 4-clique (a complete sub-graph of size 4: with variables $a$, $b$, $p$, and $x$), hence would require at least 4 colors.
+This simple graph would actually be easily 4-colorable with a heuristic, hence the spill test would succeed with four registers.
 
-  \caption{Example}
+Still, one could remark that at each point of the procedure, only three variables are alive at the same time.
+But since $x$ interferes with $b$ on the left branch, and with $a$ on the right branch, it is impossible to use only three registers.
 
-  \label{fig:ra:old-running}
-\end{figure}
+\medskip
+
+In conclusion, linear-scan allocators are faster, and graph coloring ones have better results in practice, but both approaches have an inexact spill test: linear-scan has artificial interferences, and graph coloring uses a coloring heuristic.
+Moreover, both require variables to be assigned to \emph{exactly one register} for all their live range.
+This means both allocators will potentially spill more variables than strictly necessary, and we will see how SSA can help with this problem.
+
 
 \begin{figure}
   \begin{center}
-    \subfloat[Linear scan]{\tikzfigure{linear-scan}}
-    \subfloat[Graph-based]{\tikzsubfigure[1]{running}}
-    \subfloat[Interference graph]{
-      \tikzfigure{running-ig}
-        % \includegraphics[scale=1.1]{figures/prog_ig.pdf}
+    \subfloat[Splitting variable $x$]{%
+      \tikzsubfigure[2]{running}
+      \label{sub:ra:running-split}
     }
-  \end{center}
-  \caption{Linear scan makes an over-approximation of live-ranges as
-    intervals, while graph-based allocator create an interference graph 
-    capturing the exact interferences. Linear scan requires 5 register 
-    in this case while coloring the interference graph can be done with 
-    4 registers.}
-  \label{fig:ra:running}
-\end{figure}
-
-\begin{figure}
-  \begin{center}
-    \subfloat[Splitting variable $x$]{\tikzsubfigure[2]{running}}
-    \subfloat[SSA version]{\tikzsubfigure[3]{running}}
+    \subfloat[SSA version]{\tikzsubfigure[3]{running}
+      \label{sub:ra:running-SSA}
+    }
   \end{center}
   \caption{Splitting variable $x$ in the previous example breaks the 
     interference between $x$ and $a$. Now only 3 registers are required.
@@ -137,24 +159,6 @@ This means the allocator will use heuristics to color, and will base its spill d
   }
   \label{fig:ra:running-split-SSA}
 \end{figure}
-
-
-Let us look at the example Figure~\ref{fig:ra:running}, that presents a very 
-simple code with an if-condition.
-There are two initial variables $a$ and $b$ that end in the branches, and two variables $x$ and $y$ are defined in those branches.
-Linear scan would decide it needs four registers (spill test), as the live ranges of all variables are artificially increased: for instance, $a$ is marked alive all along the left branch even though in is never used there.
-%
-IRC would create the graph on the right, which presents a 3-clique (a complete sub-graph of size 3), hence would require at least 3 colors.
-This simple graph would actually be easily 3-colorable with a heuristic, hence the spill test would succeed with three registers.
-%
-Still, one could remark that at each point of the procedure, only two variables are alive at the same time.
-But since $x$ interferes with $b$ on the left branch, and with $a$ on the right branch, it is impossible to use only two registers.
-
-\medskip
-
-In conclusion, linear-scan allocators are faster, and graph coloring ones have better results in practice, but both approaches have an inexact spill test: linear-scan has artificial interferences, and graph coloring uses a coloring heuristic.
-Moreover, both require variables to be assigned to \emph{exactly one register} for all their live range.
-This means both allocators will potentially spill more variables than strictly necessary, and we will see how SSA can help with this problem.
 
 
 
@@ -167,10 +171,10 @@ The number of simultaneously alive variables at a program point is called the \e
 %
 The maximum register pressure over all program points in a procedure is called the register pressure of that procedure, or ``\maxlive.'' 
 One can observe that \maxlive expresses the \emph{minimum} number of required registers for a spill-free register assignment, i.e., an allocation that does not require memory.
-For instance, in Figure~\ref{fig:ra:running}, $\maxlive = 2$ so a minimum number of 2 registers is required.
+For instance, in Figure~\ref{fig:ra:running}, $\maxlive = 3$ so a minimum number of 3 registers is required.
 For a straight-line code (basic-block), \maxlive constitutes also a \emph{sufficient number of registers}.
 % For instance, in Figure~\ref{fig:ra:running}, if the linearized code on the left of Figure~\ref{fig:ra:running} was an actual basic block, it would effectively require exactly four registers.
-But in general, a procedure might require \emph{more than \maxlive registers} to be spill-free, indeed, we have seen that the code example actually requires 3 registers, because of the $a,b,x$ clique of interferences.
+But in general, a procedure might require \emph{more than \maxlive registers} to be spill-free, indeed, we have seen that the code example actually requires 4 registers, because of the $a,b,p,x$ clique of interferences.
 
 
 
@@ -202,11 +206,15 @@ Linear_Scan(B)
 \end{minipage}
 \end{lrbox}
 
-\begin{figure}[htbp]
+\begin{figure}
   \subfloat[Example]{\includegraphics[width=0.27\textwidth]{figures/ra_linearscan.pdf}}
   \hfill
   \subfloat[Linear scan]{\usebox{\linearscanbox}}
-    \caption{\label{fig:ra:linearscan}Linear-scan assignment scheme on a basic-block: assigning registers to live intervals from top to bottom ($a$, then $d$, followed by $e$) always succeeds if \maxlive (here two) does not exceed the number of available registers. }
+  \caption{Linear-scan assignment scheme on a basic-block: assigning registers 
+  to live intervals from top to bottom ($a$, then $d$, followed by $e$) always 
+succeeds if \maxlive (here two) does not exceed the number of available 
+registers.}
+  \label{fig:ra:linearscan}
 \end{figure}
 
 
@@ -235,7 +243,7 @@ The inequality between \maxlive and the chromatic number is caused by the cycle 
 		\qquad
 		\subfloat[Interference graph]{ \includegraphics[scale=1.1]{figures/prog_ig.pdf} }
 	\end{center}
-	\caption{Example program and its interference graph}
+        \caption{Example program and its interference graph.}
 	\label{fig:ra:exprg}
 \end{figure}
 \end{comment}
@@ -244,14 +252,14 @@ The inequality between \maxlive and the chromatic number is caused by the cycle 
 This situation changes if we permit \emph{live-range splitting.} 
 This means inserting a copy (move) instruction at a program point that creates a new version of a variable. 
 Thus, the value of a variable is allowed to reside in different registers at 
-different times.  For instance, in Figure~\ref{fig:ra:running} (\todo{sub}), we 
+different times.  For instance, in Figure~\ref{sub:ra:running-gr}, we 
 can split $x$ in the right branch by changing the definition to $x'$ and using 
-a copy $x \gets x'$ at the end of the block:
-the node $x$ in the graph is split into two nodes, $x$ and $x'$.
-Those node don't interfere, and also interfere differently with the other variables:
-Now, $x$ can use the same register as $a$, because only $x'$ interferes with $a$.
+a copy $x \gets x'$ at the end of the block, producing the code shown on Figure~\ref{sub:ra:running-split}.
+It means the node $x$ in the graph is split into two nodes, $x$ and $x'$.
+Those nodes don't interfere, and also interfere differently with the other variables:
+Now, $x$ can use the same register as $a$ because only $x'$ interferes with $a$.
 Conversely, $x'$ can use the same register as $b$, because only $x$ interferes with $b$.
-In this version, we only need $\maxlive = 2$ registers, which means that, if the number of registers was tight, we have traded a spill (here one store and one load) for one move, which is an excellent bargain.
+In this version, we only need $\maxlive = 3$ registers, which means that, if the number of registers was tight, we have traded a spill (here one store and one load) for one move, which is an excellent bargain.
 
 
 This interplay between live-range splitting and colorability is the key issue in register allocation, and we will see in the remainder of this chapter how SSA, which creates live-range splitting at particular locations, can play a role in register allocation.
@@ -296,19 +304,8 @@ They can branch downwards on the dominance tree but have a single root:
 the program point where the variable is defined.
 Hence a situation like in Figure~\ref{fig:ra:running} can no longer occur:
 $x$ and $y$ had two ``roots'' because they were defined twice.
-Under SSA form, the live-ranges of those variables are split by \phifuns, which creates the code shown on Figure~\ref{todo}, and we can see the ``tree'' of live-ranges on the right.
+Under SSA form, the live-ranges of those variables are split by \phifuns, which creates the code shown on Figure~\ref{sub:ra:running-SSA}, where we can see that live-ranges form a ``tree.''
 The argument and result variables of the \phifuns constitute new live-ranges, giving more freedom to the register allocator since they can be assigned to different registers.
-
-\begin{figure}[htbp]
-  \todo{ update figure for running example: from previous part or from part on scan spill }
-	\begin{center}
-		\subfloat[example program in SSA]{ \includegraphics{figures/prog_ssa_lr.pdf} }
-		\qquad
-		\subfloat[Interference graph]{ \includegraphics[scale=1.1]{figures/prog_ssa_ig.pdf} }
-	\end{center}
-	\caption{SSA version of the example program}
-	\label{fig:ra:exprgssa}
-\end{figure}
 
 This structural property is interesting as we can now perform exact polynomial coloring schemes that work both for graph-based and linear-style allocators.
 
@@ -328,7 +325,7 @@ This greedy assignment scans the dominance tree, coloring the variables from the
 This means the variables are simply colored in the order of their definitions.
 This works because branches of the tree are independent, so coloring one will not add constraints on other parts of the tree, contrary to the general non-SSA case where there are cycles.
 
-We give the pseudo-code in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}.
+The pseudo-code of the tree scan is shown in Algorithm~\ref{ra:code:assign-tree-scan}.
 Intuitively, when the scanning arrives at the definition of a variable, the only colored variables are ``above'' it and since there is at most $\maxlive-1$ other variables live at the definition, there is always a free color. 
 
 \paragraph{Conclusion}
@@ -339,24 +336,36 @@ First, lower the register pressure to at most $R$ everywhere in the program;
 Then, color the interference graph with $R$ colors in polynomial time.
 
 
-\begin{figure}
-  \begin{verbatim}
-Tree_Scan(T)
-  function assign_color(p, available)
-    for each v last use at p
-      available[color(v)] = True     /* colors not used anymore */
-    for each v defined at p
-      c = choose_color(v, available)  /* choose available color */
-      available[c] = False
-      color(v) = c
-    for each child p' of p
-      assign_color(p', copy of available)
-  assign_color(root(T), [True, True, ..., True])
+\begin{algorithm}
+  \caption{Tree scan}
+  \label{ra:code:assign-tree-scan}
 
-  \end{verbatim}
-  \caption{Tree scan coloring algorithm for SSA.}
-  \label{code:assign-tree-scan}
-\end{figure}
+  \KwIn{$T$, program points in order of the dominance tree}
+  \KwOut{color, an assignment of live-ranges to registers}
+
+  \Fn{assign\_color ($p$, available)}{
+
+    \ForEach{$v$ last use at $p$}{
+      available[color($v$)] $\gets$ \KwTrue\tcc*{colors not used anymore}
+    }
+    \ForEach{$v$ defined at $p$}{
+      $c \gets$ choose\_color($v$, available)\tcc*{pick one of the available colors}
+      available[$c$] $\gets$ \KwFalse\;
+      color($v$) $\gets$ $c$
+    }
+
+    \ForEach{child $p'$ of $p$}{
+      assign\_color($p'$, copy of available)\;
+    }
+  }
+
+  assign\_color(root(T), [\KwTrue, \KwTrue, ..., \KwTrue])\;
+  \Return color
+\end{algorithm}
+
+
+  % \caption{Tree scan coloring algorithm for SSA.}
+  % \label{code:assign-tree-scan}
 
 
 
@@ -695,13 +704,13 @@ In a decoupled register allocation scheme as advocated here, the spilling phase 
 With the help of live-range splitting through the insertion of register-to-register copies, then no more than \regs registers are required to successfully allocate variables.
 Now, SSA form has the good property that it provides sufficient live-range splitting.
 Also, when dressed with its minimal flavor (see Chapter~\ref{cahpter:properties_and_flavors}), the increase in terms of variables is reasonable (usually less than 20 percent in practice) compared to splitting all global live-range at the border of every basic-block.
-The fact that a greedy tree-scan coloring scheme (see Figure~\ref{code:assign-tree-scan}) can ``optimally'' do the job, is quite useful property of SSA form.
+The fact that a greedy tree-scan coloring scheme (see Figure~\ref{ra:code:assign-tree-scan}) can ``optimally'' do the job, is quite useful property of SSA form.
 Even more interestingly, one of the goal of this section is to show that the underlying structural property is such that it also makes the extensively used graph coloring simplification scheme (recalled below) an ``optimal'' scheme.
 In other words, the well-known iterated register allocation scheme can take advantage of SSA form property.
 This is especially important remark because, besides minimizing the amount of spill code, the second objective of register allocation is to also minimize the amount of register-to-register copies:
 a decoupled approach is practically viable if the coalescing phase is effective in merging most of the live-ranges.
 In this section, we will first present the traditional simplification scheme based graph coloring greedy heuristic and show how it successfully color programs under SSA form.
-We will then explain how those two greedy coloring schemes, respectively the graph-based and the scan-based (described in Figure~\ref{code:assign-tree-scan}), can be extended to perform efficient coalescing.
+We will then explain how those two greedy coloring schemes, respectively the graph-based and the scan-based (described in Figure~\ref{ra:code:assign-tree-scan}), can be extended to perform efficient coalescing.
 
  
 
@@ -713,7 +722,7 @@ This scheme is based on the observation that given \regs colors---representing t
 Such a node can be \emph{simplified}, i.e., removed from the graph and placed on a stack.
 This process can be iterated with the remaining nodes, whose degree may have decreased (if the simplified node was one of their neighbors).
 If the graph becomes empty, we know it is possible to color the graph with \regs colors; 
-In particular, as illustrated in Figure~\ref{code:assign-color}, a valid \regs-coloring can be obtained by assigning colors to nodes in the reverse order of their simplification, i.e., popping nodes from the stack and assigning them one available color.
+In particular, as illustrated in Figure~\ref{ra:code:assign-color}, a valid \regs-coloring can be obtained by assigning colors to nodes in the reverse order of their simplification, i.e., popping nodes from the stack and assigning them one available color.
 This is always possible since they have at most $\regs-1$ colored neighbors.
 We call this algorithm the \emph{greedy coloring scheme}.\index{greedy coloring scheme}
 Its first phase, which goal is to eliminate nodes from the graph to create the stacks is reported in Figure~\ref{code:is-k-greedy}.
@@ -777,7 +786,7 @@ Function Assign_colors(G)
     add v to G
 \end{verbatim}
 \caption{Assign\_color function}
-\label{code:assign-color}
+\label{ra:code:assign-color}
 \end{figure}
 
 
