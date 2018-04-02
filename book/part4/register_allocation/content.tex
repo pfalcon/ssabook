@@ -716,7 +716,8 @@ In other words, the well-known iterated register allocation scheme can take adva
 This is especially important remark because, besides minimizing the amount of spill code, the second objective of register allocation is to also minimize the amount of register-to-register copies:
 a decoupled approach is practically viable if the coalescing phase is effective in merging most of the live-ranges.
 In this section, we will first present the traditional simplification scheme based graph coloring greedy heuristic and show how it successfully color programs under SSA form.
-We will then explain how those two greedy coloring schemes, respectively the graph-based and the scan-based (described in Figure~\ref{ra:code:assign-tree-scan}), can be extended to perform efficient coalescing.
+We will then explain what is the purpose of coalescing, and how it translates when performed on SSA form program.
+We finally explain how those two greedy coloring schemes, respectively the graph-based and the scan-based (described in Figure~\ref{ra:code:assign-tree-scan}), can be extended to perform efficient coalescing.
 
  
 
@@ -797,64 +798,6 @@ Function Assign_colors(G)
 \caption{Greedy coloring assignment used in the greedy coloring scheme. The stack is the output of the Simplify function described in Figure~\ref{ra:code:is-k-greedy}.}
 \label{ra:code:assign-color}
 \end{figure}
-
-
-\subsection{A light tree-scan coloring algorithm}
-{\sl
-\begin{itemize}
-  \item On the dominance tree, possible to scan from top and assign colors to 
-    variables as they come.
-  \item Biased coloring is used to coalesce variables linked by \phifuns.
-  \item see next section for more involved coalescing
-  \item Fab: I think that you already talked about scan coloring. Ok to talk about biased.
-  \item Fab: You can talk about biased coloring that uses the result of an aggressive coalescing (see with Quentin). It is not more complicated and it improves results.
-\end{itemize}
-}
-
-One of the advantages of SSA is to make things simpler, faster, and use less memory. 
-For the register assignment problem, we now know that the existing greedy scheme based on simplification still works; 
-However, it requires constructing and maintaining the interference graph, a structure judged to big and cumbersome to be used in a JIT context, where compilation time and memory prints matter more. 
-We will now show how to perform a fast register assignment for SSA after spilling that does not need more than the dominance tree and def-use chains. 
-
-%% The algorithm we propose scans the dominance tree, coloring the variables from the root to the leaves in a top-down order.
-%% This means the variables are simply colored in the order of their definitions, first come first served!
-%% We give the pseudo-code in procedure Tree\_Scan, Figure~\ref{code:assign-tree-scan}; It works because it mimics the effect of the greedy scheme (``leaves'' are simplified first hence colored \emph{last}), without actually performing any simplification.
-
-%% Intuitively, when the scanning arrives at the definition of a variable, the only colored variables are ``above'' it and since there is at most $R-1$ other variables live at the definition, there is always a free color.
-%% We will now prove more formally that this method always work;
-%% The key observation is that the order in which variables are considered corresponds to a reverse order of simplification, i.e., a valid order of the nodes on the stack after the greedy simplification scheme.
-
-%% \begin{proof}
-%%   \def\order{o}
-%%   Let us consider an ordering $v_1, v_2, \ldots, v_n$ of the nodes of the nodes based on the dominance:
-%%   if $v_i$ dominates $v_j$, then $v_j$ appear before $v_i$ in the ordering ($j < i$).
-%%   We will show that this order correspond to a greedy simplification.
-%%   Suppose $v_1, \ldots, v_{i-1}$ have been simplified by the greedy scheme (for $i=1$, this is the initial graph).
-%%   If $v_i$ dominates any variable, say $v_j$, then $j < i$ and the node has already been simplified;
-%%   So, there is no variable defined after $v_i$ on the dominance tree:
-%%   the live-range of $v_i$ is a ``leaf'' of the subtree representation (see proof in Section~\ref{sec:regalloc:ssa-greedy}).
-%%   So, $v_i$ can be chosen for simplification, and by induction the ordering $v_1, \ldots, v_n$ is a valid order of simplification. 
-%%   As we have seen previously in Section~\ref{sec:regalloc:greedy-col}, this means the reverse order $v_n, v_{n-1}, \ldots, v_1$ is a valid order for coloring.
-%% \end{proof}
-
-
-%% \begin{important}
-%% It is important to understand why this method does not work in the general non-SSA case.
-%% Under SSA, the variables are ``split'' at join points by the use of \phifuns.
-%% If this was not the case, we would have live-ranges that spans on multiple branches of the dominance tree, creating cycles in the representation.
-%% In that case, coloring a branch would constrain the coloring on leaves on a different branch; Under SSA form, such live-ranges are split and their colorings are independent.
-%% See Figure~\ref{TODO} for an example.
-%% \end{important}
-
-
-
-
-The tree-scan coloring algorithm is really fast as it only needs one traversal of the dominance tree. 
-Since the number of colors is fixed and small, it can be implemented as a bit-set to speed-up updates of the {\tt available} array.
-The pseudo-code for function {\tt choose\_color} is deliberately not given yet. 
-A very basic implementation could just scan the {\tt available} array until it finds one that is not taken.
-We will see in the next section how to bias the choosing of colors so as to perform some coalescing. 
- 
 
 
 \subsection{Coalescing under SSA form}
