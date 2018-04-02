@@ -801,82 +801,32 @@ Function Assign_colors(G)
 
 
 \subsection{Coalescing under SSA form}
-
-The goal of \emph{coalescing} is to minimize the number of register-to-register {\tt move} instructions in the final code.
-While there may not be so many such ``copies'' at the high-level (e.g., instruction ``{\tt a = b;}'' in C)---especially after a phase of copy propagation under SSA (\todo{See chapter X})---,
-many such instructions are added by different compiler phases by the time compilation reaches the register allocation phase.
+The goal of \emph{coalescing} is to minimize the number of register-to-register {\tt move} instructions in the final code. 
+While there may not be so many such ``copies'' at the high-level (e.g., instruction ``{\tt a = b;}''~in C)---especially after a phase of copy propagation under SSA (see Chapter~\ref{constant_propagation_is_easier})---, many such instructions are added by different compiler phases by the time compilation reaches the register allocation phase. 
 For instance, adding copies is a common way to deal with register constraints (see Section~\ref{sec:practical-regalloc}). 
-An even more obvious and unavoidable reason in our case is the presence of \phifuns due to the SSA form. 
+An even more obvious and unavoidable reason in our case is the presence of \phifuns due to the SSA form.
 
 A \phifun represents in fact parallel copies on incoming edges of basic blocks. 
 For instance, $a \gets \phi(b,c)$ means that instruction $a\gets b$ should be executed on the edge coming from the left, and $a\gets c$ on the one from the right. 
 Suppose now that register allocation decided to put $a$ and $b$ in register $R_1$, but $c$ in register $R_2$;
 Then, the copy $a\gets b$ does not need to be executed anymore, but $a\gets c$ still does:
-the value of variable $c$ will be contained in $R_2$ and needs to transfered to $R_1$, which means the final code will contain an instruction ``{\tt mov $R_1, R_2$}'' or the like. 
-
+the value of variable $c$ will be contained in $R_2$ and needs to transferred to $R_1$, which means the final code will contain an instruction ``{\tt mov $R_1, R_2$}'' or the like. 
 
 In the case of SSA, it is obviously better to assign variables linked by a \phifun, to the same register, so as to remove copies between subscripts of the same variable ($a_1$, $a_2$, \dots).
-This is possible if we are under conventional SSA (CSSA, see Chapter~\ref{todo}), but optimizations can break this property and interferences can appear between subscripted variables with the same origin.
+This is possible if we are under conventional SSA (C-SSA, see Chapter~\ref{chapter:properties_and_flavours}), but optimizations can break this property and interferences can appear between subscripted variables with the same origin.
 Such two variables cannot be assigned to the same register without breaking the program.
 
-To bypass this problem and also allow for more involved coalescing between SSA variables of different origins,
-we define a notion of \emph{affinity}, acting as the converse of the relation of interference and expressing how much two variables ``want'' to share the same register. 
-By adding a metric to this notion, it measures the benefit one could get if the two variables were assigned to the same register:
-the weight represents how much instructions we would save at execution if the two variables share the same register.
-For instance, given two variables $a$ and $b$, the weight of the affinity between them is the number of occurrence of copy instructions involving them ($a\gets b$ or $b\gets a$) or \phifuns ($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$).
-Actually, some parts of the program are more often executed than others, and a more accurate cost for each copy can be calculated using actual execution frequencies based on profiling;
+To bypass this problem and also allow for more involved coalescing between SSA variables of different origins, we define a notion of \emph{affinity}, acting as the converse of the relation of interference and expressing how much two variables ``want'' to share the same register. 
+By adding a metric to this notion, it measures the benefit one could get if the two variables were assigned to the same register: 
+the weight represents how much instructions we would save at execution if the two variables share the same register. 
+For instance, given two variables $a$ and $b$, the weight of the affinity between them is the number of occurrence of copy instructions involving them ($a\gets b$ or $b\gets a$) or \phifuns ($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$). 
+Actually, some parts of the program are more often executed than others, and a more accurate cost for each copy can be calculated using actual execution frequencies based on profiling; 
 It is also possible to use empirical parameters, for instance $\times 10$ for each level of nested loop, $\times 0.5$ if in a conditional branch, etc.
 
 
-\subsubsection{Biased coalescing}
+\subsection{Graph-based approach}
 
-Since the number of affinities is sparse compared to the number of possible pairs of variables,
-it is best to keep for each variable $v$ an ``affinity list'' where each element is a pair $(u,w)$ meaning that $v$ has an affinity with $u$ of weight $w$.
-We propose a version of function {\tt choose\_color} that bias the choosing of colors based on these affinity lists, shown on Figure~\ref{code:choose-color}. 
-The bias is very simple: each choice of color maximizes locally---under the current knowledge---the coalescing for the variable being colored. 
-It is not of course optimal since the general problem of coalescing is NP-complete, and biased algorithms are known to be easily misguided. 
-
-
-\begin{figure}
-  \begin{verbatim}
-global variables
-  count = array of size #colors and containing only zeros
-
-choose_color(v, available)
-  for each (u,weight) in affinity_list(v)
-    count[color(u)] += weight
-  max_weight = -1
-  col = 0
-  for each color c
-    if available[c] == true /* color is not used by a neighbour of v */
-      if count[c] > max_weight
-        col = c
-        max_weight = count[c]
-    count[c] = 0 /* prepare array for next call to choose_color */
-  \end{verbatim}
-  \caption{Choosing a color with a bias for coalescing.}
-  \label{code:choose-color}
-\end{figure}
-
-
-\subsubsection{Aggressive coalescing to improve biased coalescing.}
-
-There is another simple and interesting idea to improve biased coalescing. We 
-still consider a JIT context where compilation speed is very important.
-\todo{what kind of aggressive? Ask fab\ldots}
-
-
-\subsubsection{More involved coalescing strategies}
-
-It is beyond the scope of this book to describe in details deeply involved strategies for coalescing.
-So we will just give a short overview of other coalescing schemes that might be use in a decoupled register allocator.
-\begin{itemize}
-  \item Iterated Register Coalescing: conservative coalescing that works on the interference graph
-  \item Brute force strategy, working on all ``greedy-$k$-colorable'' graphs
-\end{itemize}
-
-
-
+\subsection{Scan-based approach}
 
 \section{Practical and advanced discussions}
 \label{sec:practical-regalloc}
