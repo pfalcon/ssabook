@@ -27,6 +27,7 @@ still TODO macros: \the\todocount.^^J}\fi}
 \def\maxlive{\ensuremath{\mathrm{Maxlive}}\xspace}
 \def\regs{\ensuremath{R}\xspace}
 \def\irc{Iterated Register Coalescing\xspace}
+\newcommand\gr[1]{greedy-$#1$-colorable\xspace}
 
 
 
@@ -105,7 +106,7 @@ If yes, we pick one to assign the variable to (\emph{assignment}). If no, we cho
 When we encounter the end of its live-range (e.g., a last use), we free the register it was assigned to.
 
 \paragraph{Graph-based}
-Graph-based allocators, such as the ``Iterated Register Coalescing'' allocator (IRC), represent interferences of variables as an undirected \emph{interference graph}: the nodes are the variables of the program, and two nodes are connected if they interfere, i.e., if their live-range intersect.
+Graph-based allocators, such as the ``\irc'' allocator (IRC), represent interferences of variables as an undirected \emph{interference graph}: the nodes are the variables of the program, and two nodes are connected if they interfere, i.e., if their live-range intersect.
 For instance, Figure~\ref{sub:ra:running-ig} shows the interference graph of the code example presented in Figure \ref{sub:ra:running-gr}.
 In this model, two neighbouring nodes must be assigned different registers, so the assignment of variables to registers amounts to \emph{coloring} the graph---two neighbouring nodes must have a different color---using at most $R$ colors, the number of registers.\footnote{Hence the terms ``register'' and ``color'' will be used interchangeably in this chapter.}
 
@@ -311,7 +312,7 @@ This structural property is interesting as we can now perform exact polynomial c
 
 
 \paragraph{Graph-based} 
-Graph-based allocators such as the Iterated Register Coalescing (IRC) use a \emph{simplification scheme}, that works quite well in practice but is a heuristic for coloring general graphs.
+Graph-based allocators such as the IRC mentioned above use a \emph{simplification scheme}, that works quite well in practice but is a heuristic for coloring general graphs.
 Interestingly, under SSA, the interference graph becomes a chordal graph, which means the simplification scheme will always manage to color the graph with \maxlive colors.
 Thus the same classical algorithm can be used without any modification, and now becomes an exact spill test.
 
@@ -427,7 +428,7 @@ However, register allocation under SSA shines the most in a scan-based setting, 
 \subsection{Graph-based approach}
 
 
-In a graph-based allocator such as the Iterated Register Coalescing (IRC), a \emph{spill everywhere} strategy is used, a variable is either spilled completely or not at all, and loads are placed directly in front of uses and stores directly after the definition.
+In a graph-based allocator such as the IRC, a \emph{spill everywhere} strategy is used, a variable is either spilled completely or not at all, and loads are placed directly in front of uses and stores directly after the definition.
 When spilled, the live-range of a variable then degenerates into small intervals: one from the definition and the store, and one from each load to its subsequent use.
 However, even in this simplistic setting, it is NP-complete to find the minimum number of nodes to establish $\maxlive\le\regs$.
 % It is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive just by one!
@@ -712,7 +713,7 @@ Now, SSA form has the good property that it provides sufficient live-range split
 Also, when dressed with its minimal flavor (see Chapter~\ref{chapter:properties_and_flavors}), the increase in terms of variables is reasonable (usually less than 20 percent in practice) compared to splitting all global live-range at the border of every basic-block.
 The fact that a greedy tree-scan coloring scheme (see Figure~\ref{ra:code:assign-tree-scan}) can ``optimally'' do the job, is quite useful property of SSA form.
 Even more interestingly, one of the goal of this section is to show that the underlying structural property is such that it also makes the extensively used graph coloring simplification scheme (recalled below) an ``optimal'' scheme.
-In other words, the well-known iterated register allocation scheme can take advantage of SSA form property.
+In other words, the well-known IRC allocation scheme can take advantage of SSA form property.
 This is especially important remark because, besides minimizing the amount of spill code, the second objective of register allocation is to also minimize the amount of register-to-register copies:
 a decoupled approach is practically viable if the coalescing phase is effective in merging most of the live-ranges.
 In this section, we will first present the traditional simplification scheme based graph coloring greedy heuristic and show how it successfully color programs under SSA form.
@@ -753,7 +754,7 @@ while worklist != {} do
 if V != {} then Failure ``The graph is not simplifiable''
 return stack ;
 \end{verbatim}
-\caption{Greedy simplification scheme used by the greedy coloring scheme to create the stack.}
+\caption{Greedy simplification scheme used by the greedy coloring scheme to create the stack. If this stage succeeds, the graph is said to be \gr{k}.}
 \label{ra:code:is-k-greedy}
 \end{figure}
 
@@ -773,9 +774,11 @@ $y_1$ in the left tree-branch; $y_3$ and $x_3$ in the middle tree-branch; and $y
 Each of them is in fact a candidate for simplification, and once removed another variable will become the new leaf.
 We see that simplification can always happens at the end of the branches of the dominance tree, moving upwards until the whole tree is simplified.
 In other words, if we are under SSA form and the spilling has already been done so that $\maxlive \leq R$, the classical greedy coloring scheme is \emph{guaranteed} to perform register allocation with \regs colors without any additional spilling.
+When a graph can be simplified using the function described in Figure~\ref{ra:code:is-k-greedy}, we say that this graph is \gr{k}.
+Hence, setting $k=\maxlive$, the interference graph of a code under SSA form is always \gr{k}. %FAB: Might want to make atheorem out of it so as to emphasize it?
 Observe that, with a program originally under SSA form, practical implementation may chose to interleave the process of spilling and coalescing/coloring:
 result will be unchanged but speed might be impacted.
-This is practical for instance when working on an existing compiler that uses a classical register allocation algorithm, for instance, the Iterated Register Coalescing.
+This is practical for instance when working on an existing compiler that uses a classical register allocation algorithm, for instance, the IRC.
 
 
 
@@ -803,34 +806,72 @@ Function Assign_colors(G)
 \subsection{Coalescing under SSA form}
 The goal of \emph{coalescing} is to minimize the number of register-to-register {\tt move} instructions in the final code.
 The terminology coalescing comes from the graph-based allocation approach where the color everywhere strategy is applied:
-to each interference graph node is associated a unique register to which the associated variable will be allocated along its entire live-range.
+to each node of the interference graph is associated a unique register to which the associated variable will be allocated along its entire live-range.
 Coalescing two nodes, or by extension coalescing the two corresponding variables, thus leads to imposing allocating the same register to those variables.
 Any copy instruction between those two variables can then be safely removed.
 This way, coalescing, when done during the register allocation phase, is used to minimize the amount of register-to-register move in the final code.
 While there may not be so many such copies at the high-level (e.g., instruction ``{\tt a = b;}''~in C)---especially after a phase of copy propagation under SSA (see Chapter~\ref{constant_propagation_is_easier})---, many such instructions are added by different compiler phases by the time compilation reaches the register allocation phase. 
 For instance, adding copies is a common way to deal with register constraints (see Section~\ref{sec:practical-regalloc}). 
-An even more obvious and unavoidable reason in our case is the presence of \phifuns due to the SSA form.
-
-A \phifun represents in fact parallel copies on incoming edges of basic blocks. 
-For instance, $a \gets \phi(b,c)$ means that instruction $a\gets b$ should be executed on the edge coming from the left, and $a\gets c$ on the one from the right. 
-Suppose now that register allocation decided to put $a$ and $b$ in register $R_1$, but $c$ in register $R_2$;
-Then, the copy $a\gets b$ does not need to be executed anymore, but $a\gets c$ still does:
-the value of variable $c$ will be contained in $R_2$ and needs to transferred to $R_1$, which means the final code will contain an instruction ``{\tt mov $R_1, R_2$}'' or the like. 
-
-In the case of SSA, it is obviously better to assign variables linked by a \phifun, to the same register, so as to remove copies between subscripts of the same variable ($a_1$, $a_2$, \dots).
-This is possible if we are under conventional SSA (C-SSA, see Chapter~\ref{chapter:properties_and_flavours}), but optimizations can break this property and interferences can appear between subscripted variables with the same origin.
-Such two variables cannot be assigned to the same register without breaking the program.
-
-To bypass this problem and also allow for more involved coalescing between SSA variables of different origins, we define a notion of \emph{affinity}, acting as the converse of the relation of interference and expressing how much two variables ``want'' to share the same register. 
+An even more obvious and unavoidable reason in our case is the presence of \phifuns due to the SSA form:
+The semantic of a \phifun corresponds to parallel copies on incoming edges of basic blocks, and destructing SSA i.e. getting rid of \phifuns that are not machine instructions, is done through the insertion of copy instructions. 
+It is thus better to assign variables linked by a \phifun to the same register, so as to ``remove'' the associated copies between subscripts of the same variable.
+As already formalized (see Section~\ref{sec:destruct:quality} of Chapter~\ref{chap:alternative_ssa_destruction_algorithm}) for the aggressive coalescing scheme, we define a notion of \emph{affinity}, acting as the converse of the relation of interference and expressing how much two variables ``want'' to share the same register. 
 By adding a metric to this notion, it measures the benefit one could get if the two variables were assigned to the same register: 
 the weight represents how much instructions we would save at execution if the two variables share the same register. 
-For instance, given two variables $a$ and $b$, the weight of the affinity between them is the number of occurrence of copy instructions involving them ($a\gets b$ or $b\gets a$) or \phifuns ($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$). 
-Actually, some parts of the program are more often executed than others, and a more accurate cost for each copy can be calculated using actual execution frequencies based on profiling; 
-It is also possible to use empirical parameters, for instance $\times 10$ for each level of nested loop, $\times 0.5$ if in a conditional branch, etc.
+%% For instance, given two variables $a$ and $b$, the weight of the affinity between them is the number of occurrence of copy instructions involving them ($a\gets b$ or $b\gets a$) or \phifuns ($a\gets\phi(\ldots,b,\ldots)$ or $b\gets\phi(\ldots,a,\ldots)$). 
+%% Actually, some parts of the program are more often executed than others, and a more accurate cost for each copy can be calculated using actual execution frequencies based on profiling; 
+%% It is also possible to use empirical parameters, for instance $\times 10$ for each level of nested loop, $\times 0.5$ if in a conditional branch, etc.
 
 
 \subsection{Graph-based approach}
+Coalescing comes with several flavors, including the aggressive and the conservative one.
+Aggressively coalescing an interference graph, means coalescing non-interfering nodes (i.e. constraining the coloring) regardless of the chromatic number of the resulting graph. 
+An aggressive coalescing scheme is presented in Chapter~\ref{chap:alternative_ssa_destruction_algorithm}.
+Conservatively coalescing an interference graph, means coalescing non-interfering nodes without modifying the chromatic number of the graph.
+In both cases, the objective function is the maximization of satisfied affinities, i.e. the maximization of the number of (weighted) affinities between nodes that have been coalesced together.
+In the current context, we will focus on the conservative scheme.
+Obviously, because of the reducibility to graph-$k$-coloring, both coalescing problems are NP-complete.
+However, graph coloring heuristics such as the IRC use incremental coalescing schemes where affinities are considered one after another.
+Incrementally, for two nodes linked by an affinity, the heuristic will try to determine whether coalescing those two nodes will, with regard to the coloring heuristic, increase the chromatic number of the graph or not.
+If not, then the two corresponding nodes are (conservatively) coalesced.
+The IRC considers two conservative coalescing rules that we recall here:
+\begin{description}
+  \item[Briggs] merges $u$ and~$v$ if the resulting node has 
+    less than $k$ neighbors of high degree, i.e., $\geq k$. This node can 
+    always be simplified after its neighbors of degree $<k$ are simplified, 
+    thus the graph remains \gr{k}.
 
+  \item[George] merges~$u$ and $v$ if all neighbors of $u$ with 
+    high degree are also neighbors of $v$. After coalescing and once all 
+    neighbors of degree less that $k$ are simplified, one gets a subgraph of 
+    the original graph, thus \gr{k} too.
+\end{description}
+
+%FAB: J'EN SUIS LA
+
+Originally, these rules were used for any graph, not necessarily \gr{k}, and with an additional clique of pre-colored nodes---the physical machine registers. 
+In this context, the rules have two restrictions. 
+Since pre-colored nodes should never be spilled, they are never simplified, hence Briggs's rule does not apply to pre-colored nodes. 
+And George's rule applies only if $v$ is pre-colored, otherwise, if the graph is not \gr{k}, there is a risk of spilling $u$ and $v$ instead of only~$u$; 
+this cannot happen with pre-colored nodes since they are never spilled. 
+We first make a simple but important remark: 
+\emph{for \gr{k} graphs, both rules can be used for any two nodes}. 
+For George's rule, this is obvious as there is no spill for a \gr{k} graph. 
+For Briggs's rule, we can also decide to simplify pre-colored nodes, when possible, as any other node. 
+Indeed, they form a clique and will thus be given different colors in any coloring. 
+To get back to the original colors of these \emph{pre-}colored nodes, a simple permutation of colors does the trick. 
+Hence Briggs's rule also applies to pre-colored nodes.
+
+Surprisingly, extending Briggs's and George's rules to any two nodes already leads to significant improvements (see Section~\ref{sec:adv-experiments}). 
+However, they still give insufficient results to coalesce the many moves introduced, for example, by a basic out-of-{SSA} conversion. 
+The reasons are twofold. 
+First, both rules are local decisions: 
+they depend on the degree of neighbors only. 
+But these neighbors may have a high degree just because their neighbors are not simplified yet, i.e., the test may be applied too early in the simplify phase. 
+This is the reason why XXX proposed the IRC: 
+instead of giving up coalescing when the test fails, the affinity is placed in a sleeping list and ``awakened'' when the degree of one of the nodes implied in the rule changes. 
+Thus, affinities are in general tested several times, and move-related nodes---nodes linked by affinities with other nodes---should not be simplified too early to ensure the affinities get tested. 
+The second reason is that these two tests are used to coalesce affinities in a sequential way, requiring that the graph stays \gr{k} at each step.
 \subsection{Scan-based approach}
 
 \section{Practical and advanced discussions}
