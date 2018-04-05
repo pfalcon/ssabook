@@ -1,6 +1,7 @@
 FIGS= \
       linear-scan \
-      running-ig
+      running-ig \
+      scheme-bruteimproved
 
 SUBFIGS= \
       running-1 \
