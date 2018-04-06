@@ -848,8 +848,10 @@ The IRC considers two conservative coalescing rules that we recall here:
     the original graph, thus \gr{k} too.
 \end{description}
 
-A pruned version of the coalescing algorithm used in the IRC (we removed the freezing mechanism mentioned below and dropped of the spilling part), is depicted in Figure~\ref{fig:ra:code:IRC}.
-In this code, coalescing and simplification (that builds the stack) are combined:
+A pruned version of the coalescing algorithm used in the IRC can be obtained by removing the freezing mechanism mentioned below and dropping of the spilling part.
+It is depicted in Figure~\ref{fig:ra:code:IRC}.
+In this code, both the process of coalescing and simplification are combined.
+It works as follow:
 1.~Nodes of low degree that are not move-related are simplified as much as possible.
 2.~When no more nodes can be simplified this way, an affinity is picked-up. If one of the two rules (Briggs or George) succeeds, the corresponding nodes are merged. If not, the affinity is erased.
 3.~The process iterates (from stage 1) until the graph is empty.
@@ -870,18 +872,16 @@ while V != {} do
     push v on stack ;
     remove v from G: update V, I, and simplify sets accordingly
   else
-    let a=(v,w) in A  of G of highest weight
+    let a=(v,u) in A  of G of highest weight
     if a in V: A = A \ {a}
     elsif can_be_coalesced(a)
-      merge v and w into vw
+      merge u and v into uv
       update V, I, and A accordingly
 return stack ;
 \end{verbatim}
 \caption{Greedy coloring assignment used in the greedy coloring scheme. The stack is the output of the Simplify function described in Figure~\ref{ra:code:is-k-greedy}.}
 \label{fig:ra:code:IRC}
 \end{figure}
-
-%FAB: J'EN SUIS LA
 
 Originally, those rules were used for any graph, not necessarily \gr{k}, and with an additional clique of pre-colored nodes---the physical machine registers.
 With such general graphs, some restrictions on the applicability of those two rules had to be applied when one of the two nodes were a pre-colored one.
@@ -895,14 +895,14 @@ instead of giving up coalescing when the test fails, the affinity is placed in a
 Thus, affinities are in general tested several times, and move-related nodes---nodes linked by affinities with other nodes---should not be simplified too early to ensure the affinities get tested.
 
 The advocated scheme which corresponds to the pseudo-code of Figure~\ref{fig:ra:code:IRC} and depicted in Figure~\ref{fig:ra:brute}, tries the coalescing of a given affinity only once, and thus does not require any complex freezing mechanism as done in the original IRC.
-The idea is to simply enhance the conservative coalescing rule (\verb+can_be_coalesced+ of pseudo-code \verb+Simplify_and_Coalesce+) as follow:
+This is made possible thanks to the following enhancement of the conservative coalescing rule:
+Recall that the objective of Briggs and George rules is to test whether the coalescing $v$ and $u$ breaks the \gr{k} property of $G$ or not.
+Testing this property can be done by running function \verb+Simplyfy(G)+ itself.
+This looks quite a rough approach.
+Thus the name \verb+Brute+ for ths subttle rule...
+However, experience shows that despite its theoretically high complexity (for each affinity, a full simplification process could be potentially performed), the overhead is balanced by the magnitude lowering of calls to \verb+can_be_coalesced+.
+Also, the quality of the result, in terms of amount of removed moved instructions is highly improved.
 
-%FAB JE SUIS ICI
-
-The idea is pretty simple:
-Once an affinity is selected for coalescing, Briggs rule is tested first.
-If it succeeds, the two nodes are coalesced.
-If not, George rule is tested
 
 \begin{figure}
   \begin{center}
@@ -913,6 +913,7 @@ If not, George rule is tested
 
 
 \subsection{Scan-based approach}
+%FAB JE SUIS ICI
 
 \section{Practical and advanced discussions}
 \label{sec:practical-regalloc}
