@@ -7,3 +7,4 @@ cd tikz
 ln -s ../../../templates/tikz-Makefile Makefile
 ln -s ../../../templates/tikz2figure.tex .
 cp -i ../../../templates/figure-list.mk .
+cp -i ../../../templates/demo.tikz .

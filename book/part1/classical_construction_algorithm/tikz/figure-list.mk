@@ -1,4 +1,5 @@
 FIGS= \
+      demo
 
 SUBFIGS= \
 	 initial-1 \
