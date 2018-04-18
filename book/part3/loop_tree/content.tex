@@ -1,3 +1,7 @@
+{
+\LinesNumberedHidden
+  \def\bb#1{$\textit{bb}_{#1}$}
+
 \chapter{Loop tree and induction variables \Author{S. Pop \andAuthor A. Cohen}}
 \label{chapter:loop_tree}
 \inputpath[fig]{part3}{loop_tree}
@@ -52,52 +56,114 @@ starting from a classic \SSA{} representation, we remove the \CFG{}.
 
 In order to remove the \CFG{}, imagine a pretty printer function that dumps only the arithmetic instructions of each basic-blocks and skips the control instructions of an imperative program by traversing the \CFG{} structure in any order.  Does the representation, obtained from
 this pretty printer, contains enough information to enable us to
-compute the same thing as the original program~\footnote{to simplify the discussion, we consider the original program to be free of side effect instructions}?
+compute the same thing as the original program?\footnote{To simplify the 
+discussion, we consider the original program to be free of side effect 
+instructions.}
+%
+Let us see what happens with an example in its \CFG{} based \SSA{} 
+representation:
 
-Let's see what happens with an example in its \CFG{} based \SSA{} representation:
-\begin{verbatim}
-bb_1 (preds = {bb_0}, succs = {bb_2})
-{
-  a = #some computation independent of b
-}
-bb_2 (preds = {bb_1}, succs = {bb_3})
-{
-  b = #some computation independent of a
-}
-bb_3 (preds = {bb_2}, succs = {bb_4})
-{
-  c = a + b;
-}
-bb_4 (preds = {bb_3}, succs = {bb_5})
-{
-  return c;
-}
-\end{verbatim}
-after removing the \CFG{} structure, listing the definitions in an
+% \begin{center}
+  % \begin{minipage}{.8\linewidth}
+% \begin{verbatim}
+% bb_1 (preds = {bb_0}, succs = {bb_2})
+% {
+  % a = #some computation independent of b
+% }
+% bb_2 (preds = {bb_1}, succs = {bb_3})
+% {
+  % b = #some computation independent of a
+% }
+% bb_3 (preds = {bb_2}, succs = {bb_4})
+% {
+  % c = a + b;
+% }
+% bb_4 (preds = {bb_3}, succs = {bb_5})
+% {
+  % return c;
+% }
+% \end{verbatim}
+\begin{algorithm}[H]
+  \bb1 (preds = \{\bb0\}, succs = \{\bb2\})\;
+  \Beg{
+    $a \gets \ldots$ \tcc*{some computation independent of b}
+  }
+
+  \bb2 (preds = \{\bb1\}, succs = \{\bb3\})\;
+  \Beg{
+    $b \gets \ldots$ \tcc*{some computation independent of a}
+  }
+  \bb3 (preds = \{\bb2\}, succs = \{\bb4\})\;
+  \Beg{
+    $c \gets a + b$\;
+  }
+  \bb4 (preds = \{\bb3\}, succs = \{\bb5\})\;
+  \Beg{
+    \Return $c$\;
+  }
+\end{algorithm}
+% \end{minipage}
+% \end{center}
+
+\noindent
+After removing the \CFG{} structure, listing the definitions in an
 arbitrary order, we could obtain this:
-\begin{verbatim}
-  return c;
-  b = #some computation independent of a
-  c = a + b;
-  a = #some computation independent of b
-\end{verbatim}
-and this \SSA{} code is enough, in the absence of side effects, to
+
+\begin{algorithm}[H]
+% \begin{verbatim}
+% return c;
+% b = #some computation independent of a
+% c = a + b;
+% a = #some computation independent of b
+% \end{verbatim}
+\Return $c$\;
+$b \gets \ldots$ \tcc*{some computation independent of a}
+$c \gets a + b$\;
+$a \gets \ldots$ \tcc*{some computation independent of b}
+\end{algorithm}
+
+
+\noindent
+And this \SSA{} code is enough, in the absence of side effects, to
 recover an order of computation that leads to the same result as in
 the original program.  For example, the evaluation of this sequence of
 statements would produce the same result:
-\begin{verbatim}
-  b = #some computation independent of a
-  a = #some computation independent of b
-  c = a + b;
-  return c;
-\end{verbatim}
+
+% \begin{center}
+  % \begin{minipage}{.8\linewidth}
+% \begin{verbatim}
+% b = #some computation independent of a
+% a = #some computation independent of b
+% c = a + b;
+% return c;
+% \end{verbatim}
+% \end{minipage}
+% \end{center}
+
+\begin{algorithm}[H]
+% \begin{verbatim}
+% return c;
+% b = #some computation independent of a
+% c = a + b;
+% a = #some computation independent of b
+% \end{verbatim}
+$b \gets \ldots$ \tcc*{some computation independent of a}
+$a \gets \ldots$ \tcc*{some computation independent of b}
+$c \gets a + b$\;
+\Return $c$\;
+\end{algorithm}
+
+
 
 \subsection{Natural loop structures on the \SSA{}}
 We will now see how to represent the natural loops in the \SSA{} form
 by systematically adding extra $\phi$-nodes at the end of loops, together
 with extra information about the loop exit predicate.
-
+%
 Supposing that the original program contains a loop:
+
+\begin{center}
+  \begin{minipage}{.8\linewidth}
 \begin{verbatim}
 bb_1 (preds = {bb_0}, succs = {bb_2})
 {
@@ -122,25 +188,66 @@ bb_5 (preds = {bb_4}, succs = {bb_6})
   return k;
 }
 \end{verbatim}
+\end{minipage}
+\end{center}
+\begin{algorithm}
+  \bb1 (preds = \{\bb0\}, succs = \{\bb2\})\;
+  \Beg{
+    $x \gets 3$\;
+  }
+  \bb2 (preds = \{\bb1, \bb3\}, succs = \{\bb3, \bb4\})\;
+  \Beg{
+    $i \gets \phi(x, j)$\;
+    \lIf{$i < N$}{ goto \bb3}\lElse{goto \bb4}
+  }
+  \bb3 (preds = \{\bb2\}, succs = \{\bb2\})\;
+  \Beg{
+    $j \gets i + 1$\;
+    goto \bb2\;
+  }
+  \bb4 (preds = \{\bb2\}, succs = \{\bb5\})\;
+  \Beg{
+    $k \gets \phi (i)$\;
+  }
+  \bb5 (preds = \{\bb4\}, succs = \{\bb6\})\;
+  \Beg{
+    \Return $k$\;
+  }
+
+\end{algorithm}
+
+\noindent
 Pretty printing, with a random order traversal, we could obtain this
 \SSA{} code:
+\begin{center}
+  \begin{minipage}{.8\linewidth}
 \begin{verbatim}
-  x = 3;
-  return k;
-  i = phi (x, j)
-  k = phi (i)
-  j = i + 1;
+x = 3;
+return k;
+i = phi (x, j)
+k = phi (i)
+j = i + 1;
 \end{verbatim}
+\end{minipage}
+\end{center}
+
 We can remark that some information is lost in this pretty printing:
 the exit condition of the loop have been lost. We will have to record
 this information in the extension of the \SSA{} representation. However, the
 loop structure still appears through the cyclic definition of the induction variable $i$. To expose it, we can rewrite this
 \SSA{} code using simple substitutions, as:
+
+\begin{center}
+  \begin{minipage}{.8\linewidth}
 \begin{verbatim}
-  i = phi (3, i + 1)
-  k = phi (i)
-  return k;
+i = phi (3, i + 1)
+k = phi (i)
+return k;
 \end{verbatim}
+\end{minipage}
+\end{center}
+
+\noindent
 Thus, we have the definition of the \SSA{} name ``i'' defined in
 function of itself.  This pattern is characteristic of the existence
 of a loop.  We can remark that there are two kinds of $\phi$-nodes used in this example:
@@ -166,13 +273,18 @@ the semantics of the computation of the loop, we have to specify in
 the \closephi{} node, when we exit the loop so as to be able to derive which value will be available in the end of the
 loop. With our
 extension that adds the loop exit condition to the syntax of the \closephi{}, the \SSA{} pretty printing of the above example would be:
+
+\begin{center}
+  \begin{minipage}{.8\linewidth}
 \begin{verbatim}
-  x = 3;
-  i = loop-phi (x, j)
-  j = i + 1;
-  k = close-phi (i >= N, i)
-  return k;
+x = 3;
+i = loop-phi (x, j)
+j = i + 1;
+k = close-phi (i >= N, i)
+return k;
 \end{verbatim}
+\end{minipage}
+\end{center}
 So $k$ is defined as the ``first value'' of $i$ satisfying the loop
 exit condition, ``$i \geq N$''.  In the case of finite loops, this is well defined as being the first element satisfying the loop exit condition of the sequence defined by the corresponding \loopphi{} node.
 
@@ -217,22 +329,81 @@ following example that shows two inter-dependent circuits, the first
 that involves $a$ and $b$ with step $c+2$, and the second that
 involves $c$ and $d$ with step $a+2$. This leads to an endless loop,
 which must be detected.
-\begin{verbatim}
-  a = loop-phi-x (0, b)
-  c = loop-phi-x (1, d)
-  b = c + 2
-  d = a + 3
-\end{verbatim}
 
-\begin{figure}[h]
-  \begin{center}
-    \includegraphics[width=1.2\textwidth]{iv_step}
-  \end{center}
-  \vspace{-50em}
+\begin{center}
+  \begin{minipage}{.8\linewidth}
+\begin{verbatim}
+a = loop-phi-x (0, b)
+c = loop-phi-x (1, d)
+b = c + 2
+d = a + 3
+\end{verbatim}
+\end{minipage}
+\end{center}
+
+% \begin{figure}[h]
+  % \begin{center}
+    % \includegraphics[width=1.2\textwidth]{iv_step}
+  % \end{center}
+  % \vspace{-50em}
+  % \caption{Detection of the cyclic definition using a depth first
+    % search traversal of the use-def chains.}
+  \label{spop:fig:ivstep}
+% \end{figure}
+
+    \begin{figure}
+\ifx\dousetikz\undefinedmacro
+Missing figure ! Please compile with tikz.
+{
+  \def\tc#1{\tikz[remember picture,baseline=-.5ex]\coordinate(#1);}
+  \foreach \ver/\cap in{1/\!Init.\,condition edge,2/Searching for 
+    $c$,3/{Backtrack, found $c$},4/Cyclic chain}{
+      \subfloat[\cap]{
+        \begin{minipage}{.23\linewidth}
+        \begin{algorithm}[H]
+          $a \tc{da} \gets 3$\;
+          $b \tc{db} \gets 1$\;
+          \While{\ldots}{
+            $c\tc{dc} \gets \phi(\tc{ua}a,f\tc{uf})$\;
+            $d\tc{dd} \gets \phi(b,g)$\;
+            $e\tc{de} \gets \tc{ud}d+7$\;
+            $f\tc{df} \gets \tc{ue}e+\tc{uc}c$\;
+            $g \gets d+5$\;
+          }
+        \end{algorithm}
+        \end{minipage}
+      }
+%
+      \begin{tikzpicture}[remember picture,overlay,
+        dep/.style={\mycol{1},very thick,-stealth}
+        ]
+        \ifcase\ver\or
+        \draw[dep] (ua) to[out=110,in=-70] (da);
+        \or
+        \draw[dep] (uf) to[out=-40,in=-50] (df);
+        \draw[dep] (ud) -- (dd);
+        \draw[dep] (ue) -- (de);
+        \or
+        \draw[dep] (uc) -- (dc);
+        \draw[dep] (uf) to[out=-40,in=-50] (df);
+        \or
+        \draw[dep] (dc) -- (uc);
+        \draw[dep] (df) to[out=-50,in=-40] (uf);
+        \fi
+      \end{tikzpicture}
+    %
+  }
+}
+\fi
   \caption{Detection of the cyclic definition using a depth first
     search traversal of the use-def chains.}
   \label{spop:fig:ivstep}
-\end{figure}
+\end{figure}%
+\ifx\dousetikz\undefinedmacro
+\todo{Missing figure ! Please compile with tikz.}
+\fi
+
+
 
 Let's now look at an example, presented in
 Figure~\ref{spop:fig:ivstep}, to see how the stride detection works.
@@ -483,3 +654,4 @@ the time necessary for a program to terminate.
 
 % \item De manière plus générale, la technique de loop-closed form qui encapsule une boucle, permet d'isoler l'effet des transformations effectuées au sein de la boucle. C'est une technique classique utilisée pour simplifier la mise à jour de SSA pour par exemple du loop unrolling ou je crois (à vérifier dans le chapitre associé) de if-conversion.
 %\end{itemize}
+}
