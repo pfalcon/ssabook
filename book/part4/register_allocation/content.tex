@@ -329,12 +329,12 @@ Thus the same classical algorithm can be used without any modification, and now 
   \Fn{assign\_color ($p$, available)}{
 
     \ForEach{$v$ last use at $p$}{
-      available[color($v$)] $\gets$ \KwTrue\tcc*{colors not used anymore}
+      available[color($v$)] $\gets$ \KwTrue\tcc*{colors not used anymore} \label{ra:linecode:assign-tree-scan:clear}
     }
     \ForEach{$v$ defined at $p$}{
-      $c \gets$ choose\_color($v$, available)\tcc*{pick one of the available colors}
+      $c \gets$ choose\_color($v$, available)\tcc*{pick one of the available colors} \label{ra:linecode:assign-tree-scan:assign}
       available[$c$] $\gets$ \KwFalse\;
-      color($v$) $\gets$ $c$
+      color($v$) $\gets$ $c$ 
     }
 
     \ForEach{child $p'$ of $p$}{
@@ -912,7 +912,22 @@ Also, the quality of the result, in terms of amount of removed moved instruction
 
 
 \subsection{Scan-based approach}
-%FAB JE SUIS ICI
+The most natural way to perform coalescing using a scan-based (linear-scan or tree-scan) approach is to simply do biased-coloring:
+Assume that in the pseudo code depicted in Algorithm~\ref{ra:code:assign-tree-scan}, the instruction at program point $p$ is a shuffling instruction from variables $v$ to $v'$.
+The color of $v$ that is freed at line~\ref{ra:linecode:assign-tree-scan:clear} can be reused for $v'$ at line~\label{ra:linecode:assign-tree-scan:assign}.
+In practice, this extremely local strategy does not work that well for \phifun.
+Consider as an example variables $x_1$, $x_2$, and $x_3$ for the program of Figure~\ref{sub:ra:running-SSA}.
+As there is not specific reason for the greedy allocation to assign the same register to both $x_1$ and $x_2$, when it comes to assigning one to $x_3$, this last will in general be able to only satisfy one of its affinities.
+
+To overcome this limitation, the idea is to use an aggressive pre-coalescing as a pre-pass of our coloring phase.
+One can use one of the algorithms presented in Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}, but the aggressive coalescing should performed \emph{without} applying the results to the program.
+The goal of thos pre-pass is to put move-related variables into \emph{equivalence classes.}
+In a classical graph-coloring allocator, the live ranges of the variables in a class are fused.
+We do not do so but use the classes to bias the coloring:
+each equivalence class has a color. 
+The color of a class is initially unset and set as soon as a variable of the class is assigned a register.
+When assigning a color to a variable, tree scan checks if the color of the class is available, if so, it takes it. 
+If not, it picks a different color (based on the other heuristics presented here) and updates the class' color. 
 
 \section{Practical and advanced discussions}
 \label{sec:practical-regalloc}
