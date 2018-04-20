@@ -39,19 +39,50 @@ $\psi$-inlining, $\psi$-reduction, $\psi$-projection, $\psi$-permutation and $\p
 \end{enumerate}
 
 \paragraph{Memory based data flow}
-SSA provides data flow / dependences between \emph{scalar} variables. Execution order of side effect instructions must also be respected. Indirect memory access can be considered very conservatively as such and lead to (sometimes called state, see Chapter~\ref{chapter:vsdg}) dependence edges. Too conservative dependences annihilate the potential of optimizations. Alias analysis is the first step toward more precise dependence information. Representing this information efficiently in the IR is important. One could simply add a dependence (or a flow arc) between two "consecutive" instructions that may or must alias. Then in the same spirit than SSA phi-nodes aim at combining the information as early as possible (as opposed to standard def-use chains, see the discussion in Chapter~\ref{chapter:properties_and_flavours}), similar nodes can be used for memory dependences. Consider the following sequential code 
-\begin{verbatim}
-*p=...; *q=...; ...=*p; ...=*p
-\end{verbatim}
- where p, and q may alias, to illustrate this point. Without the use of phi-nodes, the amount of def-use chains required to link the assignments to their uses would be quadratic (4 here). Hence the usefulness of generalizing SSA and its phi-node for scalars to handle memory access for sparse analyzes. HSSA (see Chapter~\ref{chapter:hssa}) and Array-SSA (see the Chapter~\ref{chapter:array_ssa}) are two different implementations of this idea. One have to admit that if this early combination is well suited for analysis or interpretation, the introduction of a phi-function might add a control dependence to an instruction that would not exist otherwise. In other words only simple loop carried dependences can be expressed this way. Let us illustrate this point using a simple example: 
-\begin{verbatim}
-for i { A[i]=f(A[i-2]) }
-\end{verbatim}
-where the computation at iteration indexed by $i+2$ accesses the value computed at iteration indexed by $i$. Suppose we know that $f(x)>x$ and that prior to entering the loop $A[*]\geq 0$. Then a SSA like representation 
-\begin{verbatim}
-for i { 
-  A2=phi(A0,A1); 
-  A1=PHI(j==i:A1[j]=f(A2[j-2]), j!=i:A1[j]=A2[j]) 
+SSA provides data flow / dependences between \emph{scalar} variables. Execution order of side effect instructions must also be respected. Indirect memory access can be considered very conservatively as such and lead to (sometimes called state, see Chapter~\ref{chapter:vsdg}) dependence edges. Too conservative dependences annihilate the potential of optimizations. Alias analysis is the first step toward more precise dependence information. Representing this information efficiently in the IR is important. One could simply add a dependence (or a flow arc) between two "consecutive" instructions that may or must alias. Then in the same spirit than SSA $\phi$-nodes aim at combining the information as early as possible (as opposed to standard def-use chains, see the discussion in Chapter~\ref{chapter:properties_and_flavours}), similar nodes can be used for memory dependences. Consider the following sequential C-like code involving pointers, where p and q may alias:
+
+{
+\RestyleAlgo{plain}
+\LinesNotNumbered
+\qquad\qquad
+\begin{algorithm}[H]
+$*p \gets \ldots$; \quad
+$*q \gets \ldots$; \quad
+$\ldots \gets *p$; \quad
+$\ldots \gets *q$;
+\end{algorithm}
 }
-\end{verbatim}
-would easily allow for the propagation of information that $A2\geq 0$. On the other hand, by adding this phi-node, it becomes difficult to devise that iteration $i$ and $i+1$ can be executed in parallel: the phi node adds a loop carried dependence. If one is interested in performing more sophisticated loop transformations than just exposing fully parallel loops (such as loop interchange, loop tiling or multidimensional software pipelining), then (Dynamic) Single Assignment forms should be his friend. There exists many formalisms including Kahn Process Networks (KPN), or Fuzzy Data-flow Analysis (FADA) that implement this idea. But each time restrictions apply. This is part of the huge research area of automatic parallelization outside of the scope of this book. For further details we refer to the corresponding Encyclopedia of Parallel Computing~\cite{Padua}.
+
+\noindent
+  Without the use of $\phi$-nodes, the amount of def-use chains required to link the assignments to their uses would be quadratic (4 here). Hence the usefulness of generalizing SSA and its $\phi$-node for scalars to handle memory access for sparse analyzes. HSSA (see Chapter~\ref{chapter:hssa}) and Array-SSA (see the Chapter~\ref{chapter:array_ssa}) are two different implementations of this idea. One have to admit that if this early combination is well suited for analysis or interpretation, the introduction of a $\phi$-function might add a control dependence to an instruction that would not exist otherwise. In other words only simple loop carried dependences can be expressed this way. Let us illustrate this point using a simple example: 
+% \begin{verbatim}
+% for i { A[i]=f(A[i-2]) }
+% \end{verbatim}
+
+{
+\RestyleAlgo{plain}
+\LinesNotNumbered
+\begin{algorithm}[H]
+  \For{i} {
+    $ A[i] \gets f(A[i-2])$\;
+  }
+\end{algorithm}
+}
+
+\noindent
+Here, the computation at iteration indexed by $i+2$ accesses the value computed at iteration indexed by $i$. Suppose we know that $f(x)>x$ and that prior to entering the loop $A[*]\geq 0$.
+Consider the following SSA-like representation:
+
+{
+\RestyleAlgo{plain}
+\LinesNotNumbered
+\begin{algorithm}[H]
+  \For{i} {
+    $A_2 \gets \phi(A_0,A_1)$\; 
+    $A_2 \gets \phi(j=i : A_1[j] \gets f(A_2[j-2]), j\neq i:A_1[j] \gets A_2[j])$\;
+  }
+\end{algorithm}
+}
+
+\noindent
+This would easily allow for the propagation of information that $A2\geq 0$. On the other hand, by adding this $\phi$-node, it becomes difficult to devise that iteration $i$ and $i+1$ can be executed in parallel: the $\phi$-node adds a loop carried dependence. If one is interested in performing more sophisticated loop transformations than just exposing fully parallel loops (such as loop interchange, loop tiling or multidimensional software pipelining), then (Dynamic) Single Assignment forms should be his friend. There exists many formalisms including Kahn Process Networks (KPN), or Fuzzy Data-flow Analysis (FADA) that implement this idea. But each time restrictions apply. This is part of the huge research area of automatic parallelization outside of the scope of this book. For further details we refer to the corresponding Encyclopedia of Parallel Computing~\cite{Padua}.
