@@ -929,12 +929,34 @@ The color of a class is initially unset and set as soon as a variable of the cla
 When assigning a color to a variable, tree scan checks if the color of the class is available, if so, it takes it. 
 If not, it picks a different color (based on the other heuristics presented here) and updates the class' color. 
 
-\section{Practical and advanced discussions}
+\section{Practical Discussions and Further Readings}
 \label{sec:practical-regalloc}
 
+The amount of papers on register allocation is humongous.
+The most popular approach is based on graph coloring, including many extensions~\cite{chow1990priority,park2004optimistic,Lueh:2000} of the seminal paper of Chaitin et al.~\cite{chaitin:1981:register}.
+The IRC, mentioned several times in this chapter, is from George et al.~\cite{george:96:iterated}.
+The linear-scan approach is also extremely popular in particular in the context of just-in-time compilation.
+This elegant idea goes back to Traub et al.~\cite{traub1998quality} and Poletto and Sarkar~\cite{Poletto99}.
+If this original version of linear-scan contains lots of hidden subtleties (e.g. computation of live-ranges, handling of shuffle code in the presence of critical edges, etc.), its memory footprint is smaller than a graph coloring approach, and its practical complexity is smaller than an IRC.
+However, mostly due to the highly over-approximated live-ranges, its apparent simplicity comes with a poor quality resulting code.
+This lead to the development of interesting but more complex extensions such as~\cite{wimmer2005optimized,sarkar2007extended}.
+All those approaches are clearly subsumed by the tree-scan approach~\cite{ColombetOct11}, both in terms of simplicity, complexity, and quality of result. 
+On the other hand, the linear-scan extension proposed by Barik in his thesis~\cite{barik2010efficient}, is an interesting competitor, its footprint being, in theory, more compact than the one used by a tree-scan.
 
-\subsection{Handling registers constraints}
+There exists an elegant relationship between tree-scan coloring and graph coloring:
+Back in 1974, Gavril~\cite{Gavril:1974:JCS} showed that the intersection graphs of sub-trees are the \emph{chordal graphs}.
+By providing an elimination scheme that exposes the underlying tree structure, this relationship allowed to prove that chordal graphs can be optimally colored in linear time with respect to the number of edges in the graph.
+This is the rediscovering of this relationship in the context of live-ranges of variables for SSA-form programs that motivated different research groups~\cite{HGG:2005:RegisterSSA,brisk:2005:poly,pereira:2005:chordal,Bouchez06} to revisit register allocation in the light of this interesting property.
+Indeed, at that time, most register allocation schemes were incompletely assuming that the assignment part was hard by referring to the NP-completeness reduction of Chaitin et al to graph coloring.
+However, the observation that SSA-based live-range splitting allows to decouple the allocation and assignment phases was not new~\cite{CyFe87,Fabr79}.
+Back in the nineties, the LaTTe~\cite{yang1999latte} just-in-time compiler already implemented the ancestor of our tree-scan allocator.
+The most aggressive live-range splitting that was proposed by Appel and George~\cite{Appel01} allowed to stress the actual challenge that past approaches were facing when splitting live-range to help coloring~\cite{cooper1998live}, which is coalescing~\cite{BouchezDR07:coalescing-cplx}.
+The PhD thesis of Hack~\cite{Hack07a}, Bouchez~\cite{bouchez-phd}, and Colombet~\cite{colombet-phd} address the difficult challenge of making a neat idea applicable to real life but without trading the elegant simplicity of the original approach.
+For some more exhaustive related work references we refer to the bibliography done in those documents. 
 
+FAB: ICI. RELIRE section avant.
+
+\paragraph{Handling Registers Constraints}
 In theory, register allocation algorithms are always nicely working with nodes 
 and colors. In practice, however, not all variables or registers are 
 equivalent. Depending on the architecture, some registers might be dedicated 
@@ -943,259 +965,40 @@ reside in particular registers, and in general conventions are defined to
 simplify for example the writing of libraries, by specifying how parameters to 
 functions are passed and how results are returned. This adds constraints to the 
 register allocation, usually by restricting the coloring possibilities of 
-variables. Some examples are given in Figure~\ref{fig:reg-constraints}.
+variables. 
 
-\begin{figure}
-  \begin{center}
-    \begin{tabular}{llcc}
-    Context & Constraint  & Instruction & Effect on reg. alloc. \\
-    x86 & Division in registers $R_x$ and $R_y$ & $a / b$ & $a$ in $R_x$, $b$ in $R_y$\\
-    st200 & Memory load cannot use $R_z$ & $a = load(b)$ & $b$ cannot be in $R_z$\\
-    ABI & Functions arguments in $R_1$, $R_2$\ldots & $a = f(b,c)$ & $b$ in $R_1$, $c$ in $R_2$ \\
-     & result in $R_0$ & & $a$ in $R_0$\\
-  \end{tabular}
-  \end{center}
-  \caption{Examples of register constraints.}
-  \label{fig:reg-constraints}
-\end{figure}
+\cite{linear-pfeifer,sarkar2007extended}
+PARLER DE: clique de registres, anthipaties de Colombet et al.~\cite{ColombetOct11}, extension de tree-scan de colombet et al.
 
+\paragraph{Handling Vector Registers}
+PARLER DE: puzzle solver~\cite{Pereira:2008:PLDI}, Generalized graph coloring~\cite{Smith04} and extension~\cite{Tavares}
 
-The problem with such constraints is that they cannot be expressed directly in 
-the register allocation problem under SSA form. For instance, if variable $a$ and $b$ must 
-absolutely reside in register $R_1$, it is not possible to pre-color them with 
-color $R_1$ as the interference graph could not be chordal anymore.  
-Furthermore, $a$ and $b$ maybe interfere, for instance if they are both the 
-first parameter of successive function calls. In that case putting them in the 
-same register would break the program. We propose two solutions 
-to deal with this problem. The first is classic in the literature, and the 
-second is newer and promising.
+\paragraph{Handling Addressing Mode with non-Memory Operands}
+PARLER DE: build again dans l'itérated; papier CASES de bouchez sur le spill
+
+\paragraph{Handling Lowering of \phifun}
+PARLER DE: critical edges, parallel copies
+SOLUTIONS: edge splitting, local repairing (sreedhar + graph coloring of local uncolored variable pot. with spilling), parallel copy motion (papier SCOPES), optimistic move insertions~\cite{braun2010preference}
+
+\paragraph{Advantages, Disadvantages, Limitations of SSA-based Approach}
 
 
-\paragraph{Splitting variables to handle register constraints.}
+\paragraph{Coalescing Optimization Problems}
+Conservative and Optimistic coalescing: \cite{Bouchez:case08}
+Preference guided coloring~\cite{braun2010preference}
 
-Traditionally, variables involved in constraining operations are split before and after the operation.
-For instance, suppose $a$ is involved in an instruction that requires it to be in register $R_x$.
-Then the instructions $a'\gets a$ and $a\gets a'$ are issued before and after the division,
-$a'$ is forced to be in $R_x$ and is used instead of $a$ in the instruction.
-If $a$ happens to be in $R_x$ after the register allocation, the copies can be removed, if not, the copies ensure the constraint is respected.
-
-In SSA form, the problem is that variable $a'$ is $R_x$, and if this constraint appears somewhere else in the program, it breaks the SSA property since there would be multiple definition of the same variable.
-Additionally, $a$ also is redefined which also breaks the SSA form.
-
-A workaround solution is to split \emph{all} variables alive before and 
-after the operation using a \emph{parallel copy}, as shown on Figure~\ref{fig:reg-split-all}.
-Moreover, the second copy must must define new variables to keep the SSA property (and subsequent uses must be changed accordingly).
-
-The use of parallel copies assures that the locally created variables, with very short live-ranges (span of only one instruction), are completely disconnected from the rest of the interference graph.
-Their only relation with the other, ``normal'' variable are affinities that each 
-variable share with the two other parts coming from the same original variable.
-
-The only problem with this method is that many copy instructions can remain in the program if the coalescing is not good enough to assign most of the created variables to the same register.  
-
-\begin{figure}
-  \begin{minipage}{.39\textwidth}
-  \begin{center}
-    Before
-      \begin{verbatim}
-Live in = {a, b, c, d, e}
-
-f = a/b
-
-Live out = {a, c, d, e, f}
-
-      \end{verbatim}
-  \end{center}
-  \end{minipage}
-  \begin{minipage}{.6\textwidth}
-  \begin{center}
-    After
-      \begin{verbatim}
-Live in = {a, b, c, d, e}
-
-(a', b', c', d', e') = (a, b, c, d, e)
-
-f' = a'/b'
-
-(a'', c'', d'', e'', f) = (a', c', d', e', f')
-
-Live out = {a'', c'', d'', e'', f}
-      \end{verbatim}
-
-  \end{center}
-  \end{minipage}
-  \caption{Examples of full parallel splitting.}
-  \label{fig:reg-split-all}
-\end{figure}
-
-\paragraph{Repairing problems afterwards.}
-
-Another possibility is to let register allocation do its job, and then 
-intervene to repair the coloring whenever it does not fit the constraints, by 
-adding copies afterwards around mismatches. To minimize the number of conflicts 
-on constraints, it is however important to drive the coloring so that it still 
-gives the right color whenever possible. 
-To do so, we add a clique (complete graph) of $R$ nodes, one for each register, to the interference graph.
-This clique is completely disconnected from the graph, and serves only to materialize affinities.
-
-For instance, if variable $a$ must reside in register $R_1$ we add $R_1$ to the affinity list of $a$. 
-On the contrary, if $a$ cannot be assigned to a register, say $R_2$, an affinity of \emph{negative weight} is added to the list, representing the added cost it will required if $a$ is still put in register $R_2$.
-
-Existing coalescing algorithms in the literature usually do not support negative weight.
-However, it is possible to emulate a negative weight between two variables, say $a$ and $b$ with weight $w<0$, by using the following trick:
-we create a new ``dummy'' variable, $v_{ab}$, and add an interference between $a$ and $v_{ab}$ and an affinity of weight $|w|$ between $v_{ab}$ and $b$.
-Hence, coalescing $v_{ab}$ and $b$ ensures $a$ and $b$ will not be in the same register.
- 
-The problem with this trick is that it adds many useless nodes and interferences in the graph.
-In practice, it is best to modify the coalescing rules to act ``as if'' there were such a dummy node in case of negative weight affinities, hence not requiring an actual modification of the graph.
-
-
-
-
-
-
-
-\subsection{Out-of-SSA and edge splitting}
-
-
-\phifuns are not actual machine instructions, they must be replaced by actual instructions when going ``out-of-SSA.''
-Traditionally, this translation out-of-SSA happens before register allocation.
-The classical ``Sreedhar'' method involves inserting copies before \emph{and after} the \phifuns, i.e., at the end the previous basic blocks, and at the beginning of the current block.
-This creates a new short-lived variable for each \phifun, for instance, consider $a \gets \phi(b,c)$, then copies $a' \gets b$ and $a' \gets c$ are created on the predecessors, and $a \gets a'$ replaces the \phifun. 
-This elegant method ensures the programs stays semantically correct, and fixes problems of earlier methods, the so-called ``swap problem'' and ``lost-copy problem.''
-
-When going out-of-SSA after register allocation, however, variables are already allocated to memory or registers, hence arguments and results of \phifuns are not variables anymore but registers.
-Shreedar's method in this context would generate local, uncolored variables.
-Trying to color these variables could lead to a dead-end, as we come back to regular, non-SSA coloring.
-
-\smallskip
-We propose then a different approach. First, if the definition and arguments of a \phifun have been allocated to the same register, then it can be safely removed.
-We then replace the remaining \phifuns by adding copies directly \emph{on the control-flow edges}.
-Of course, it is not actually possible to place code on edges, so we have to create new basic blocks on these edges to hold the added code.
-Since the semantics of \phifuns is parallel, we have to replace them with \emph{parallel copies} on the edges.
-These copies can then be sequentialized using actual simple {\tt move} instructions.
-
-Sequentializing is not a difficult task, but the order of the final instructions is important.
-A very simple algorithm to sequentialize copies consist of first dealing with ``cycles'' in the parallel copy.
-For instance, in Figure~\ref{fig:reg-phifun-seq}, registers $R_1$ and $R_2$ form a cycle since their values must be swapped.
-We use the currently available register $R_3$ to act as a temporary register during the swap, which requires three copies.
-Then, $R_3$ gets the value that was contained in $R_2$ and which is in $R_1$ after the swap.
-
-
-\begin{figure}
-\begin{center}
-  \begin{tabular}{c@{\qquad}c@{\qquad}c}
-  \phifuns & Parallel copy & Sequential copies \\
-  \hline
-  $R_1 \gets \phi (R_2, \dots)$ & & $R_3 \gets R_1$ \\
-  $R_2 \gets \phi (R_1, \dots)$ &  $(R_1, R_2, R_3) \gets (R_2, R_1, R_2)$  & $R_1 \gets R_2$\\
-  $R_3 \gets \phi (R_2, \dots)$ &  & $R_2 \gets R_3$ \\
-  &  & $R_3 \gets R_1$ \\
-\end{tabular}
-\end{center}
-\caption{Replacing \phifuns by actual copies.}
-\label{fig:reg-phifun-seq}
-\end{figure}
-
-In our case, we could save a copy by choosing to save $R_2$ into $R_3$ instead of $R_1$ for the swap.
-Better algorithms can be found in the literature but we prefer not to describe them here.
-
-An important observation is that cycles can appear in parallel copies.
-These cycles need a ``free'' register to be sequentialized.
-What happens if there is no such free register, this happens if there is a cycle and every other register contains a live variable.
-In that case, there is no available register to ``break'' the cycle so we need 
-to store one value in memory (spill),\footnote{Some architecture, like VLIW, can swap the values in registers; It is also possible to swap integer values using three \texttt{XOR} instructions. In those cases, spilling is not necessary.}
-for instance $R_1$, then perform all copies starting with $R_1 \gets R_2$ and ending by loading the stored value to $R_n$.
-
-
-\subsection{Parallel copy motion}
-
-We have seen in the previous section that we can split control-flow edges to add copy code to get rid of \phifuns.
-Splitting edges has multiple disadvantages, it adds a new indirection in the code (such as a {\tt goto} instruction), code on this block cannot be scheduled with code elsewhere, or it might prevent the use of hardware loop accelerators to name a few.
-
-We can see however that splitting is not always necessary, it depends on the notion of \emph{criticality} of the edge.
-We say that an edge is \emph{critical} if it goes from a block with multiple successors to a block with multiple predecessors, see Figure~\ref{fig:reg-critical}.
-For instance, edges in a regular ``if'' construct are not critical, while the back-edge of a ``do\dots until'' loop is critical.
-
-Code added on a non-critical edge can in fact be moved either at the bottom the predecessor block (move \emph{up}) or at the top of the successor block (move \emph{down}), depending on which one has only one exit or entry edge.
-For instance, if there is a \phifun after the join point of the \texttt{if}-construct of Figure~\ref{fig:reg-critical}, the move instructions can be placed at the end of the corresponding \texttt{true} and \texttt{false} branches.
-
-However, in the case of a critical edge, it is dangerous to move up or down the copies, as such code would then be always executed, even if the control flow is not taken.
-For instance, Figure~\ref{fig:reg-critical}, it is not possible to move the copy $R_1 \gets R_2$ up or down as this would change the behaviour of the program \todo{figure}.
-
-It is still possible in some cases to move copies out of critical edges.
-For instance, a parallel copy swaps the values in $R_1$ and $R_2$, then it is possible to move this swap up on the preceding block, as long as the values are swapped back in their correct registers on all other outgoing edges, see Figure~\ref{todo}.
-If all those edges are not critical, i.e., their successors have only one arriving control-flow edge in this case, then those swaps back can be moved down and no edge has been split.
-We call a critical edge with this property a \emph{weak critical edge}.
-This one is \emph{weak at the top} since all other edges leaving the predecessor are non-critical, meaning a copy on it can be moved up.
-It is also possible to have critical edges \emph{weak at the bottom}, if all other edges arriving on the successor are non-critical, meaning we can move a parallel copy down.
-
-In practice, not all parallel copies can be moved up or down on weak critical edges, since their effects are not always ``reversible'':
-for instance, $R_1 \gets R_2$ erases the value on $R_1$ and if this value is not saved elsewhere, it is not possible to get it back in $R_1$ on the other edges.
-We will not elaborate on this subject as our goal here is to show that optimizations are possible but not to cover them extensively.
-We advise the interested readers to read the existing literature on the subject, with some pointers given in the last section of this chapter.
-They will find there extended discussions on the ``reversibility'' of parallel copies, on the existence of ``strong'' critical edges (as opposed to ``weak'' ones), and what can be done for ``abnormal'' edges, i.e., control-flow edges that cannot be split.
-Here we will just conclude that in case we are stuck with our copies, there is always a means to solve our problem by spilling.
-
-
-
-\begin{figure}
-  % subfigure
-  critical edge def \hfill if-construct example \hfill do\dots until loop example\\
-  todo \hfill todo \hfill todo
-
-  \caption{Examples of critical and non-critical edges.}
-  \label{fig:reg-critical}
-\end{figure}
-
-
-\section{Further Reading \& References}
-\label{sec:reg-further-reading}
-
-This section need to be completed/written:
-
-Stuff to mention for interested readers:
-\begin{itemize}
-  \item Examples of coalescing simpler / more involved because of split compilation.
-  \item How to virualize dummy nodes with negative affinities: reference \cite{todo}.
-  \item swap and lost-copy problems: cite Briggs' thesis
-  \item better sequentialization algorithm
-  \item parallel copy motion
-\end{itemize}
-
-References to give:
-\begin{itemize}
-  \item Chaitin et al.~\cite{chaitin:1981:register}
-  \item IRC of George and Appel~\cite{george:96:iterated}
-  \item Coalescing is NP-complete in most cases~\cite{BouchezDR07:coalescing-cplx}
-  \item Repairing ABI constraints: cite Fab's paper on tree-scan~\cite{todo}
-  \item Spilling techniques are based on page eviction, Belady's algorithm~\cite{belady:1966:storage}.
-  \item Farrach and Liberatore~\cite{farach:98:local} showed that Belady's algorithm gives good results on straight-line code.
-  \item Braun and Hack~\cite{Braun:2009:CC} extended Belady's algorithm to general control-flow graphs.
-
-  \item Gavril and Yannakakis~\cite{YannakakisGavril87} showed that, even in this simplistic setting (spilleverywhere ``with holes''), it is NP-complete to find the minimum number of nodes to establish $\maxlive\le\regs$.
-  \item Bouchez et al.~\cite{BouchezDR07:spill} showed that it is even NP-complete to find the minimum number of nodes to spill to decrease \maxlive just by one.
-\end{itemize}
-
-
-\cite{Braun:2009:CC}\todo{file braun09cc.pdf in biblio}
-
-Talk about innital notion of live-range splitting that spills only parts of the live-range (splitting instead of spilling).
-
-Thus, the live-ranges of SSA variables are all tree-shaped~\cite{Bouchez05:RR,brisk:2006:poly,HGG:2006:RA_SSA}.
-
+\paragraph{Load/Store Optimization Problems}
+Spilling techniques are based on page eviction \cite{belady:1966:storage}.
+Farrach and Liberatore~\cite{farach:98:local} showed that Belady's algorithm gives good results on straight-line code.
+Braun and Hack~\cite{Braun:2009:CC} extended Belady's algorithm to general control-flow graphs.
+\cite{YannakakisGavril87}
+\cite{Bouchez07b}
 Cross-reference to SSA-PRE
 
-In theory, the gap between the chromatic number and \maxlive can even be arbitrarily large.
-This can be shown by applying Chaitin's proof of the NP-completeness of register allocation to Mycielski graphs.
-
-This special structure of the live-ranges leads to a special class of interference graphs:
-Gavril~\cite{Gavril:1974:JCS} showed that the intersection graphs of subtrees are the \emph{chordal graphs}.
-Chordal graphs can be optimally colored in linear a time with respect to the number of edges in the graph.
-Furthermore, they are \emph{perfect}, which means that for every subgraph, the clique number equals the chromatic number. 
-This is a very important property for register allocation because it means that \maxlive equals the chromatic number of the graph;
 \endofchapter
 }
 
 %%% Local Variables:
 %%% ispell-local-dictionary: "american"
 %%% End:
+
