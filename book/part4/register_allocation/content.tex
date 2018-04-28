@@ -941,7 +941,7 @@ If this original version of linear-scan contains lots of hidden subtleties (e.g.
 However, mostly due to the highly over-approximated live-ranges, its apparent simplicity comes with a poor quality resulting code.
 This lead to the development of interesting but more complex extensions such as~\cite{wimmer2005optimized,sarkar2007extended}.
 All those approaches are clearly subsumed by the tree-scan approach~\cite{ColombetOct11}, both in terms of simplicity, complexity, and quality of result. 
-On the other hand, the linear-scan extension proposed by Barik in his thesis~\cite{barik2010efficient}, is an interesting competitor, its footprint being, in theory, more compact than the one used by a tree-scan.
+On the other hand, the linear-scan extension proposed by Barik in his thesis~\cite{barik2010efficient}, is an interesting competitor, its footprint being, possibly, more compact than the one used by a tree-scan.
 
 There exists an elegant relationship between tree-scan coloring and graph coloring:
 Back in 1974, Gavril~\cite{Gavril:1974:JCS} showed that the intersection graphs of sub-trees are the \emph{chordal graphs}.
@@ -954,27 +954,30 @@ The most aggressive live-range splitting that was proposed by Appel and George~\
 The PhD thesis of Hack~\cite{Hack07a}, Bouchez~\cite{bouchez-phd}, and Colombet~\cite{colombet-phd} address the difficult challenge of making a neat idea applicable to real life but without trading the elegant simplicity of the original approach.
 For some more exhaustive related work references we refer to the bibliography done in those documents. 
 
-FAB: ICI. RELIRE section avant.
+\paragraph{Handling Registers and ISA Constraints}
+As done in (too) many register allocation papers, the heuristics described in this chapter assume a simple non-realistic architecture where all variables or registers are equivalent and where the instruction set architecture does not impose any specific constraint on register usage. 
+Reality is different, including:
+1.~2-address mode instructions that impose two of the three operands to use the same register;
+2.~instructions that impose the use of specific registers;
+3.~instruction operands that can not reside in memory;
+4.~registers of various size (vector registers usually leading to register aliasing)...
 
-\paragraph{Handling Registers Constraints}
-In theory, register allocation algorithms are always nicely working with nodes 
-and colors. In practice, however, not all variables or registers are 
-equivalent. Depending on the architecture, some registers might be dedicated 
-to perform memory operations, some instructions expects their operands to 
-reside in particular registers, and in general conventions are defined to 
-simplify for example the writing of libraries, by specifying how parameters to 
-functions are passed and how results are returned. This adds constraints to the 
-register allocation, usually by restricting the coloring possibilities of 
-variables. 
+In the context of graph coloring, register constraints are usually handled by adding an artificial clique of precolored node in the graph and splitting live-ranges around instructions with precolored operands.
+This approach has several disadvantages.
+First, it substantially increases the amount of variable;
+Second it makes coalescing way harder.
+This motivated Colombet et al.~\cite{ColombetOct11} to introduce the notion of anthipaties (affinities with negative weight) and extend the coalescing rules accordingly.
+The general idea is, instead of enforcing ISA and register constraints, to simply express the cost (through affinities and antipathies) of shuffle code inserted by a post-pass repairing.
+In the context of scan-based, handling of register constraints is usually done locally~\cite{linear-pfeifer,sarkar2007extended}.
+As proposed in~\cite{braun2010preference,ColombetOct11} biased coloring strategy, as used in this chapter, allows to reduce the requirement to insert shuffle code.
 
-\cite{linear-pfeifer,sarkar2007extended}
-PARLER DE: clique de registres, anthipaties de Colombet et al.~\cite{ColombetOct11}, extension de tree-scan de colombet et al.
+In the context of graph-based heuristics, vector registers are usually handled through a generalized graph coloring approach~\cite{Smith04,Tavares}.
+In the context of scan-based heuristics, the puzzle solver~\cite{Pereira:2008:PLDI} is an elegant formulation that allows to express the local constraints as a puzzle. 
 
-\paragraph{Handling Vector Registers}
-PARLER DE: puzzle solver~\cite{Pereira:2008:PLDI}, Generalized graph coloring~\cite{Smith04} and extension~\cite{Tavares}
-
-\paragraph{Handling Addressing Mode with non-Memory Operands}
-PARLER DE: build again dans l'itérated; papier CASES de bouchez sur le spill
+One of the main problem of graph-based approach is its underlying assumption that the live-range of a variable is atomic.
+But when spilled, not all instructions can access it through a memory operand.
+In other words, spilling has the effect of removing the live-range with holes i.e. leaving chads (due to shuffle code around instructions that use the spilled variable) that must replace the removed node in the interference graph (usually handled through re-build stage of the interference graph).
+Those subtleties and associated complexity issues are exhaustively studied in~\cite{Bouchez07b}. 
 
 \paragraph{Handling Lowering of \phifun}
 PARLER DE: critical edges, parallel copies
