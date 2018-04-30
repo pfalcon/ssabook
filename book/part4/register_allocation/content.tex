@@ -950,19 +950,20 @@ This is the rediscovering of this relationship in the context of live-ranges of 
 Indeed, at that time, most register allocation schemes were incompletely assuming that the assignment part was hard by referring to the NP-completeness reduction of Chaitin et al to graph coloring.
 However, the observation that SSA-based live-range splitting allows to decouple the allocation and assignment phases was not new~\cite{CyFe87,Fabr79}.
 Back in the nineties, the LaTTe~\cite{yang1999latte} just-in-time compiler already implemented the ancestor of our tree-scan allocator.
-The most aggressive live-range splitting that was proposed by Appel and George~\cite{Appel01} allowed to stress the actual challenge that past approaches were facing when splitting live-range to help coloring~\cite{cooper1998live}, which is coalescing~\cite{BouchezDR07:coalescing-cplx}.
+The most aggressive live-range splitting that was proposed by Appel and George~\cite{Appel01} allowed to stress the actual challenge that past approaches were facing when splitting live-range to help coloring, which is coalescing~\cite{BouchezDR07:coalescing-cplx}.
 The PhD thesis of Hack~\cite{Hack07a}, Bouchez~\cite{bouchez-phd}, and Colombet~\cite{colombet-phd} address the difficult challenge of making a neat idea applicable to real life but without trading the elegant simplicity of the original approach.
 For some more exhaustive related work references we refer to the bibliography done in those documents. 
 
-\paragraph{Handling Registers and ISA Constraints}
+\paragraph{Looking under the carpet}
 As done in (too) many register allocation papers, the heuristics described in this chapter assume a simple non-realistic architecture where all variables or registers are equivalent and where the instruction set architecture does not impose any specific constraint on register usage. 
 Reality is different, including:
-1.~2-address mode instructions that impose two of the three operands to use the same register;
-2.~instructions that impose the use of specific registers;
-3.~instruction operands that can not reside in memory;
-4.~registers of various size (vector registers usually leading to register aliasing)...
+1.~register constraints such as 2-address mode instructions that impose two of the three operands to use the same register, or instructions that impose the use of specific registers;
+2.~registers of various size (vector registers usually leading to register aliasing) historically known as register pairing problem;
+3.~instruction operands that can not reside in memory.
+Finally, SSA-based, but also any scheme that rely on live-range splitting must deal with critical edges possibly considered abnormal (i.e. cannot be split) by the compiler.
 
-In the context of graph coloring, register constraints are usually handled by adding an artificial clique of precolored node in the graph and splitting live-ranges around instructions with precolored operands.
+%Register constraints
+In the context of graph coloring, \emph{register constraints} are usually handled by adding an artificial clique of precolored node in the graph and splitting live-ranges around instructions with precolored operands.
 This approach has several disadvantages.
 First, it substantially increases the amount of variable;
 Second it makes coalescing way harder.
@@ -971,33 +972,51 @@ The general idea is, instead of enforcing ISA and register constraints, to simpl
 In the context of scan-based, handling of register constraints is usually done locally~\cite{linear-pfeifer,sarkar2007extended}.
 As proposed in~\cite{braun2010preference,ColombetOct11} biased coloring strategy, as used in this chapter, allows to reduce the requirement to insert shuffle code.
 
-In the context of graph-based heuristics, vector registers are usually handled through a generalized graph coloring approach~\cite{Smith04,Tavares}.
+%Register pairing
+In the context of graph-based heuristics, \emph{vector registers} are usually handled through a generalized graph coloring approach~\cite{Smith04,Tavares}.
 In the context of scan-based heuristics, the puzzle solver~\cite{Pereira:2008:PLDI} is an elegant formulation that allows to express the local constraints as a puzzle. 
 
+%Spilling with chads
 One of the main problem of graph-based approach is its underlying assumption that the live-range of a variable is atomic.
-But when spilled, not all instructions can access it through a memory operand.
+But when spilled, not all instructions can access it through a \emph{memory operand}.
 In other words, spilling has the effect of removing the live-range with holes i.e. leaving chads (due to shuffle code around instructions that use the spilled variable) that must replace the removed node in the interference graph (usually handled through re-build stage of the interference graph).
 Those subtleties and associated complexity issues are exhaustively studied in~\cite{Bouchez07b}. 
 
-\paragraph{Handling Lowering of \phifun}
-PARLER DE: critical edges, parallel copies
-SOLUTIONS: edge splitting, local repairing (sreedhar + graph coloring of local uncolored variable pot. with spilling), parallel copy motion (papier SCOPES), optimistic move insertions~\cite{braun2010preference}
+%Lowering of phi functions
+As already mentioned, the semantic of \phifuns correspond to parallel copies on the incoming edges of the basic-block where they textually appear.
+Done naively, the lowering of \phifuns for which the register that appear at the def operand does not match the register that appears at the use operand, imposes:
+1.~the \emph{spitting of the corresponding control-flow edge};
+2.~the insertion of copies on this freshly created basic-block;
+3.~the use of spill code in case the required temporary to perform the parallel copy (permutation) is not available.
+This issue shares similarities with the SSA destruction that was described in Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}.
+The advocated approach is, just as for the register constraints, to express the cost of an afterward repairing in the objective function of the register allocation scheme.
+Then, locality, the repairing can be expressed as a standard graph coloring problem on a very small graph made-up of the variables created by $\phi$-nodes isolation (see Figure~\ref{fig:phi_isolation}).
+However, it turns out that most of the associated shuffle code can usually be moved (and even annihilated) to and within the surrounding basic-blocks.
+Such post-pass optimizations correspond to the optimistic move insertion of Braun et al.~\cite{braun2010preference} or the parallel copy motion of Bouchez et al.~\cite{Bouchez:2010:PCM}.
 
-\paragraph{Advantages, Disadvantages, Limitations of SSA-based Approach}
+\paragraph{Decoupled Load/Store and Coalescing Optimization Problems}
+%Load/store
+The scan-based spilling heuristic described in this chapter is inspired from the heuristic developed by Braun and Hack in~\cite{Braun:2009:CC}.
+It is an extension of Belady's algorithm~\cite{belady:1966:storage} originally designed for page eviction, which can easily be shown to be optimal for interval graphs (straight-line code and single use variables).
+For straight-line code but multiple-uses per variable Farrach and Liberatore~\cite{farach:98:local} showed that if this further-first strategy works reasonably well, it can also be formalized as a flow problem.
+For a deeper discussion about the complexity of the spilling problem under different configurations, we refer to~\cite{Bouchez07b}.
+To conclude on the spilling part of the register allocation problem, remains to mention the important problem of load/store placement.
+As implicitly done by our heuristic given in Figure~\ref{fig:ra:initloop}, one should, whenever possible, hoist shuffle code outside of loops.
+This problem corresponds to the global code-motion addressed in Chapter~\ref{chapter:pre_not_helped} that should idealistically be coupled to the register allocation problem.
+Another related problem, not mentioned in this chapter, is rematerialization~\cite{rematerialization}.
+Experience shows that:
+1.~rematerialization is one of the main source of performance improvement for register allocation;
+2.~in the vast majority of cases, rematerialization simply amounts in rescheduling some of the instructions.
+This remark allows to highlight one of the major limitation of the presented approach common to almost all papers in the area of register allocation:
+while scheduling and register allocation are clearly highly coupled problems, all those approaches only consider a fixed schedule and only few papers such as~\cite{norris1993scheduler,Pinter:1993:RAI,Wang:1994:SPR,Motwani:1995:CRA,Berson:1998:IIS,Codina:2001:UMS,touati,Rawat:2018:ROS} do try to address the coupled problem.
 
-
-\paragraph{Coalescing Optimization Problems}
-Conservative and Optimistic coalescing: \cite{Bouchez:case08}
-Preference guided coloring~\cite{braun2010preference}
-
-\paragraph{Load/Store Optimization Problems}
-Spilling techniques are based on page eviction \cite{belady:1966:storage}.
-Farrach and Liberatore~\cite{farach:98:local} showed that Belady's algorithm gives good results on straight-line code.
-Braun and Hack~\cite{Braun:2009:CC} extended Belady's algorithm to general control-flow graphs.
-\cite{YannakakisGavril87}
-\cite{Bouchez07b}
-Cross-reference to SSA-PRE
-
+%Coalescing
+One of the folk reasons why static single assignment has not been adopted by compiler designers for a long time is because of the numerous copy instructions inserted by SSA destruction the compiler could not get rid of afterward.
+The coalescing heuristics being not effective enough in removing all such copies, even if it was clear that live-range splitting was useful for improving colorability, i.e. avoiding spill code, people were reluctant in splitting live-range, preferring to do it on-demand~\cite{cooper1998live}.
+The notion of value-based interference described in Paragraph~\ref{par:alternative_ssa_destruction:value} of Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} is an important step for improving the quality of existing schemes.
+Details on the brute-force approach that extends the conservative coalescing scheme depicted in this chapter can be found in~\cite{}.
+However, there exists several other schemes which complexity are studied in~\cite{BouchezDR07:coalescing-cplx}.
+Among others, the optimistic approach of Park and Moon~\cite{park2004optimistic} has been shown to be extremely competitive~\cite{Grund07,Bouchez:case08} in the context of the, somehow restricted, coalescing challenge initiated by~\cite{{Appel01}}.
 \endofchapter
 }
 
