@@ -3,43 +3,132 @@
 \inputprogress
 
 
-Thus far, we have introduced the foundations of SSA form and its use in different program analyses.  We now motivate the need for extensions to SSA form to enable a larger class of program analyses.  The extensions arise from the fact that many analyses need to make finer-grained distinctions between program points and data accesses than is achieved by vanilla SSA form.  However, these richer flavors of extended SSA-based analyses still retain many of the benefits of SSA form (e.g., sparse data-flow propagation)  which distinguish them from classical data-flow frameworks for the same analysis problems.
+So far, we have introduced the foundations of SSA form and its use in different program analyses. 
+We now motivate the need for extensions to SSA form to enable a larger class of program analyses. 
+The extensions arise from the fact that many analyses need to make finer-grained distinctions between program points and data accesses than what what can be achieved by vanilla SSA form. 
+However, these richer flavors of extended SSA-based analyses still retain many of the benefits of SSA form (e.g., sparse data-flow propagation) which distinguish them from classical data-flow frameworks for the same analysis problems.
 
 
-\paragraph{Static Single Information form}
+\section{Static Single Information form}
 
-The sparseness in vanilla SSA form arises from the observation that information for an unaliased scalar variable can be safely propagated from its (unique) definition to all its reaching uses without examining any intervening program points.  As an example, SSA-based constant propagation aims to compute for each single assignment variable, the (usually over-approximated) set of possible values carried by the definition for that variable. At an instruction that defines variable $a$ and uses variables $b$ and $c$ (say), the information for $b$ and $c$ is propagated directly to the instruction from the definitions of those variables.  However, there are many analyses for which definition points are not the only source of new information. For example, consider an if-then-else statement with uses of $a$ in both the then and else parts.  If the branch condition involves $a$, say $a$~{\tt ==}~0, we now have additional information that can distinguish the value of $a$ in the then and else parts, even though both uses have the same reaching definition.  Likewise, the use of a reference  variable $p$ in certain contexts can be the source of new information for subsequent uses e.g., the fact that $p$ is non-null because no exception was thrown at the first use.
+The sparseness in vanilla SSA form arises from the observation that information for an unaliased scalar variable can be safely propagated from its (unique) definition to all its reaching uses without examining any intervening program points. 
+As an example, SSA-based constant propagation aims to compute for each single assignment variable, the (usually over-approximated) set of possible values carried by the definition for that variable. 
+At an instruction that defines variable $a$ and uses variables $b$ and $c$ (say), the information for $b$ and $c$ is propagated directly to the instruction from the definitions of those variables. 
+However, there are many analyses for which definition points are not the only source of new information. 
+For example, consider an if-then-else statement with uses of $a$ in both the then and else parts. 
+If the branch condition involves $a$, say $a$~{\tt ==}~0, we now have additional information that can distinguish the value of $a$ in the then and else parts, even though both uses have the same reaching definition. 
+Likewise, the use of a reference variable $p$ in certain contexts can be the source of new information for subsequent uses e.g., the fact that $p$ is non-null because no exception was thrown at the first use.
 
-The goal of Chapter~\ref{chapter:ssi} is to present a systematic approach to dealing with these additional sources of information, while still retaining the space and time benefits of vanilla SSA form.  This approach is called Static Single Information (SSI) form, and it involves additional renaming of variables to capture new sources of information.  For example, SSI form can provide distinct names for the two uses of $a$ in the then and else parts of the if-then-else statement mentioned above.  This additional renaming is also referred to as {\em live range splitting}, akin to the idea behind splitting live ranges in optimized register allocation.  The sparseness of SSI form follows from formalization of the Partitioned Variable Lattice (PVL)  problem and the Partitioned Variable Problem (PVP), both of which establish orthogonality among transfer functions for renamed variables.  The $\phi$ functions inserted at join nodes in vanilla SSA form are complemented by $\sigma$ functions in SSI form that can perform additional renaming at branch nodes and interior (instruction) nodes.  Information can be propagated in the forward and backward directions using SSI form, enabling analyses such as range analysis (leveraging information from branch conditions) and null pointer analysis (leveraging information from prior uses) to be performed more precisely than with vanilla SSA form.
+The goal of Chapter~\ref{chapter:ssi} is to present a systematic approach to dealing with these additional sources of information, while still retaining the space and time benefits of vanilla SSA form. 
+This approach is called Static Single Information (SSI) form, and it involves additional renaming of variables to capture new sources of information. 
+For example, SSI form can provide distinct names for the two uses of $a$ in the then and else parts of the if-then-else statement mentioned above. 
+This additional renaming is also referred to as {\em live range splitting}, akin to the idea behind splitting live ranges in optimized register allocation. 
+The sparseness of SSI form follows from formalization of the Partitioned Variable Lattice (PVL) problem and the Partitioned Variable Problem (PVP), both of which establish orthogonality among transfer functions for renamed variables. 
+The \phifun inserted at join nodes in vanilla SSA form are complemented by $\sigma$-functions in SSI form that can perform additional renaming at branch nodes and interior (instruction) nodes. 
+Information can be propagated in the forward and backward directions using SSI form, enabling analyses such as range analysis (leveraging information from branch conditions) and null pointer analysis (leveraging information from prior uses) to be performed more precisely than with vanilla SSA form.
 
-\paragraph{Hashed SSA form}
 
-The motivation for SSI form arose from the need to perform additional renaming to distinguish among different uses of an SSA variable.  Hashed SSA (HSSA) form introduced in Chapter~\ref{chapter:hssa} addresses another important requirement viz., the need to model aliasing among variables.  For example, a static use or definition of indirect memory access $*p$ in the C language could represent the use or definition of multiple local variables whose addresses can be taken and may potentially be assigned to $p$ along different control-flow paths.  To represent aliasing of local variables, HSSA form extends vanilla SSA form with  {\em MayUse} ($\mu$) and {\em MayDef} ($\chi$) functions to capture the fact that a single static use or definition could potentially impact multiple variables.  Note that MayDef functions can result in the creation of new names (versions) of variables, compared to vanilla SSA form.  HSSA form does not take a position on the accuracy of alias analysis that it represents.  It is capable of representing the output of any alias analysis performed as a pre-pass to HSSA construction.
-As summarized above, a major concern with HSSA form is that its size could be quadratic in the size of the vanilla SSA form, since each use or definition can now be augmented by a set of MayUse's and MayDef's respectively.  A heuristic approach to dealing with this problem is to group together all variable versions that have no ``real'' occurrence in the program i.e., do not appear in a real instruction outside of a $\phi$, $\mu$ or $\chi$ function.  These versions are grouped together into a single version called the {\em zero version} of the variable.
-
-In addition to aliasing of locals, it is important to handle the possibility of  aliasing among heap-allocated variables.  For example, $*p$ and $*q$ may refer to the same location in the heap, even if no aliasing occurs among local variables.  HSSA form addresses this possibility by introducing a {\em virtual variable} for each address expression used in an indirect memory operation, and renaming virtual variables with $\phi$ functions as in SSA form.  Further, the alias analysis pre-pass is expected to provide information on which virtual variables may potentially be aliased, thereby leading to the insertion of $\mu$ or $\chi$ functions for virtual variables as well.  Global value numbering is used to increase the effectiveness of the virtual variable approach, since all indirect memory accesses with the same address expression can be merged into a single virtual variable (with SSA renaming as usual).  In fact, the Hashed SSA name in HSSA form comes from the use of hashing in most value-numbering algorithms.
-
-\paragraph{Array SSA form}
-
-In contrast to HSSA form, Array SSA form (Chapter~\ref{chapter:array_ssa}) takes an alternate approach to modeling aliasing of indirect memory operations by focusing on aliasing in arrays as its foundation.  The aliasing problem for arrays is manifest in the fact that accesses to elements $A[i]$ and $A[j]$ of array $A$ refer to the same location when $i = j$.  This aliasing can occur with just local array variables, even in the absence of pointers and heap-allocated data structures.  Consider a program with a definition of $A[i]$ followed by a definition of $A[j]$.  The vanilla SSA approach can be used to rename these two definitions to (say) $A_1[i]$ and $A_2[j]$.  The challenge with arrays arises when there is a subsequent use of $A[k]$.  For scalar variables, the reaching definition for this use can be uniquely identified in vanilla SSA form.  However, for array variables, the reaching definition depends on the subscript values.  In this example, the reaching definition for $A[k]$ will be $A_2$ or $A_1$ if $k == j$ or $k == i$ (or a prior definition $A_0$ if $k \not= j$ and $k \not= i$).  To provide $A[k]$ with a single reaching definition, 
-Array SSA form introduces a definition-$\Phi$ ($d\Phi$) operator that represents the merge of $A_2[j]$ with the prevailing value of array $A$ prior to $A_2$.  The result of this $d\Phi$ operator is given a new name, $A_3$ (say), which serves as the single definition that reaches use $A[k]$ (which can then be renamed to $A_3[k]$).  This extension enables sparse data-flow propagation algorithms developed for vanilla SSA form to be applied to array variables, as illustrated by the algorithm for {\em  sparse constant propagation of array elements} presented in this chapter.  The accuracy of analyses for Array SSA form depends on the accuracy with which pairs of array subscripts can be recognized as being {\em definitely-same} (${\cal DS}$) or {\em definitely-different} (${\cal DD}$).
-
-To model heap-allocated objects, Array SSA form builds on the observation that all indirect memory operations can be modeled as accesses to elements of abstract arrays that represent disjoint subsets of the heap.  For modern object-oriented languages like Java, type information can be used to obtain a partitioning of the heap into disjoint subsets e.g.,  instances of field $x$ are guaranteed to be disjoint from instances of field $y$.  In such cases, the set of instances of field $x$ can be modeled as a logical array (map) ${\cal H}^x$ that is indexed by the object reference (key).  The problem of resolving aliases among field accesses $p.x$ and $q.x$ then becomes equivalent to the problem of resolving aliases among array accesses ${\cal H}^x[p]$ and ${\cal H}^x[q]$, thereby enabling Array SSA form to be used for analysis of objects as in the algorithm for {\em redundant load elimination} among object fields presented in this chapter.  For weakly-typed languages such as C, the entire heap can be modeled as a single heap array.  As in HSSA form, an alias analysis pre-pass can be performed to improve the accuracy of {\em definitely-same} and {\em definitely-different} information.  In particular, global value numbering is used to establish  {\em definitely-same} relationships, analogous to its use in establishing equality of address expressions in HSSA form.  In contrast to HSSA form, the size of Array SSA form is guaranteed to be linearly proportional to the size of a comparable scalar SSA form for the original program (if all array variables were treated as scalars for the purpose of the size comparison).
-
-\paragraph{Psi-SSA form}
-
-Psi-SSA form  (Chapter~\ref{chapter:psi_ssa}) addresses the need for modeling static single assignment form in predicated operations.  
-A predicated operation is an alternate representation of a fine-grained control-flow structure, often obtained by using the well known {\em if conversion} transformation.  A key advantage of using predicated operations in a compiler's intermediate representation is that it can often enable more optimizations by creating larger basic blocks compared to approaches in which predicated operations are modeled as explicit control-flow graphs.  From an SSA form perspective, the challenge is that a predicated operation may or may not update its definition operand, depending on the value of the predicate guarding that assignment.  This challenge is addressed in Psi-SSA form by introducing $\psi$ functions that perform merge functions for predicated operations, analogous to the merge performed by $\phi$ functions at join points in vanilla SSA form.
-
-In general, a $\psi$ function has the form, {\em a0 = Psi(p1?a1, ..., pi?ai, ..., pn?an)}, where each input argument $a_i$ is associated with a predicate $p_i$ as in a nested if-then-else expression for which the value returned is the rightmost argument whose predicate is true.  If all predicates are false, then the assignment is a no-op and the result is undefined.  ({\em TODO: check if this is correct.}).   A number of algebraic transformations can be performed on $\psi$ functions, including 
-$\psi$-inlining, $\psi$-reduction, $\psi$-projection, $\psi$-permutation and $\psi$-promotion.  Chapter~\ref{chapter:psi_ssa} also includes an algorithm for transforming a program out of Psi-SSA form that extends the standard algorithm for destruction of vanilla SSA form. So as to expose parallelism / locality one need to get rid of the CFG at some points. For loop transformations, software pipelining, one need  to manipulate a higher degree of abstraction to represent the iteration space of nested loops and to extend data-flow information to this abstraction. One can expose even more parallelism (at the level of instructions) by replacing control flow by control dependences: the goal is either to express a predicate expression under which a given basic block is to be executed, or select afterward (using similar predicate expressions) the correct value among a set of eagerly computed ones.
+\section{Control Dependencies}
+So as to expose parallelism and locality one need to get rid of the CFG at some points. 
+For loop transformations, software pipelining, there is a need to manipulate a higher degree of abstraction to represent the iteration space of nested loops and to extend data-flow information to this abstraction. 
+One can expose even more parallelism (at the level of instructions) by replacing control flow by control dependences: 
+the goal is either to express a predicate expression under which a given basic block is to be executed, or select afterward (using similar predicate expressions) the correct value among a set of eagerly computed ones.
 \begin{enumerate}
-\item technically, we say that SSA provides data flow (data dependences). The goal is to enrich it with control dependences. Program dependence graph (PDG) constitute the basis of such IR extensions. Gated-SSA (GSA) provides an interpretable (data or demand driven) IR that uses this concept. PDG and GSA are described in Chapter~\ref{chapter:vsdg}. Psi-SSA is a very similar IR but more appropriated to code generation for architectures with predication. Psi-SSA is described in Chapter~\ref{chapter:psi_ssa}.
-\item Note that such extensions sometimes face difficulties to handle loops correctly (need to avoid deadlock between the loop predicate and the computation of the loop body, replicate the behavior of infinite loops, etc.). However, we believe that, as we will illustrate further, loop carried control dependences complicate the recognition of possible loop transformations: it is usually better to represent loops and there corresponding iteration space using a dedicated abstraction. 
+\item technically, we say that SSA provides data flow (data dependences). 
+  The goal is to enrich it with control dependences. 
+  Program dependence graph (PDG) constitutes the basis of such IR extensions. 
+  Gated-SSA (GSA) mentioned below provides an interpretable (data or demand driven) IR that uses this concept. 
+%  PDG and GSA are described in Chapter~\ref{chapter:vsdg}. 
+  Psi-SSA also mentioned below is a very similar IR but more appropriated to code generation for architectures with predication. 
+\item Note that such extensions sometimes face difficulties to handle loops correctly (need to avoid deadlock between the loop predicate and the computation of the loop body, replicate the behavior of infinite loops, etc.). 
+  However, we believe that, as we will illustrate further, loop carried control dependences complicate the recognition of possible loop transformations: 
+  it is usually better to represent loops and there corresponding iteration space using a dedicated abstraction.
 \end{enumerate}
 
-\paragraph{Memory based data flow}
-SSA provides data flow / dependences between \emph{scalar} variables. Execution order of side effect instructions must also be respected. Indirect memory access can be considered very conservatively as such and lead to (sometimes called state, see Chapter~\ref{chapter:vsdg}) dependence edges. Too conservative dependences annihilate the potential of optimizations. Alias analysis is the first step toward more precise dependence information. Representing this information efficiently in the IR is important. One could simply add a dependence (or a flow arc) between two "consecutive" instructions that may or must alias. Then in the same spirit than SSA $\phi$-nodes aim at combining the information as early as possible (as opposed to standard def-use chains, see the discussion in Chapter~\ref{chapter:properties_and_flavours}), similar nodes can be used for memory dependences. Consider the following sequential C-like code involving pointers, where p and q may alias:
+\section{Gated-SSA forms}
+As already mentioned, one of the strenghts of SSA form is its associated data-flow graph (DFG), the SSA graph that allows to propagate directly the information along the def-use chains.
+This is what makes data-flow analysis sparse.
+By combining the SSA graph with the control flow graph, static analysis can be made context sensitive.
+This can be done in a more natural and powerful way by incorporating in a unified representation both the data-flow and the contro-flow information.
+
+The program dependence graph (PDG) adds to the data dependence edges (SSA graph as the Data Dependence Graph -- DDG) the control dependence edges (Control Dependence Graph -- CDG).
+As already mentioned one of the main motivation for the development of the PDG was to aid automatic parallelization of instructions accross multiple basic-block.
+However, in practice it also exposes the relationship between the control predicates and their related control dependent instructions, thus allowing to propagate the associated information.
+A natural way to represent this relationship is through the use of gated functions that are used in some extensions such as the Gated-SSA (GSA) or the Value State Dependence Graph (VSDG).
+Gating functions are directly interpretable versions of $\phi$-nodes.
+As an example, $\phi_\textit{if}(P, v_1, v_2)$ can be interpreted as a function that selects the value $v_1$ if predicated $P$ evaluates to true and the value $v_2$ otherwise.
+PDG, GSA, and VSDG are described in Chapter~\ref{chapter:vsdg}
+
+\section{Psi-SSA form}
+
+Psi-SSA form (Chapter~\ref{chapter:psi_ssa}) addresses the need for modeling static single assignment form in predicated operations. 
+A predicated operation is an alternate representation of a fine-grained control-flow structure, often obtained by using the well known {\em if-conversion} transformation (see Chapter~\ref{if_conversion}). 
+A key advantage of using predicated operations in a compiler's intermediate representation is that it can often enable more optimizations by creating larger basic blocks compared to approaches in which predicated operations are modeled as explicit control-flow graphs. 
+From an SSA form perspective, the challenge is that a predicated operation may or may not update its definition operand, depending on the value of the predicate guarding that assignment. 
+This challenge is addressed in Psi-SSA form by introducing $\psi$-functions that perform merge functions for predicated operations, analogous to the merge performed by \phifuns at join points in vanilla SSA form.
+
+In general, a $\psi$-function has the form, $a_0 = \psi\left(p_1?a_1, ..., p_i?a_i, ..., p_n?a_n\right)$, where each input argument $a_i$ is associated with a predicate $p_i$ as in a nested if-then-else expression for which the value returned is the rightmost argument whose predicate is true. 
+Observe that the semantic of a $\psi$-function imposes the logical disjunction of its predicates to evaluate to true. 
+A number of algebraic transformations can be performed on $\psi$-functions, including $\psi$-inlining, $\psi$-reduction, $\psi$-projection, $\psi$-permutation and $\psi$-promotion. 
+Chapter~\ref{chapter:psi_ssa} also includes an algorithm for transforming a program out of Psi-SSA form that extends the standard algorithm for destruction of vanilla SSA form. 
+
+
+
+\section{Hashed SSA form}
+
+The motivation for SSI form arose from the need to perform additional renaming to distinguish among different uses of an SSA variable. 
+Hashed SSA (HSSA) form introduced in Chapter~\ref{chapter:hssa} addresses another important requirement viz., the need to model aliasing among variables. 
+For example, a static use or definition of indirect memory access $*p$ in the C language could represent the use or definition of multiple local variables whose addresses can be taken and may potentially be assigned to $p$ along different control-flow paths. 
+To represent aliasing of local variables, HSSA form extends vanilla SSA form with {\em MayUse} ($\mu$) and {\em MayDef} ($\chi$) functions to capture the fact that a single static use or definition could potentially impact multiple variables. 
+Note that MayDef functions can result in the creation of new names (versions) of variables, compared to vanilla SSA form. 
+HSSA form does not take a position on the accuracy of alias analysis that it represents. 
+It is capable of representing the output of any alias analysis performed as a pre-pass to HSSA construction. 
+As summarized above, a major concern with HSSA form is that its size could be quadratic in the size of the vanilla SSA form, since each use or definition can now be augmented by a set of MayUse's and MayDef's respectively. 
+A heuristic approach to dealing with this problem is to group together all variable versions that have no ``real'' occurrence in the program i.e., do not appear in a real instruction outside of a $\phi$, $\mu$ or $\chi$ function. 
+These versions are grouped together into a single version called the {\em zero version} of the variable.
+
+In addition to aliasing of locals, it is important to handle the possibility of aliasing among heap-allocated variables. 
+For example, $*p$ and $*q$ may refer to the same location in the heap, even if no aliasing occurs among local variables. 
+HSSA form addresses this possibility by introducing a {\em virtual variable} for each address expression used in an indirect memory operation, and renaming virtual variables with $\phi$ functions as in SSA form. 
+Further, the alias analysis pre-pass is expected to provide information on which virtual variables may potentially be aliased, thereby leading to the insertion of $\mu$ or $\chi$ functions for virtual variables as well. 
+Global value numbering is used to increase the effectiveness of the virtual variable approach, since all indirect memory accesses with the same address expression can be merged into a single virtual variable (with SSA renaming as usual). 
+In fact, the Hashed SSA name in HSSA form comes from the use of hashing in most value-numbering algorithms.
+
+\section{Array SSA form}
+
+In contrast to HSSA form, Array SSA form (Chapter~\ref{chapter:array_ssa}) takes an alternate approach to modeling aliasing of indirect memory operations by focusing on aliasing in arrays as its foundation. 
+The aliasing problem for arrays is manifest in the fact that accesses to elements $A[i]$ and $A[j]$ of array $A$ refer to the same location when $i = j$. 
+This aliasing can occur with just local array variables, even in the absence of pointers and heap-allocated data structures. 
+Consider a program with a definition of $A[i]$ followed by a definition of $A[j]$. 
+The vanilla SSA approach can be used to rename these two definitions to (say) $A_1[i]$ and $A_2[j]$. 
+The challenge with arrays arises when there is a subsequent use of $A[k]$. 
+For scalar variables, the reaching definition for this use can be uniquely identified in vanilla SSA form. 
+However, for array variables, the reaching definition depends on the subscript values. 
+In this example, the reaching definition for $A[k]$ will be $A_2$ or $A_1$ if $k == j$ or $k == i$ (or a prior definition $A_0$ if $k \not= j$ and $k \not= i$). 
+To provide $A[k]$ with a single reaching definition, Array SSA form introduces a definition-$\Phi$ ($d\Phi$) operator that represents the merge of $A_2[j]$ with the prevailing value of array $A$ prior to $A_2$. 
+The result of this $d\Phi$ operator is given a new name, $A_3$ (say), which serves as the single definition that reaches use $A[k]$ (which can then be renamed to $A_3[k]$). 
+This extension enables sparse data-flow propagation algorithms developed for vanilla SSA form to be applied to array variables, as illustrated by the algorithm for {\em sparse constant propagation of array elements} presented in this chapter. 
+The accuracy of analyses for Array SSA form depends on the accuracy with which pairs of array subscripts can be recognized as being {\em definitely-same} (${\cal DS}$) or {\em definitely-different} (${\cal DD}$).
+
+To model heap-allocated objects, Array SSA form builds on the observation that all indirect memory operations can be modeled as accesses to elements of abstract arrays that represent disjoint subsets of the heap. 
+For modern object-oriented languages like Java, type information can be used to obtain a partitioning of the heap into disjoint subsets e.g., instances of field $x$ are guaranteed to be disjoint from instances of field $y$. 
+In such cases, the set of instances of field $x$ can be modeled as a logical array (map) ${\cal H}^x$ that is indexed by the object reference (key). 
+The problem of resolving aliases among field accesses $p.x$ and $q.x$ then becomes equivalent to the problem of resolving aliases among array accesses ${\cal H}^x[p]$ and ${\cal H}^x[q]$, thereby enabling Array SSA form to be used for analysis of objects as in the algorithm for {\em redundant load elimination} among object fields presented in this chapter. 
+For weakly-typed languages such as C, the entire heap can be modeled as a single heap array. 
+As in HSSA form, an alias analysis pre-pass can be performed to improve the accuracy of {\em definitely-same} and {\em definitely-different} information. 
+In particular, global value numbering is used to establish {\em definitely-same} relationships, analogous to its use in establishing equality of address expressions in HSSA form. 
+In contrast to HSSA form, the size of Array SSA form is guaranteed to be linearly proportional to the size of a comparable scalar SSA form for the original program (if all array variables were treated as scalars for the purpose of the size comparison).
+
+\section{Memory based data flow}
+SSA provides data flow / dependences between \emph{scalar} variables. 
+Execution order of side effect instructions must also be respected. 
+Indirect memory access can be considered very conservatively as such and lead to (sometimes called state, see Chapter~\ref{chapter:vsdg}) dependence edges. 
+Too conservative dependences annihilate the potential of optimizations. 
+Alias analysis is the first step toward more precise dependence information. 
+Representing this information efficiently in the IR is important. 
+One could simply add a dependence (or a flow arc) between two "consecutive" instructions that may or must alias. 
+Then in the same spirit than SSA $\phi$-nodes aim at combining the information as early as possible (as opposed to standard def-use chains, see the discussion in Chapter~\ref{chapter:properties_and_flavours}), similar nodes can be used for memory dependences. 
+Consider the following sequential C-like code involving pointers, where p and q may alias:
 
 {
 \RestyleAlgo{plain}
@@ -54,10 +143,12 @@ $\ldots \gets *q$;
 }
 
 \noindent
-  Without the use of $\phi$-nodes, the amount of def-use chains required to link the assignments to their uses would be quadratic (4 here). Hence the usefulness of generalizing SSA and its $\phi$-node for scalars to handle memory access for sparse analyzes. HSSA (see Chapter~\ref{chapter:hssa}) and Array-SSA (see the Chapter~\ref{chapter:array_ssa}) are two different implementations of this idea. One have to admit that if this early combination is well suited for analysis or interpretation, the introduction of a $\phi$-function might add a control dependence to an instruction that would not exist otherwise. In other words only simple loop carried dependences can be expressed this way. Let us illustrate this point using a simple example: 
-% \begin{verbatim}
-% for i { A[i]=f(A[i-2]) }
-% \end{verbatim}
+Without the use of $\phi$-nodes, the amount of def-use chains required to link the assignments to their uses would be quadratic (4 here). 
+Hence the usefulness of generalizing SSA and its $\phi$-node for scalars to handle memory access for sparse analyzes. 
+HSSA (see Chapter~\ref{chapter:hssa}) and Array-SSA (see the Chapter~\ref{chapter:array_ssa}) are two different implementations of this idea. 
+One have to admit that if this early combination is well suited for analysis or interpretation, the introduction of a \phifun might add a control dependence to an instruction that would not exist otherwise. 
+In other words only simple loop carried dependences can be expressed this way. 
+Let us illustrate this point using a simple example:
 
 {
 \RestyleAlgo{plain}
@@ -84,5 +175,13 @@ Consider the following SSA-like representation:
 \end{algorithm}
 }
 
+
 \noindent
-This would easily allow for the propagation of information that $A2\geq 0$. On the other hand, by adding this $\phi$-node, it becomes difficult to devise that iteration $i$ and $i+1$ can be executed in parallel: the $\phi$-node adds a loop carried dependence. If one is interested in performing more sophisticated loop transformations than just exposing fully parallel loops (such as loop interchange, loop tiling or multidimensional software pipelining), then (Dynamic) Single Assignment forms should be his friend. There exists many formalisms including Kahn Process Networks (KPN), or Fuzzy Data-flow Analysis (FADA) that implement this idea. But each time restrictions apply. This is part of the huge research area of automatic parallelization outside of the scope of this book. For further details we refer to the corresponding Encyclopedia of Parallel Computing~\cite{Padua}.
+This would easily allow for the propagation of information that $A2\geq 0$. 
+On the other hand, by adding this $\phi$-node, it becomes difficult to devise that iteration $i$ and $i+1$ can be executed in parallel: 
+the $\phi$-node adds a loop carried dependence. 
+If one is interested in performing more sophisticated loop transformations than just exposing fully parallel loops (such as loop interchange, loop tiling or multidimensional software pipelining), then (Dynamic) Single Assignment forms should be his friend. 
+There exists many formalisms including Kahn Process Networks (KPN), or Fuzzy Data-flow Analysis (FADA) that implement this idea. 
+But each time restrictions apply. 
+This is part of the huge research area of automatic parallelization outside of the scope of this book. 
+For further details we refer to the corresponding Encyclopedia of Parallel Computing~\cite{Padua}.
