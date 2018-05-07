@@ -29,42 +29,43 @@ by Muchnick \cite{Muchnick:1997:Book} extends code generation with the following
 \item Instruction scheduling and software pipelining.
 \item Branch optimizations and basic block alignment.
 \end{itemize}
-In high-end compilers such as Open64 \cite{Chan:2008:Tutorial,Chapman:2013:IJPP} or GCC \cite{Stallman:2017:GCC}, code
-generation techniques have significantly evolved, as they are mainly responsible
+In high-end compilers such as Open64
+\cite{Chan:2008:Tutorial,Chapman:2013:IJPP}, GCC \cite{Stallman:2017:GCC} or
+LLVM \cite{Lattner:2004:CGO}, code generation techniques have significantly evolved, as they are mainly responsible
 for exploiting the performance-oriented features of architectures and
 micro-architectures. In these compilers, code generator optimizations include:
 \begin{itemize}
-\item If-conversion using SELECT, conditional move, or predicated, instructions.
-\item Use of specialized addressing modes such as auto-modified and modulo.
+\item If-conversion \cite{chapter:if_conversion} using SELECT, conditional move, or predicated, instructions.
+\item Use of specialized addressing modes such as auto-modified and modulo
+addressing.
 \item Exploitation of hardware looping or static branch prediction hints.
 \item Matching fixed-point arithmetic and SIMD idioms to special instructions.
-\item Memory hierarchy optimizations, including prefetching and preloading.
-\item VLIW instruction bundling, that may interfere with instruction
-scheduling.
+\item Memory hierarchy optimizations, including cache prefetching and register preloading.
+\item VLIW instruction bundling, where instruction bundle encoding restrictions are enforced.
+%On architectures such as IA-64, some bundling constraints cannot be enforced by instruction scheduling \cite{Kaestner:2001:LCTES}.
 \end{itemize}
 
 This sophistication of modern compiler code generation motivates the
-introduction of the SSA form on the program representation in order to simplify
+introduction of the SSA form on the machine code program representation in order to simplify
 some of the analyses and optimizations. In particular, liveness analysis,
 unrolling-based loop optimizations, and exploitation of special instructions or
 addressing modes benefit significantly from the SSA form. On the other hand,
-the SSA form does not apply after register allocation, and there is still
-debate as to whether it should be used in the register allocator
+the SSA form does not apply after register allocation, and there is
+debate as to whether or not it should be used in the register allocator itself
 \cite{Barik:2013:TACO}.
 
 In this chapter, we review some of the issues of inserting the SSA form in a code
-generator, based on experience with a family of code generators and linear
+generator, based on experience with a family of production code generators and linear
 assembly optimizers for the ST120 DSP core \cite{Dinechin:2000:ME}
-\cite{Dinechin:2000:CASES,Stoutchinin:2001:MICRO,Rastello:2004:CGO}, the
+\cite{Dinechin:2000:CASES,Stoutchinin:2001:MICRO,Rastello:2004:CGO} and the
 Lx/ST200 VLIW family \cite{Faraboschi:2000:ISCA}
-\cite{Dinechin:2007:MISTA,Dinechin:2008:EuroPar,Boissinot:2008:CGO,Boissinot:2009:CGO,Boissinot:2011:APLAS},
-and the Kalray VLIW core \cite{Dinechin:2013:HPEC}.
+\cite{Dinechin:2007:MISTA,Dinechin:2008:EuroPar,Boissinot:2008:CGO,Boissinot:2009:CGO,Boissinot:2011:APLAS}.
 Section~\ref{sec:ssa-codegen-engineering} presents the challenges of maintaining
 the SSA form on a program representation based on machine instructions.
 Section~\ref{sec:ssa-codegen-suitability} discusses two code generator
 optimizations that seem at odds with the SSA form, yet must occur before register
 allocation. One is if-conversion, whose modern formulations require an extension
-of the SSA form. The other is prepass instruction scheduling, which currently
+of the SSA form. The other is prepass instruction scheduling, which
 does not seem to benefit from the SSA form.  Going in and out of SSA form in a
 code generator is required in such case, so Section~\ref{sec:ssa-destruction}
 characterizes various SSA form destruction algorithms with regards to satisfying
@@ -82,9 +83,9 @@ An \emph{instruction} is a member of the machine instruction set architecture
 with a specific bit-field in the instruction encoding, from \emph{implicit
 operands}, without any encoding bits.  Explicit operands correspond to
 allocatable architectural registers, immediate values, or instruction modifiers.
-Implicit operands correspond to single instance architectural registers and to
-registers implicitly used by some instructions, such as the status register, the
-procedure link register, or even the stack pointer.
+Implicit operands correspond to architectural registers not part of a register
+class, and to registers implicitly used by some instructions; for instance, the
+status register, the procedure link register, or even the stack pointer.
 
 An \emph{operation} is an instance of an instruction that composes a program. It
 is seen by the compiler as an \emph{operator} applied to a list of operands
@@ -105,11 +106,14 @@ instructions and their operational semantics. For instance, a substract instruct
 operands $(a,b,c)$ may either compute $c \leftarrow a-b$ or $c \leftarrow b-a$
 or any such expression with permuted operands. Yet basic SSA form code cleanups
 such as constant propagation and sign extension removal need to know what is
-actually computed by machine instructions.  Machine instructions may also have
+actually computed by machine instructions. Machine instructions may also have
 multiple target operands, such as memory accesses with auto-modified addressing,
 combined division-modulus instructions, or side-effects on status registers.
-There are two ways to address this issue.
-\begin{itemize} \item Add properties to the instruction operator and to
+
+There are two ways to associate machine instructions with some
+semantics: \begin{itemize}
+
+\item Add properties to the instruction operator and to
 its operands, a technique used by the Open64 compiler. Operator properties
 include \emph{isAdd}, \emph{isLoad}, etc. Typical operand properties include
 \emph{isLeft}, \emph{isRight}, \emph{isBase}, \emph{isOffset},
@@ -120,8 +124,8 @@ each target operand of a machine instruction. This alternative
 was implemented in the SML/NJ \cite{Leung:1999:PLDI} compiler and the LAO
 compiler \cite{Dinechin:2000:CASES}.  \end{itemize}
 
-An issue related to the representation of instruction semantics is how to factor
-it. Most information can be statically tabulated by the instruction operator,
+An issue related to the representation of instruction semantics is how to
+encode it. Most information can be statically tabulated by the instruction operator,
 yet properties such as safety for control speculation, or being equivalent to a
 simple IR instruction, can be refined by the context where the instruction
 appears. For instance, range propagation may ensure that an addition cannot
@@ -131,7 +135,7 @@ instruction operator semantic combinator, need to be associated with each
 machine instruction of the code generator internal representation.
 
 Finally, code generation for some instruction set architectures require that
-pseudo-instructions with known semantics be available, besides variants of
+pseudo-instructions with standard semantics be available, besides variants of
 $\phi$-functions and parallel COPY operations. \begin{itemize}
 
 \item Machine instructions that operate on register pairs, such as the long
@@ -140,13 +144,14 @@ cases there is a need for pseudo-instructions to compose wide operands in
 register tuples, and to extract independently register allocatable operands from
 wide operands.
 
-\item Embedded architectures such as the Tensilica Xtensa provide hardware
+\item Embedded architectures such as the Tensilica Xtensa
+\cite{Leison:2006:Book} provide hardware
 loops, where an implicit conditional branch back to the loop header is taken
 whenever the program counter matches some address. The implied loop-back branch
 is also conveniently materialized by a pseudo-instruction.
 
 \item Register allocation for predicated architectures requires that the live-ranges
-of pseudo-registers or SSA variables with predicated definitions be contained by
+of temporary variables with predicated definitions be contained by
 kill pseudo-instructions \cite{Gillies:1996:MICRO}.
 
 \end{itemize}
@@ -166,8 +171,8 @@ coalesced, and the remaining ones are sequentialized into machine operations.
 
 Explicit instruction operands may be constrained to use the same resource (an
 unspecified architectural register) between a source and a target operand, as
-illustrated by most x86 instructions and by DSP-style auto-modified addressing
-modes.  A related naming constraint is to require different resources between
+illustrated by most x86 instructions \cite{Shanley:2010:Book} and by DSP-style auto-modified addressing
+modes \cite{Lee:2003:TODAES}.  A related naming constraint is to require different resources between
 two source operands, as with the MUL instructions on the ARM. The \emph{same
 resource} naming constraints are represented under the SSA form by inserting a
 COPY operation between the constrained source operand and a new variable, then
