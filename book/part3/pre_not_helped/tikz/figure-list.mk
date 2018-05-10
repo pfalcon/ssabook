@@ -1,4 +1,5 @@
 FIGS= \
+      fig-ssapre-motive
 
 SUBFIGS= \
       fig-pre-examples-ifthen-1 \
