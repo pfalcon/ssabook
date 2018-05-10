@@ -20,33 +20,25 @@
 
 \section{Introduction}
 
-%FAB: Removed the mention of Cytron, Sreedhar etc. Replaced by more descriptive naming of the presented techniques
 The placement of $\phi$-functions is an important step in the construction of Static Single Assignment (SSA) form. 
 In SSA form every variable is assigned only once. 
-At control-flow merge points \phifuns are added to ensure that every use of a variable corresponds to exactly one definition. 
+At control flow merge points \phifuns are added to ensure that every use of a variable corresponds to exactly one definition. 
 In the rest of this chapter we will present three different approaches for placing \phifuns at appropriate merge nodes. 
 Recall that SSA construction falls into two phases of $\phi$-placement and variable renaming. 
 Here we present different approaches for the first phase for minimal SSA form. 
-We first present some properties of the \DJ-graph\index{DJ-graph@\DJ-graph} that allow to compute the iterated dominance frontier of a given set of nodes $S$ by traversing the \DJ-graph from leafs to root. 
+We first present some properties of the \DJ-graph\index{DJ-graph@\DJ-graph} that allow to compute the iterated dominance frontier of a given set of nodes $S$ by traversing the \DJ-graph from leaves to root. 
 \phifuns can then be placed using the \iDF set. 
 Based on the same properties, we then present an alternative scheme for computing \iDF-graph based on data-flow equations, this time using a traversal of the \DJ-graph from root to leafs. 
-Finally we describe another approach for computing the iterated dominance frontier based on the loop nesting forest.
+Finally, we describe another approach for computing the iterated dominance frontier based on the loop nesting forest.
 
-
-
-\section{Basic Algorithm}
-\label{section:alternative_ssa_construction_algorithms:cytron}
+\section{Basic Algorithm} \label{section:alternative_ssa_construction_algorithms:cytron}
 We start by recalling the basic algorithm already described in~\ref{chapter:classical_construction_algorithm}. 
 The original algorithm for placing \phifuns is based on computing the dominance frontier (\DF) set for the given control-flow graph. 
 The dominance frontier\index{dominance frontier} $\DF(x)$ of a node $x$ is the set of all nodes $z$ such that $x$ dominates a predecessor of $z$, without strictly dominating $z$. 
 For example, $\DF(8)= \{ 6, 8 \}$ in Figure~\ref{fig:cfg}. 
 The basic algorithm for the placement of \phifuns consists in computing the iterated dominance frontier (\iDF) for a set of all definition points (or nodes where variables are defined). 
 Let $\Defs{v}$ be the set of nodes where variable $v$ is defined. 
-Given that the dominance frontier for a set of nodes is just the union of the \DF set of each node, we can compute $\iDF(\Defs{v})$ as a limit of the following recurrence equation (where $S$ is initially $\Defs{v}$):
-\begin{eqnarray*}
-\iDF_1(S) &=& \DF(S) \\
-\iDF_{i+1} (S) &=& \DF(S \cup \iDF_i(S)) 
-\end{eqnarray*}
+Given that the dominance frontier for a set of nodes is just the union of the \DF set of each node, we can compute $\iDF(\Defs{v})$ as a limit of the following recurrence equation (where $S$ is initially $\Defs{v}$): \begin{eqnarray*} \iDF_1(S) &=& \DF(S) \\ \iDF_{i+1} (S) &=& \DF(S \cup \iDF_i(S))  \end{eqnarray*}
 A \phifun is then placed at each merge node in the  $\iDF(\Defs{v})$ set. 
 
 \section{Computation of $\iDF(S)$ using \DJ-graphs}
@@ -61,7 +53,7 @@ Rather than explicitly computing the \DF set, this algorithm uses a \DJ-graph to
 Now let us try to understand how to compute the \DF set for a \emph{single node} using the \DJ-graph. 
 Consider the \DJ-graph shown in Figure~\ref{sub:alt:DJ} where the depth of a node is the distance from the root in the dominator tree. 
 The first key observation is that a \DF-edge never goes down to a greater depth. 
-To give a raw intuition of why this property holds, suppose there were a \DF-edge from 8 to 7, then there would be a path from 3 to 7 through 8 without flowing through 6, which contradicts the dominance of 7 by 6.
+To give a raw intuition of why this property holds, suppose there was a \DF-edge from 8 to 7, then there would be a path from 3 to 7 through 8 without flowing through 6, which contradicts the dominance of 7 by 6.
 
 
 As a consequence, to compute $\DF(8)$ we can simply walk down the dominator (D) tree from node 8 and from each visited node $y$, identify all join (J) edges $y \st{J} z$ such that $z.\depth \leq 8.\depth$. 
@@ -191,15 +183,14 @@ The procedure \ref{proc:visit}($x$) essentially walks top-down in the \DJ-graph 
 During this traversal it also peeks at destination nodes of J-edges. 
 Whenever it notices that the depth number of the destination node of a J-edge is less than or equal to the depth number of the $\textit{current\_x}$, the destination node is added to the $\iDF$ set (Line~\ref{line:alt:idf}) if it is not present in \iDF already. 
 Notice that at Line~\ref{C:insert} the destination node is also inserted in the {\it OrderedBucket} if it was never inserted before. 
-Finally at Line~\ref{C:dedges} we continue to process the nodes in the sub-tree by visiting over the D-edges. 
+Finally, at Line~\ref{C:dedges} we continue to process the nodes in the sub-tree by visiting over the D-edges. 
 When the algorithm terminates, the set $\iDF$ contains the iterated dominance frontier for the initial set $S$.
 
 \begin{figure}[htb]
-    % \centerline{\includegraphics[scale=0.3]{sreedhargao.pdf}}
     \centerline{\tikzfigure{sreedhargao}}
     \caption{Phases of Algorithm~\ref{algo:IDFMain} for $S=\Defs{v}=\{1,3,4,7\}$.}
     \label{fig:sreedhargao}
-    \end{figure} 
+\end{figure} 
 
 
 In Figure~\ref{fig:sreedhargao}, some of the phases of the algorithm are depicted for clarity. 
@@ -220,33 +211,20 @@ However, when node~10 is visited, considering J-edge $10 \st{J} 8$ does not resu
 
 
 \section{Data-flow computation of \iDF-graph using \DJ-graph}
-%FAB: removed all the stuff on merge set as:
-%    M(S)=iDF(S)
-%    The algorithm is nothing else than: computation of DF using a traversal of J-edges & walking up D-edges (standard algorithm); computation of iDF by transitive closure
-
 In this section we describe a method to iteratively compute the \iDF~relation using a data-flow formulation. 
 As already mentioned, the \iDF relation can be computed using a transitive closure of the \DF-graph, which in turn can be computed from the \DJ-graph. 
 In the algorithm proposed here, explicit \DF-graph construction or the transitive closure formation are not necessary. 
 Instead, the same result can be achieved by formulating the $\iDF$ relation as a data-flow problem and solving it iteratively. 
 For several applications, this approach has been found to be a fast and effective method to construct $\iDF(x)$ for each node $x$ and the corresponding \phifun placement using the $\iDF(x)$ sets.
 
-%FAB: highlighted the data-flow equation
-\begin{center}
-  \textbf{Data-flow equation:}\\
-  {\it 
-  Consider a J-edge $y \st{J} z$.\\
-  Then for all nodes $x$ such that $x$ dominates $y$ and $x.\depth \geq z.\depth$:
-  $$\iDF(x) = \iDF(x) \cup \iDF(z) \cup \{z\}$$}
-\end{center}
+\begin{center}   \textbf{Data-flow equation:}\\   {\it 
+Consider a J-edge $y \st{J} z$.\\
+Then for all nodes $x$ such that $x$ dominates $y$ and $x.\depth \geq z.\depth$:   $$\iDF(x) = \iDF(x) \cup \iDF(z) \cup \{z\}$$} \end{center}
 
 The set of data-flow equations for each node $n$ in the \DJ-graph can be solved iteratively using a top-down pass over the \DJ-graph. 
-To check whether multiple-passes are required over the \DJ-graph before a fixed-point is reached for the data-flow equations, we devise an ``inconsistency condition'' stated as follows:
+To check whether multiple passes are required over the \DJ-graph before a fixed point is reached for the data-flow equations, we devise an ``inconsistency condition'' stated as follows:
 
-%\paragraph{Inconsistency Condition:}
-\begin{center}
-\bf{Inconsistency Condition:}\\
-\it{For a J-edge, $y' \st{J} x$, if $y'$ does not satisfy
-$\iDF(y')\supseteq \iDF(x)$,\\ then the node $y'$ is said to be inconsistent}. 
+\begin{center} \bf{Inconsistency Condition:}\\ \it{For a J-edge, $y' \st{J} x$, if $y'$ does not satisfy $\iDF(y')\supseteq \iDF(x)$,\\ then the node $y'$ is said to be inconsistent}. 
 \end{center}
 
 The algorithm described in the next section is directly based on the method of building up the $\iDF(x)$ sets of the nodes as each J-edge is encountered in an iterative fashion by traversing the \DJ-graph top-down. 
@@ -353,10 +331,9 @@ In a second iterative pass, the J-edges are visited in the same order.
 Now, when $5 \st{J} 6$ is visited, $\iDF(5) = \iDF(5) \cup \iDF(6) \cup \{6\} = \{2,5,6\}$ as this time $\iDF(5) = \{2,6\}$ and $\iDF(6) = \{2,5,6\}$. 
 On a subsequent visit of $6 \st{J} 5$, $\iDF(6)$ is also set to $\{2,5,6\}$. 
 The inconsistency does not appear any more and the algorithm proceeds to handle the edges $4 \st{J} 5$, $9 \st{J} 6$ and $10 \st{J} 8$ which have also been visited in the earlier pass. 
-TDMSC-I is invoked repeatedly by a different function which calls it in a loop till \textit{RequireAnotherPass} is returned as \false as shown in the procedure TDMSCMain.
+TDMSC-I is repeatedly invoked by a different function which calls it in a loop till \textit{RequireAnotherPass} is returned as \false as shown in the procedure TDMSCMain.
 
 Once the iterated dominance frontier relation is computed for the entire CFG, placing $\phi$ is a straightforward application of the $\iDF(x)$ values for a given $\Defs{x}$, as shown in Algorithm~\ref{proc:phi-placement}.
-
 
 \begin{algorithm}
   \KwIn{A CFG with \iDF sets computed and $\Defs{x}$.}
@@ -383,43 +360,30 @@ In the example shown in Figure~\ref{sub:alt:lnf-cfg} the loops with back edges $
 The corresponding loop nesting forest is shown in Figure~\ref{sub:alt:lnf-lnf} and consists of two loops whose header nodes are $2$ and $9$. 
 The loop with header node $2$ contains the loop with header node $9$.
 
-    \begin{figure}[t]
-    \hfill
-    \subfloat[CFG]{\tikzfigure{lnfcfg}\label{sub:alt:lnf-cfg}}
-    \hfill
-    \subfloat[Loop Nesting Forest]{\tikzfigure{lnfred}\label{sub:alt:lnf-lnf}}
-    \hfill\null
-    \caption{An example CFG with four defs and one use of variable $v$ and its loop nesting forest.}
-    \label{fig:lnf}
-    \end{figure} 
-
+\begin{figure}[t]     \hfill     \subfloat[CFG]{\tikzfigure{lnfcfg}\label{sub:alt:lnf-cfg}}     \hfill     \subfloat[Loop Nesting Forest]{\tikzfigure{lnfred}\label{sub:alt:lnf-lnf}}     \hfill\null     \caption{An example CFG with four defs and one use of variable $v$ and its loop nesting forest.}
+\label{fig:lnf} \end{figure} 
 
 \subsection{Main Algorithm}
-The idea is to use the forward CFG\index{forward control-flow graph}, an acyclic version of the control-flow graph (i.e., without back-edges), and construct the \iDF for a variable in this context: 
-whenever two distinct definitions reach a join point, it belongs to the \iDF. 
-Then, we take into account the back-edges using the loop nesting forest: 
-if a loop contains a definition, its header also belongs to the \iDF.
+The idea is to use the forward CFG\index{forward control flow graph}, an acyclic version of the control flow graph (i.e., without back edges), and construct the \iDF for a variable in this context:  whenever two distinct definitions reach a join point, it belongs to the \iDF. 
+Then, we take into account the back edges using the loop nesting forest:  if a loop contains a definition, its header also belongs to the \iDF.
 
 \medskip
-    
-A definition node $d$ ``reaches'' another node $u$ if there is non-empty a path in the graph from $d$ to $u$ which does not contain any re-definition. 
+
+A definition node $d$ ``reaches'' another node $u$ if there is non-empty a path in the graph from $d$ to $u$ which does not contain any redefinition. 
 If at least two definitions reach a node $u$, then $u$ belongs to $\iDF(S)$ where $S=\Defs{x}$ consists of these definition nodes. 
 This suggests the Algorithm~\ref{algo:ramaIDF} which works for \emph{acyclic} graphs. 
 For a given $S$, we can compute $\iDF(S)$ as follows:
-
 \begin{itemize}
 \item { Initialize \iDF to the empty set };
 \item { Using a topological order, compute the subset of $\iDF(\Defs{x})$ that can reach a node using forward data-flow analysis };
 {\item} {Add a node to \iDF if it is reachable from multiple nodes};
 \end{itemize}  
 
-For Figure~\ref{fig:lnf}, the forward CFG of the graph $G$, termed $G_{\textit{fwd}}$, is formed by dropping the back-edges $11 \rightarrow 9$ and $12 \rightarrow 2$. 
+For Figure~\ref{fig:lnf}, the forward CFG of the graph $G$, termed $G_{\textit{fwd}}$, is formed by dropping the back edges $11 \rightarrow 9$ and $12 \rightarrow 2$. 
 Also, $r$ is a specially designated node that is the root of the CFG. 
-For the definitions of $x$ in nodes $4,5,7$ and $12$ in Figure~\ref{fig:lnf}, the subsequent nodes (forward) reached by multiple definitions are $6$ and $8$: 
-node $6$ can be reached by any one of the two definitions in nodes $4$ or $5$, and node $8$ by either the definition from node $7$ or one of $4$ or $5$. 
-Note that the back-edges do not exist in the forward CFG and hence node~$2$ is not part of the \iDF set yet. 
-We will see later how the \iDF set for the entire graph is computed by considering the contribution of the back-edges.
-
+For the definitions of $x$ in nodes $4,5,7$ and $12$ in Figure~\ref{fig:lnf}, the subsequent nodes (forward) reached by multiple definitions are $6$ and $8$:  node $6$ can be reached by any one of the two definitions in nodes $4$ or $5$, and node $8$ by either the definition from node $7$ or one of $4$ or $5$. 
+Note that the back edges do not exist in the forward CFG and hence node~$2$ is not part of the \iDF set yet. 
+We will see later how the \iDF set for the entire graph is computed by considering the contribution of the back edges.
 
 \begin{algorithm}
   \KwIn{$G_{\textit{fwd}}$: forward CFG}
@@ -465,16 +429,15 @@ Finally, for nodes 8 to 12, their \textit{UniqueReachingDef} will be updated to 
 \paragraph{\iDF on reducible graphs}
 
 {
-  \def\HLC{\mbox{HLC}} A reducible graph can be decomposed into an acyclic graph and a set of back-edges. 
-  The contribution of back-edges to the iterated dominance frontier can be identified by using the loop nesting forest. 
-  If a vertex $v$ is contained in a loop, then $\iDF(v)$ will contain the loop header, i.e. 
-  the unique entry of the reducible loop. 
-  For any vertex $v$, let $\HLC(v)$ denote the set of loop headers of the loops containing $v$. 
-  Given a set of vertices $S$, it turns out that $\iDF(S) = \HLC(S) \cup \iDFfwd(S \cup \HLC(S))$ where $\HLC(S)=\bigcup_{v\in S} \HLC(v)$, and where $\iDFfwd$ denote the \iDF restricted to the forward CFG $G_{\textit{fwd}}$.
+ \def\HLC{\mbox{HLC}} A reducible graph can be decomposed into an acyclic graph and a set of back edges. 
+The contribution of back edges to the iterated dominance frontier can be identified by using the loop nesting forest. 
+If a vertex $v$ is contained in a loop, then $\iDF(v)$ will contain the loop header, i.e.    the unique entry of the reducible loop. 
+For any vertex $v$, let $\HLC(v)$ denote the set of loop headers of the loops containing $v$. 
+Given a set of vertices $S$, it turns out that $\iDF(S) = \HLC(S) \cup \iDFfwd(S \cup \HLC(S))$ where $\HLC(S)=\bigcup_{v\in S} \HLC(v)$, and where $\iDFfwd$ denote the \iDF restricted to the forward CFG $G_{\textit{fwd}}$.
 
-  Reverting back to Figure~\ref{fig:lnf}, we see that in order to find the $\iDF$ for the nodes defining $x$, we need to evaluate $\iDFfwd(\{4,5,7,12\} \cup \HLC(\{4,5,7,12\}))$. 
-  As all these nodes are contained in a single loop with header $2$, $\HLC(\{4,5,7,12\}) = \{2\}$. 
-  Computing $\iDFfwd(\{4,5,7,12\})$ gives us $\{6,8\}$, and finally, $\iDF(\{4,5,7,12\}) = \{2,6,8\}$. 
+Reverting back to Figure~\ref{fig:lnf}, we see that in order to find the $\iDF$ for the nodes defining $x$, we need to evaluate $\iDFfwd(\{4,5,7,12\} \cup \HLC(\{4,5,7,12\}))$. 
+As all these nodes are contained in a single loop with header $2$, $\HLC(\{4,5,7,12\}) = \{2\}$. 
+Computing $\iDFfwd(\{4,5,7,12\})$ gives us $\{6,8\}$, and finally, $\iDF(\{4,5,7,12\}) = \{2,6,8\}$. 
 }
 
 \paragraph{\iDF on irreducible graphs}
@@ -511,8 +474,7 @@ The insight behind the implementation is to transform the irreducible loop in su
 
 The loop in the graph of Figure~\ref{sub:alt:irred}, that is made up of nodes $v$ and $w$, is irreducible as it has two entry nodes, $v$ and $w$. 
 We let the headers be those entry nodes. 
-It can be transformed to the acyclic graph \subref{sub:alt:irred-acyclic} by removing the back-edges, i.e. 
-the edges within the loop that point to the header nodes, in other words edges $v\rightarrow w$ and $w\rightarrow v$. 
+It can be transformed to the acyclic graph \subref{sub:alt:irred-acyclic} by removing the back edges, i.e.  the edges within the loop that point to the header nodes, in other words, edges $v\rightarrow w$ and $w\rightarrow v$. 
 We create a dummy node, $\theta$, to which we connect all predecessors of the headers ($u$ and $s$), and that we connect to all the headers of the loop ($v$ and $w$), creating graph \subref{sub:alt:irred-transf}.
 
 Following this transformation, the graph is now acyclic, and computing the \iDF for the nodes in the original irreducible graph translates to computing \iDF using the transformed graph to get $\iDFfwd$ and using the loop forest of the original graph \subref{sub:alt:irred-lnf}.
@@ -524,8 +486,8 @@ The crucial observation that allows this transformation to create an equivalent 
 Although all these algorithms claim to be better than the original algorithm by Cytron et al., they are difficult to compare due to the unavailability of these algorithms in a common compiler framework.
 
 In particular, while constructing the whole \iDF set seems very costly in the classical construction algorithm, its cost is actually amortized as it will serve to place \phifuns for many variables. 
-It is however interesting not to pay this cost whenever we only have a few variables to consider, for instance when repairing SSA as in the next chapter.
- 
+It is, however, interesting not to pay this cost whenever we only have a few variables to consider, for instance when repairing SSA as in the next chapter.
+
 Note also that people have observed in production compilers that, during SSA construction, what seems to be the most expensive part is the renaming of the variables and not the placement of \phifuns.
 
 
@@ -542,7 +504,7 @@ For the rest of the nodes, termed ``interior nodes,'' the \DF needs to be comput
 The nodes which act as ``boundary nodes'' are detected in a separate pass. 
 A factor $\beta$ is used to determine the partitioning of the nodes of a CFG into boundary or interior nodes by dividing the CFG into zones. 
 $\beta$ is a number that represents space/query-time tradeoff. 
-$\beta <\!\!< 1$ denotes a fully eager approach where storage requirement for \DF is maximum but query-time is faster while $\beta >\!\!> 1$ denotes a fully lazy approach where storage requirement is zero but query is slower.
+$\beta <\!\!< 1$ denotes a fully eager approach where storage requirement for \DF is maximum but query time is faster while $\beta >\!\!> 1$ denotes a fully lazy approach where storage requirement is zero but query is slower.
 
 Given the ADT of a control-flow graph, it is straight forward to modify Sreedhar and Gao's algorithm for computing \phifuns in linear time. 
 The only modification that is needed is to ensure that we need not visit all the nodes of a sub-tree rooted at a node $y$ when $y$ is a boundary node whose \DF set is already known. 
@@ -551,7 +513,7 @@ This change is reflected in Line \ref{C:cached} of Algorithm~\ref{algo:IDFMain},
 The algorithm computing \iDF without the explicit \DF-graph is from Das \& Ramakrishna \cite{Das-Rama:2005}. 
 For iterative \iDF set computation, they also exhibit TDMSC-II, an improvement to algorithm TDMSC-I. 
 This improvement is fueled by the observation that for an inconsistent node $u$, the \iDF sets of all nodes $w$ such that $w$ dominates $u$ and $w.\depth \geq u.\depth$, can be locally corrected for some special cases. 
-This heuristic works very well for certain class of problems---especially for CFGs with \DF-graphs having cycles consisting of a few edges. 
+This heuristic works very well for certain classes of problems---especially for CFGs with \DF-graphs having cycles consisting of a few edges. 
 This eliminates extra passes as an inconsistent node is made consistent immediately on being detected.
 
 Finally, the part on computing \iDF sets using loop nesting forests is based on Ramalingam's work on loops, dominators, and dominance frontiers \cite{ramalingam:loopforest}.
