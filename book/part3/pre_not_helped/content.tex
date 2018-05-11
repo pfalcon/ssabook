@@ -6,7 +6,7 @@
 \section{Introduction}
 \label{section:Part3:Pre_not_helped:Intro}
 
-Redundancy elimination\index{redundancy elimination|mainidx} is an important category of optimizations performed by modern optimizing compilers. 
+Redundancy elimination\index{redundancy elimination|mainidx}\index{PRE|see{redundancy elimination}} is an important category of optimizations performed by modern optimizing compilers. 
 In the course of program execution, certain computations may be repeated multiple times that yield the same results. 
 Such redundant computations can be eliminated by saving the results of the earlier computations and reusing instead of recomputing them later.
 
@@ -43,15 +43,15 @@ In this style, a large expression tree like $a+b*c-d$ are represented as is, wit
 We also assume the Conventional SSA Form of program representation, in which each \phiweb\index{phiweb} (see Chapter~\ref{chapter:properties_and_flavours}) is interference-free and the live ranges of the SSA versions of each variable do not overlap. 
 We further assume the HSSA (see Chapter~\ref{chapter:hssa}) form that completely models the aliasing in the program.
 
-\section{Why PRE and SSA are related}
+\section{Why partial redundancy elimination and SSA are related}
 \label{section:Part3:Pre_not_helped:PRErelatedtoSSA}
 
 Figure~\ref{fig:pre-examples} shows the two most basic forms of partial redundancy. 
 In Figure~\ref{fig:pre-examples}(a), $a+b$ is redundant when the right path is taken. 
 In Figure~\ref{fig:pre-examples}(b), $a+b$ is redundant whenever the back edge (see Section~\ref{sec:loop_nesting_forest}) of the loop is taken. 
-Both are examples of \emph{strictly} partial redundancies, in which insertions are required to eliminate the redundancies. 
-In contrast, a full redundancy can be deleted without requiring any insertion. 
-%Partial redundancy elimination (PRE) is powerful because it subsumes global common subexpressions and loop-invariant code motion.
+Both are examples of \emph{strictly} partial redundancies\index{partial redundancy}, in which insertions are required to eliminate the redundancies. 
+In contrast, a full redundancy\index{full redunddancy} can be deleted without requiring any insertion. 
+\emph{Partial redundancy elimination (PRE)}\index{PRE} is powerful because it subsumes global common subexpressions and loop-invariant code motion.
 
 \begin{figure}
 \centering
@@ -84,7 +84,7 @@ In fact, the same sparse approach to modeling the use-def relationships among th
 \label{fig:ssapre-motive}
 \end{figure}
 
-The SSAPRE algorithm that we present, performs PRE efficiently by taking advantage of the use-def information inherent in its input conventional SSA form. 
+The algorithm that we present, named SSAPRE\index{SSAPRE|mainidx}, performs PRE efficiently by taking advantage of the use-def information inherent in its input conventional SSA form. 
 If an occurrence $a_j+b_j$ is redundant with respect to $a_i+b_i$, SSAPRE builds a redundancy edge that connects $a_i+b_i$ to $a_j+b_j$. 
 To expose potential partial redundancies, we introduce the operator $\Phi$\index{\PHIfun} at the dominance frontiers of the occurrences, which has the effect of factoring the redundancy edges at merge points in the control-flow graph.\footnote{Adhering to SSAPRE's convention, we use lower case $\phi$'s in the SSA form of variables and upper case $\Phi$'s in the SSA form for expressions.} 
 The resulting \emph{factored redundancy graph}\index{factored redundancy graph} (FRG) can be regarded as the SSA form for expressions.
@@ -145,213 +145,145 @@ If a new version is assigned, we push the version on the expression stack.
   
 The FRG captures all the redundancies of $a+b$ in the program. 
 In fact, it contains just the right amount of information for determining the optimal code placement. 
-Because strictly partial redundancies can only occur at the $\Phi$ nodes, insertions for PRE only need to be considered at the $\Phi$'s.
+Because strictly partial redundancies can only occur at the \PHInodes, insertions for PRE only need to be considered at the $\Phi$'s.
 
-\section{How SSAPRE Works}
+\section{How SSAPRE Works}\index{SSAPRE}
 \label{section:Part3:Pre_not_helped:SSAPRE}
 
-Referring to the expression being optimized as $X$,
-we use the term \emph{placement} to denote the set of points in the 
-\emph{optimized} program where $X$'s computation occurs. In contrast,
-\emph{original computation points} refer to the points in the \emph{original} 
-program where $X$'s computation took place.  The \emph{original} program will be
-transformed to the \emph{optimized} program by performing a set of
-\emph{insertions} and \emph{deletions}.  
+Referring to the expression being optimized as $X$, we use the term \emph{placement} to denote the set of points in the \emph{optimized} program where $X$'s computation occurs. 
+In contrast, \emph{original computation points} refer to the points in the \emph{original} program where $X$'s computation took place. 
+The \emph{original} program will be transformed to the \emph{optimized} program by performing a set of \emph{insertions} and \emph{deletions}.
 
-The objective of SSAPRE is to find
-a placement that satisfies the following four criteria in this order:
-\begin{enumerate}
-\item Correctness --- $X$ is fully available at all the original computation
-points.
-\item Safety --- There is no insertion of $X$ on any path that did not 
-originally contain $X$. 
-\item Computational optimality ---No other safe and correct placement can 
-result in fewer computations of $X$ on any path from entry to exit in the program.
-\item Lifetime optimality --- Subject to the computational optimality,
-the life range of the temporary introduced to store $X$ is minimized.
-\end{enumerate}
+The objective of SSAPRE is to find a placement that satisfies the following four criteria in this order:\\
+\textbf{-- Correctness}\index{PRE, correctness} $X$ is fully available at all the original computation points.\\
+\textbf{-- Safety}\index{PRE, safety} There is no insertion of $X$ on any path that did not originally contain $X$.\\
+\textbf{-- Computational optimality}\index{PRE, computational optimality} No other safe and correct placement can result in fewer computations of $X$ on any path from entry to exit in the program.\\
+\textbf{-- Lifetime optimality}\index{PRE, lifetime optimality} Subject to the computational optimality, the life range of the temporary introduced to store $X$ is minimized.
 
 Each occurrence of $X$ at its original computation point can be qualified
 with exactly one of the following attributes:
-\begin{itemize}
-\item fully redundant
-\item strictly partially redundant (SPR)
-\item non-redundant
-\end{itemize}
+(1)~\emph{fully redundant};
+(2)~\emph{strictly partially redundant};
+(3)~\emph{non-redundant}.
 
-As a code placement problem, SSAPRE follows the same two-step process used
-in all PRE algorithms.  The first step determines the best set of insertion 
-points that render as many SPR occurrences fully redundant as possible.
-The second step deletes fully redundant computations taking into account the
-effects of the inserted computations.  Since the second full redundancy
-elimination step is 
-trivial and well understood, the challenge lies in the first step
-for coming up with the best set of insertion points.  The first step will
-tackle the safety, computational optimality and lifetime optimality criteria,
-while the correctness criterion is delegated to the second step.
-For the rest of this section, we only focus on the first step for
-finding the best insertion points, which is driven by the SPR occurrences.
+As a code placement problem, SSAPRE follows the same two-step process used in all PRE algorithms. 
+The first step determines the best set of insertion points that render as many strictly partially redundant occurrences fully redundant as possible. 
+The second step deletes fully redundant computations taking into account the effects of the inserted computations. 
+As we consider this second step to be well understood, the challenge lies in the first step for coming up with the best set of insertion points. 
+The first step will tackle the safety, computational optimality and lifetime optimality criteria, while the correctness criterion is delegated to the second step. 
+For the rest of this section, we only focus on the first step for finding the best insertion points, which is driven by the strictly partially redundant occurrences.
 
-We assume that all \emph{critical edges}
-in the control-flow graph have been removed by inserting empty basic blocks
-at such edges\footnote{A critical edge is one whose tail block has multiple
-successors and whose head block has multiple predecessors.}.
-In the SSAPRE approach, insertions are only performed at $\Phi$ operands.
-When we say a $\Phi$ is a candidate for insertion, it means we will consider
-inserting at its operands to render $X$ available at the entry to the basic
-block containing that $\Phi$.  An insertion at a $\Phi$ operand means inserting
-$X$ at the incoming edge corresponding to that $\Phi$ operand.  In reality,
-the actual insertion is done at the end of the predecessor block.
+We assume that all critical edges\index{critical edge} in the control-flow graph have been removed by inserting empty basic blocks at such edges (see Algorithm~\ref{alg:ssadestruction:splitting}).
+In the SSAPRE approach, insertions are only performed at \PHIuses.
+When we say a $\Phi$ is a candidate for insertion, it means we will consider inserting at its use operands to render $X$ available at the entry to the basic block containing that $\Phi$. 
+An insertion at a \PHIuse means inserting $X$ at the incoming edge corresponding to that $\Phi$ operand. 
+In reality, the actual insertion is done at the end of the predecessor block.
 
-\subsection{The Safety Criterion}
+\subsection{The Safety Criterion}\index{SSAPRE, safety criterion}
 
-As we have pointed out at the end of 
-Section~\ref{section:Part3:Pre_not_helped:PRErelatedtoSSA},
-insertions only need to be considered at the $\Phi$'s.
-The safety criterion implies that we should only insert at $\Phi$'s where $X$ 
-is \emph{downsafe} (fully anticipated).  Thus, we perform data-flow analysis on
-the FRG to determine the \emph{downsafe} attribute for $\Phi$'s.
-Data-flow analysis can be performed with linear complexity on SSA graphs, which
-we illustrate with the Downsafety computation.
+As we have pointed out at the end of Section~\ref{section:Part3:Pre_not_helped:PRErelatedtoSSA}, insertions only need to be considered at the $\Phi$'s. 
+The safety criterion implies that we should only insert at $\Phi$'s where $X$ is \downsafe (fully anticipated\index{fully anticipated|see{downsafe}}). 
+Thus, we perform data-flow analysis on the FRG to determine the \downsafe attribute for $\Phi$'s. 
+Data-flow analysis can be performed with linear complexity on SSA graphs, which we illustrate with the Downsafety computation.
 
-A $\Phi$ is not \emph{downsafe} if there is a control-flow path from that 
-$\Phi$ along which the expression is not computed before program exit or 
-before 
-being altered by redefinition of one of its variables.  Except for loops with
-no exit, this can happen only due to one of the following cases: (a) there
-is a path to exit or an alteration of the expression
-along which the $\Phi$ result version is not used; or (b) the $\Phi$ result
-version appears as the operand of another $\Phi$ that is not \emph{downsafe}.
-Case (a) represents the initialization for our backward propagation of 
-$\neg downsafe$; all other $\Phi$'s are initially marked $downsafe$.
-The Downsafety propagation is based on case (b).  Since a real occurrence of 
-the expression blocks the case (b) propagation, we define a 
-\emph{has\_real\_use} flag attached to each $\Phi$ operand and set this flag to
-true when the $\Phi$ operand is defined by another $\Phi$ and the path from its
-defining $\Phi$ to its appearance as a $\Phi$ operand crosses a real occurrence.
-The propagation of $\neg downsafe$ is blocked whenever the \emph{has\_real\_use}
-flag is true.  Figure~\ref{fig:downsafety} gives the DownSafety propagation
-algorithm.  The initialization of the \emph{has\_real\_use}
-flags is performed in the earlier Renaming phase.
+A $\Phi$ is not \downsafe\index{downsafe|mainidx} if there is a control-flow path from that $\Phi$ along which the expression is not computed before program exit or before being altered by redefinition of one of its variables. 
+Except for loops with no exit, this can happen only due to one of the following cases: 
+(dead) there is a path to exit or an alteration of the expression along which the $\Phi$ result version is not used; 
+or (transitive) the $\Phi$ result version appears as the operand of another $\Phi$ that is not \downsafe. 
+Case (dead) represents the initialization for our backward propagation of $\neg \downsafe$; 
+all other $\Phi$'s are initially marked \downsafe. 
+The Downsafety propagation is based on case (transitive). 
+Since a real occurrence of the expression blocks the case (transitive) propagation, we define a \hasrealuse flag attached to each $\Phi$ operand and set this flag to true when the $\Phi$ operand is defined by another $\Phi$ and the path from its defining $\Phi$ to its appearance as a $\Phi$ operand crosses a real occurrence. 
+The propagation of $\neg \downsafe$ is blocked whenever the \hasrealuse flag is true. 
+Figure~\ref{fig:downsafety} gives the DownSafety propagation algorithm. 
+The initialization of the \hasrealuse flags is performed in the earlier Renaming phase.
 
-\begin{figure}[!ht]
-\setcounter{linectr}{0}
-\centering
-\begin{minipage}[t]{5in}
-Procedure Reset\_downsafe($X$) 
-\{
-\begin{code}
-\x1 {\bf if} $def(X)$ is not a $\Phi$
-\x2   {\bf return}
-\x1 $f \leftarrow def(X)$
-\x1 {\bf if} ({\bf not} $downsafe(f)$)
-\x2   {\bf return}
-\x1 $downsafe(f) \leftarrow$ false
-\x1 {\bf for} each operand $\omega$ of $f$ {\bf do}
-\x2   {\bf if} ({\bf not} $has\_real\_use(\omega)$)
-\x3     Reset\_downsafe($\omega$)
-\end{code}
-\}
+\begin{algorithm}
+  \LinesNumbered
+{
+  \ForEach{$f \in$ \{$\Phi$'s in the program\}}{
+    \lIf{$\exists$ path $P$ to program exit or alteration of expression along which $f$ is not used}{
+      $\downsafe(f) \gets$ false\;
+    }
+  }
+  \ForEach{$f \in$ \{$\Phi$'s in the program\}}{
+    \If{{\bf not} $\downsafe(f)$}{
+      \ForEach{operand $\omega$ of $f$}{
+        \lIf{{\bf not} $\hasrealuse(\omega)$}{Reset\_downsafe($\omega$)}
+      }
+    }
+  }
+}
+\vspace{1em}
+%\Func{Reset\_downsafe($X$)}
+       {
+  \lIf{$def(X)$ is not a $\Phi$}{\Return}
+  $f \gets def(X)$\;
+  \lIf{{\bf not} $\downsafe(f)$}{\Return}
+  $\downsafe(f) \leftarrow$ false\;
+  \ForEach{operand $\omega$ of $f$}{
+    \lIf{\textbf{not} $\hasrealuse(\omega)$}{Reset\_downsafe($\omega$)}
+  }
+}
 
-Procedure DownSafety
-\{
-\begin{code}
-\x1 {\bf for} each $f \in$ \{$\Phi$'s in the program\} {\bf do}
-\x2   {\bf if} $\exists$ path $P$ to program exit or alteration of expression along which $f$ is not used
-\x3      $downsafe(f) \leftarrow$ false
-\x1 {\bf for} each $f \in$ \{$\Phi$'s in the program\} {\bf do}
-\x2   {\bf if} ({\bf not} $downsafe(f)$)
-\x3     {\bf for} each operand $\omega$ of $f$ {\bf do}
-\x4       {\bf if} ({\bf not} $has\_real\_use(\omega)$)
-\x5	    Reset\_downsafe($\omega$)
-\end{code}
-\}
-\end{minipage}
-\caption{Algorithm for DownSafety}
+\caption{DownSafety propagation}
 \label{fig:downsafety}
-\end{figure}
+\end{algorithm}
 
 \subsection{The Computational Optimality Criterion}
 
-At this point, we have eliminated the unsafe $\Phi$'s based on the safety 
-criterion.  Next, we want
-to identify all the $\Phi$'s that are possible candidates for insertion by
-disqualifying $\Phi$'s that cannot be insertion candidates in any 
-computationally optimal placement.  An unsafe $\Phi$ can still be an insertion
-candidate if the expression is fully available there, though the inserted
-computation will itself be fully redundant.  
-We define the \emph{can\_be\_avail} attribute for the current step, whose 
-purpose is to identify the region where, after appropriate insertions,
-the computation can become fully available.  A $\Phi$ is 
-$\neg can\_be\_avail$ if and only if inserting there violates computational
-optimality.  The \emph{can\_be\_avail} attribute can be viewed as:
-$$ can\_be\_avail(\Phi) = downsafe(\Phi) \cup avail(\Phi) $$
+At this point, we have eliminated the unsafe $\Phi$'s based on the safety criterion. 
+Next, we want to identify all the $\Phi$'s that are possible candidates for insertion by disqualifying $\Phi$'s that cannot be insertion candidates in any computationally optimal placement. 
+An unsafe $\Phi$ can still be an insertion candidate if the expression is fully available there, though the inserted computation will itself be fully redundant. 
+We define the \canbeavail\index{available, can be|mainidx} attribute for the current step, whose purpose is to identify the region where, after appropriate insertions, the computation can become fully available. 
+A $\Phi$ is $\neg \canbeavail$ if and only if inserting there violates computational optimality. 
+The \canbeavail attribute can be viewed as:
+$$ \canbeavail(\Phi) = \downsafe(\Phi) \cup \avail(\Phi) $$
 
-We could compute the \emph{avail} attribute separately using the full
-availability analysis, which involves propagation in the forward direction
-with respect to the control-flow graph.  But this would have performed some
-useless computation because we do not need to know its values within the region 
-where the $\Phi$'s are \emph{downsafe}.  Thus, we choose to compute
-\emph{can\_be\_avail} directly by initializing a $\Phi$ to be 
-$\neg can\_be\_avail$ if
-the $\Phi$ is not \emph{downsafe} and one of its operands is $\bot$.
-In the propagation phase, we propagate $\neg can\_be\_avail$ forward when
-a $\neg downsafe$  $\Phi$ has an operand that is defined by a 
-$\neg can\_be\_avail$ $\Phi$ and that operand is not marked \emph{has\_real\_use}.
+We could compute the \avail\index{available|mainidx} attribute separately using the full availability analysis, which involves propagation in the forward direction with respect to the control-flow graph. 
+But this would have performed some useless computation because we do not need to know its values within the region where the $\Phi$'s are \downsafe. 
+Thus, we choose to compute \canbeavail directly by initializing a $\Phi$ to be $\neg \canbeavail$ if the $\Phi$ is not \downsafe and one of its operands is $\bot$. 
+In the propagation phase, we propagate $\neg \canbeavail$ forward when a $\neg \downsafe$ $\Phi$ has an operand that is defined by a $\neg \canbeavail$ $\Phi$ and that operand is not marked \hasrealuse.
 
-After \emph{can\_be\_avail} has been computed, it is possible to perform 
-insertions at
-all the \emph{can\_be\_avail} $\Phi$'s.  There would be full redundancies
-created among the insertions themselves, but they would not affect 
-computational optimality because the subsequent full redundancy elimination 
-step will remove any fully redundant inserted or non-inserted computation, 
-leaving the earliest computations as the optimal code placement.
+After \canbeavail has been computed, it is possible to perform insertions at all the \canbeavail $\Phi$'s. 
+There would be full redundancies created among the insertions themselves, but they would not affect computational optimality because the subsequent full redundancy elimination step will remove any fully redundant inserted or non-inserted computation, leaving the earliest computations as the optimal code placement.
 
 \subsection{The Lifetime Optimality Criterion}
 
-To fulfill lifetime optimality, we perform a second forward propagation called
-Later that is derived from the well-understood partial availability 
-analysis.  The purpose is to disqualify \emph{can\_be\_avail} $\Phi$'s where
-the computation is
-partially available based on the original occurrences of $X$.
-A $\Phi$ is marked \emph{later} if it is not necessary to insert there because
-a later insertion is possible.  In other words, there exists a computationally
-optimal placement under which $X$ is not available immediately after the $\Phi$.
-We optimistically regard all the
-\emph{can\_be\_avail} $\Phi$'s to be \emph{later}, except the following cases:
-(a) the $\Phi$ has an operand defined by a real computation; or (b) the $\Phi$
-has an operand that is \emph{can\_be\_avail} $\Phi$ marked not \emph{later}.  Case (a) represents
-the initialization for our forward propagation of not \emph{later}; all other
-\emph{can\_be\_avail} $\Phi$'s are marked \emph{later}.  The Later
-propagation is based on case (b).
+To fulfill lifetime optimality, we perform a second forward propagation called Later that is derived from the well-understood partial availability analysis. 
+The purpose is to disqualify \canbeavail $\Phi$'s where the computation is partially available based on the original occurrences of $X$. 
+A $\Phi$ is marked \later if it is not necessary to insert there because a later insertion is possible. 
+In other words, there exists a computationally optimal placement under which $X$ is not available immediately after the $\Phi$. 
+We optimistically regard all the \canbeavail $\Phi$'s to be \later, except the following cases: 
+(real)~the $\Phi$ has an operand defined by a real computation; 
+or (transitive)~the $\Phi$ has an operand that is \canbeavail $\Phi$ marked not \later. 
+Case (real) represents the initialization for our forward propagation of not \later; 
+all other \canbeavail $\Phi$'s are marked \later. 
+The Later propagation is based on case (transitive).
 
 \begin{figure}
 \centering
-\includegraphics[scale=0.45]{fig-later-example.pdf}
-\caption{Example to show the need of the \emph{Later} attribute}
+%\includegraphics[scale=0.45]{fig-later-example.pdf}
+\tikzfigure{fig-later-example}
+\caption{Example to show the need of the \later attribute}
 \label{fig:later-example}
 \end{figure}
 
 The final criterion for performing insertion is to insert at the $\Phi$'s where 
-\emph{can\_be\_avail} and $\neg later$ hold.  We call such $\Phi$'s
-\emph{will\_be\_avail}.  At these $\Phi$'s,
+\canbeavail and $\neg\later$ hold.  We call such $\Phi$'s
+\willbeavail.  At these $\Phi$'s,
 insertion is performed at each operand that satisfies either of the following
 condition:
 \begin{enumerate}
 \item it is $\bot$; or
-\item \emph{has\_real\_use} is false and it is defined by a 
-$\neg will\_be\_avail \Phi$.
+\item \hasrealuse is false and it is defined by a 
+$\neg \willbeavail \Phi$.
 \end{enumerate}
 
-We illustrate our discussion in this section with the example of 
-Figure~\ref{fig:later-example}, where the program exhibits partial redundancy
-that cannot be removed by safe code motion.  The two $\Phi$'s with their 
-computed data-flow attributes are as shown.  If insertions were based on
-\emph{can\_be\_avail}, $a+b$ would have been inserted at the exits of 
-blocks 4 and 5 due to the $\Phi$ in block 6,
-which would have resulted in unnecessary code motion that increases
-register pressure.  By considering \emph{later}, no insertion is performed,
-which is optimal under safe PRE for this example.
+We illustrate our discussion in this section with the example of Figure~\ref{fig:later-example}, where the program exhibits partial redundancy that cannot be removed by safe code motion. 
+The two $\Phi$'s with their computed data-flow attributes are as shown. 
+If insertions were based on \canbeavail, $a+b$ would have been inserted at the exits of blocks 4 and 5 due to the $\Phi$ in block 6, which would have resulted in unnecessary code motion that increases register pressure. 
+By considering \later, no insertion is performed, which is optimal under safe PRE for this example.
  
 \section{Speculative PRE}
 

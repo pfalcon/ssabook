@@ -4,6 +4,7 @@ FIGS= \
       fig-phi-insertion-b \
       fig-rename-ifthen \
       fig-rename-loop \
+      fig-later-example
 
 SUBFIGS= \
       fig-pre-examples-ifthen-1 \
