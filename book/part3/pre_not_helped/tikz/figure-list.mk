@@ -1,5 +1,7 @@
 FIGS= \
-      fig-ssapre-motive
+      fig-ssapre-motive \
+      fig-phi-insertion-a \
+      fig-phi-insertion-b \
 
 SUBFIGS= \
       fig-pre-examples-ifthen-1 \

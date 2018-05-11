@@ -46,9 +46,9 @@ We further assume the HSSA (see Chapter~\ref{chapter:hssa}) form that completely
 \section{Why PRE and SSA are related}
 \label{section:Part3:Pre_not_helped:PRErelatedtoSSA}
 
-Figure~\ref{fig: pre-examples} shows the two most basic forms of partial redundancy. 
-In Figure~\ref{fig: pre-examples}(a), $a+b$ is redundant when the right path is taken. 
-In Figure~\ref{fig: pre-examples}(b), $a+b$ is redundant whenever the back edge (see Section~\ref{sec:loop-nesting_forest}) of the loop is taken. 
+Figure~\ref{fig:pre-examples} shows the two most basic forms of partial redundancy. 
+In Figure~\ref{fig:pre-examples}(a), $a+b$ is redundant when the right path is taken. 
+In Figure~\ref{fig:pre-examples}(b), $a+b$ is redundant whenever the back edge (see Section~\ref{sec:loop_nesting_forest}) of the loop is taken. 
 Both are examples of \emph{strictly} partial redundancies, in which insertions are required to eliminate the redundancies. 
 In contrast, a full redundancy can be deleted without requiring any insertion. 
 %Partial redundancy elimination (PRE) is powerful because it subsumes global common subexpressions and loop-invariant code motion.
@@ -56,77 +56,62 @@ In contrast, a full redundancy can be deleted without requiring any insertion.
 \begin{figure}
 \centering
 %\includegraphics[scale=0.45]{fig-pre-examples.pdf}
-\subfloat[Original programs] {
-  \tikzsubfigure[1]{fig-pre-examples-ifthen}\hspace{2cm}
-  \tikzsubfigure[1]{fig-pre-examples-loop}
+\subfloat[First example program, before and after PRE] {
+  \tikzsubfigure[1]{fig-pre-examples-ifthen}\hspace{1cm}
+  \tikzsubfigure[2]{fig-pre-examples-ifthen}
 }
 \hfill
-\subfloat[After PRE] {
-  \tikzsubfigure[2]{fig-pre-examples-ifthen}\hspace{2cm}
+\subfloat[Second example program, before and after PRE] {
+  \tikzsubfigure[1]{fig-pre-examples-loop}\hspace{1cm}
   \tikzsubfigure[2]{fig-pre-examples-loop}
 }
 \caption{Two basic examples of partial redundancy elimination.}
-\label{fig: pre-examples}
+\label{fig:pre-examples}
 \end{figure}
 
-We can visualize the impact on redundancies of a single computation
-as shown in Figure~\ref{fig: ssapre-motive}.  
-In the region of the control-flow graph dominated by the occurrence of $a+b$, 
-any further occurrence of $a+b$ is fully redundant, assuming $a$ and $b$ are
-not modified.  Following the program flow,
-once we are past the dominance frontiers, any further occurrence of $a+b$ is
-partially redundant.  In constructing SSA form, dominance frontiers are where
-$\phi$'s are inserted.   Since partial redundancies start at dominance
-frontiers, it must be related to SSA's $\phi$'s.  In fact, the same sparse
-approach to modeling the use-def relationships among the occurrences of
-a program variable can be used to model the redundancy relationships among 
-the different occurrences of $a+b$.
+We can visualize the impact on redundancies of a single computation as shown in Figure~\ref{fig:ssapre-motive}. 
+In the region of the control-flow graph dominated by the occurrence of $a+b$, any further occurrence of $a+b$ is fully redundant, assuming $a$ and $b$ are not modified. 
+Following the program flow, once we are past the dominance frontiers, any further occurrence of $a+b$ is partially redundant. 
+In constructing SSA form, dominance frontiers are where $\phi$'s are inserted. 
+Since partial redundancies start at dominance frontiers, it must be related to SSA's $\phi$'s. 
+In fact, the same sparse approach to modeling the use-def relationships among the occurrences of a program variable can be used to model the redundancy relationships among the different occurrences of $a+b$.
 
 \begin{figure}
 \centering
-\includegraphics[scale=0.35]{fig-ssapre-motive.pdf}
-\caption{Dominance frontiers are boundaries between fully and partially redundant regions.}
-\label{fig: ssapre-motive}
+%\includegraphics[scale=0.35]{fig-ssapre-motive.pdf}
+\tikzfigure{fig-ssapre-motive}
+\caption{Dominance frontiers (dashed) are boundaries between fully (highlighted basic blocks) and partially redundant regions (normal basic blocks).}
+\label{fig:ssapre-motive}
 \end{figure}
 
-The SSAPRE algorithm that we present performs PRE efficiently by taking 
-advantage of the use-def information inherent in its input conventional SSA 
-form.  If an occurrence $a_j+b_j$ is redundant with respect to $a_i+b_i$, SSAPRE
-builds a redundancy edge that connects $a_i+b_i$ to
-$a_j+b_j$.  To expose potential partial redundancies, we introduce the 
-operator $\Phi$ at the dominance frontiers of the occurrences, which has the 
-effect of factoring the redundancy edges at merge points in the control-flow graph.\footnote{Adhering to SSAPRE's convention, we use lower case 
-$\phi$'s in the SSA form of variables and upper case $\Phi$'s
-in the SSA form for expressions.} The resulting \emph{factored redundancy 
-graph} (FRG) can be regarded as the SSA form for expressions.
+The SSAPRE algorithm that we present, performs PRE efficiently by taking advantage of the use-def information inherent in its input conventional SSA form. 
+If an occurrence $a_j+b_j$ is redundant with respect to $a_i+b_i$, SSAPRE builds a redundancy edge that connects $a_i+b_i$ to $a_j+b_j$. 
+To expose potential partial redundancies, we introduce the operator $\Phi$\index{\PHIfun} at the dominance frontiers of the occurrences, which has the effect of factoring the redundancy edges at merge points in the control-flow graph.\footnote{Adhering to SSAPRE's convention, we use lower case $\phi$'s in the SSA form of variables and upper case $\Phi$'s in the SSA form for expressions.} 
+The resulting \emph{factored redundancy graph}\index{factored redundancy graph} (FRG) can be regarded as the SSA form for expressions.
 
-To make the expression SSA form more intuitive, we introduce the 
-hypothetical temporary $h$,
-which can be thought of as the temporary that will be used to store the value
-of the expression for reuse in order to suppress redundant computations.
-The FRG can be viewed as the SSA graph for $h$ which is not precise,
-because we have not yet determined where $h$ should be defined or used.
-In referring to the FRG, a \emph{use} node will refer to a node in the FRG
-that is not a definition.
+To make the \emph{expression SSA form}\index{expression SSA form|mainidx} more intuitive, we introduce the hypothetical temporary $h$, which can be thought of as the temporary that will be used to store the value of the expression.
+The FRG can be viewed as the SSA graph for $h$.
+Observe that we have not yet determined where $h$ should be defined or used. 
+In referring to the FRG, a \emph{use} node will refer to a node in the FRG that is not a definition.
 
-The SSA form for $h$ is constructed in two steps similar to ordinary SSA
-form: the $\Phi$-Insertion step followed by the Renaming step.  
-In the $\Phi$-Insertion 
-step, we insert $\Phi$'s at the dominance frontiers of all the expression 
-occurrences, to ensure that we do not miss any possible placement positions
-for the purpose of PRE, as in Figure~\ref{fig: phi-insertion}(a).
-We also insert $\Phi$'s caused by expression alteration.
-Such $\Phi$'s are triggered by the occurrence of $\phi$'s
-for any of the operands in the expression.
-In Figure~\ref{fig: phi-insertion}(b), the $\Phi$ at block 3 is caused by
-the $\phi$ for $a$ in the same block, which in turns reflects the
-assignment to $a$ in block 2.
+The SSA form for $h$ is constructed in two steps similar to ordinary SSA form: 
+the $\Phi$-Insertion step followed by the Renaming step. 
+In the $\Phi$-Insertion step, we insert $\Phi$'s at the dominance frontiers of all the expression occurrences, to ensure that we do not miss any possible placement positions for the purpose of PRE, as in Figure~\ref{fig:phi-insertion}(a). 
+We also insert $\Phi$'s caused by expression alteration. 
+Such $\Phi$'s are triggered by the occurrence of $\phi$'s for any of the operands in the expression. 
+In Figure~\ref{fig:phi-insertion}(b), the $\Phi$ at block 3 is caused by the $\phi$ for $a$ in the same block, which in turns reflects the assignment to $a$ in block 2.
 
 \begin{figure}
 \centering
-\includegraphics[scale=0.45]{fig-phi-insertion.pdf}
+%\includegraphics[scale=0.45]{fig-phi-insertion.pdf}
+\subfloat[DF of expression occurences] {
+  \tikzfigure{fig-phi-insertion-a}\hspace{1cm}
+}
+\subfloat[Expression alteration] {
+  \tikzfigure{fig-phi-insertion-b}
+}
 \caption{Examples of $\Phi$ insertion}
-\label{fig: phi-insertion}
+\label{fig:phi-insertion}
 \end{figure}
 
 The Renaming step assigns SSA versions to $h$ such that occurrences
@@ -154,17 +139,17 @@ the corresponding variable in the occurrence on the top of the expression's
 renaming stack.  If all the variable versions match, we assign it the same
 version as the top of the expression's renaming stack.  If any of the 
 variable versions does not match, for case (a), we assign it a new version, as
-in the example of Figure~\ref{fig: rename}(a); for case (c),
+in the example of Figure~\ref{fig:rename}(a); for case (c),
 we assign the special class $\bot$ to the $\Phi$ operand to denote that
 the value of the expression is unavailable at that point, as in the example
-of Figure~\ref{fig: rename}(b).  If a new version is assigned, we push
+of Figure~\ref{fig:rename}(b).  If a new version is assigned, we push
 the version on the expression stack.
 
 \begin{figure}
 \centering
 \includegraphics[scale=0.45]{fig-rename.pdf}
 \caption{Examples of expression renaming}
-\label{fig: rename}
+\label{fig:rename}
 %TODO: put [h1] & [h2] at the right place
 \end{figure}
   
@@ -257,7 +242,7 @@ the expression blocks the case (b) propagation, we define a
 true when the $\Phi$ operand is defined by another $\Phi$ and the path from its
 defining $\Phi$ to its appearance as a $\Phi$ operand crosses a real occurrence.
 The propagation of $\neg downsafe$ is blocked whenever the \emph{has\_real\_use}
-flag is true.  Figure~\ref{fig: downsafety} gives the DownSafety propagation
+flag is true.  Figure~\ref{fig:downsafety} gives the DownSafety propagation
 algorithm.  The initialization of the \emph{has\_real\_use}
 flags is performed in the earlier Renaming phase.
 
@@ -295,7 +280,7 @@ Procedure DownSafety
 \}
 \end{minipage}
 \caption{Algorithm for DownSafety}
-\label{fig: downsafety}
+\label{fig:downsafety}
 \end{figure}
 
 \subsection{The Computational Optimality Criterion}
@@ -356,7 +341,7 @@ propagation is based on case (b).
 \centering
 \includegraphics[scale=0.45]{fig-later-example.pdf}
 \caption{Example to show the need of the \emph{Later} attribute}
-\label{fig: later-example}
+\label{fig:later-example}
 \end{figure}
 
 The final criterion for performing insertion is to insert at the $\Phi$'s where 
@@ -371,7 +356,7 @@ $\neg will\_be\_avail \Phi$.
 \end{enumerate}
 
 We illustrate our discussion in this section with the example of 
-Figure~\ref{fig: later-example}, where the program exhibits partial redundancy
+Figure~\ref{fig:later-example}, where the program exhibits partial redundancy
 that cannot be removed by safe code motion.  The two $\Phi$'s with their 
 computed data-flow attributes are as shown.  If insertions were based on
 \emph{can\_be\_avail}, $a+b$ would have been inserted at the exits of 
@@ -394,7 +379,7 @@ are clues about the relative execution frequencies of the paths involved.
 
 Without profile data, speculative PRE can be conservatively performed by
 restricting it to loop-invariant computations.  
-Figure~\ref{fig: spec-pre} shows
+Figure~\ref{fig:spec-pre} shows
 a loop-invariant computation $a+b$ that occurs in a branch inside the loop.
 This loop-invariant code motion is speculative because, depending on the
 branch condition inside the loop, it may be executed zero time, while moving it
@@ -408,13 +393,13 @@ downsafe will effect speculative loop invariant code motion.
 \centering
 \includegraphics[scale=0.55]{fig-spec-pre.pdf}
 \caption{Speculative loop-invariant code motion}
-\label{fig: spec-pre}
+\label{fig:spec-pre}
 \end{figure}
 
 Computations like indirect loads and divides are called \emph{dangerous}
 computations because they may fault.  Dangerous computations in general should
 not be speculated.
-As an example, if we replace the expression $a+b$ in Figure~\ref{fig: spec-pre}
+As an example, if we replace the expression $a+b$ in Figure~\ref{fig:spec-pre}
 by $a/b$ and the speculative code motion is performed, it may cause a run-time
 divide-by-zero fault after the speculation because b can be $0$ at the 
 loop header while it is never $0$ in the branch that contains $a/b$ inside the 
@@ -445,7 +430,7 @@ By including the tau operands into consideration, speculative PRE automatically
 honors the fault-safety of dangerous computations when it performs speculative
 code motion.
 
-In Figure~\ref{fig: spec-div}, the program contains a 
+In Figure~\ref{fig:spec-div}, the program contains a 
 non-zero test for $b$.  We define an additional tau operand
 for the divide operation in $a/b$ in SSAPRE to
 provide the information whether a non-zero test for $b$ is available.  
@@ -461,7 +446,7 @@ hoisting of $a/b$ past the non-zero test.
 \centering
 \includegraphics[scale=0.55]{fig-spec-div.pdf}
 \caption{Speculative and fault-safe loop-invariant code motion}
-\label{fig: spec-div}
+\label{fig:spec-div}
 \end{figure}
 
 \section{Register Promotion via PRE}
@@ -521,7 +506,7 @@ to program constants.
 From the point of view of redundancy, loads are like expressions because the
 later occurrences are the ones to be deleted.  For stores, the reverse is true:
 the earlier stores are the ones to be deleted, as is evident in the examples
-of Figure~\ref{fig: load-store-dual}(a) and (b).  The PRE of stores,
+of Figure~\ref{fig:load-store-dual}(a) and (b).  The PRE of stores,
 also called \emph{partial dead code elimination}, can thus be treated as the
 dual of the PRE of loads.  Performing PRE of stores thus has the effects
 of moving stores forward while inserting them as early as possible.  
@@ -534,7 +519,7 @@ of our PRE algorithm.
 \centering
 \includegraphics[scale=0.55]{fig-load-store-dual.pdf}
 \caption{Duality between load and store redundancies}
-\label{fig: load-store-dual}
+\label{fig:load-store-dual}
 \end{figure}
 
 \subsection{Load Placement Optimization}
@@ -564,14 +549,14 @@ XX:\= while \= while \= while \= while \= while \= \kill
 \end{tabbing}
 Because the pseudo-register $r$ contains the current value of $x$, any
 subsequent occurrences of the load of $x$ can reuse the value from $r$, and
-thus can be regarded as redundant.   Figure~\ref{fig: lval-occur} gives examples
+thus can be regarded as redundant.   Figure~\ref{fig:lval-occur} gives examples
 of loads made redundant by stores.
 
 \begin{figure}
 \centering
 \includegraphics[scale=0.55]{fig-lval-occur}
 \caption{Redundant loads after stores}
-\label{fig: lval-occur}
+\label{fig:lval-occur}
 \end{figure}
 
 When we perform the PRE of loads, we thus include the store occurrences into
@@ -589,7 +574,7 @@ loads that would otherwise have blocked the movement of stores.  In addition,
 speculation is required for the PRE of loads and stores in order for register
 promotion to do a decent job in loops.  
 
-The example in Figure~\ref{fig: promotion-example} illustrates what we discuss
+The example in Figure~\ref{fig:promotion-example} illustrates what we discuss
 in this section.  During the PRE of loads (LPRE), $a =$ is regarded as a
 store occurrence.  The hoisting of the load of $a$ to the loop header does
 not involve speculation. The occurrence of $a =$ causes $r$ to be updated
@@ -603,7 +588,7 @@ have blocked the sinking of $a =$.
 \centering
 \includegraphics[scale=0.55]{fig-promotion-example.pdf}
 \caption{Register promotion via load PRE followed by store PRE}
-\label{fig: promotion-example}
+\label{fig:promotion-example}
 \end{figure}
 
 \subsection{Store Placement Optimization}
@@ -641,10 +626,10 @@ to sink the stores too far down.
 \centering
 \includegraphics[scale=0.55]{fig-ssupre.pdf}
 \caption{Example of program in SSU form and the result of applying SSUPRE}
-\label{fig: ssupre}
+\label{fig:ssupre}
 \end{figure}
 
-Figure~\ref{fig: ssupre} gives an example program with (b) being the SSU 
+Figure~\ref{fig:ssupre} gives an example program with (b) being the SSU 
 representation for the program in (a).  
 (c) shows the result of applying SSUPRE to the code.
 The store can be sunk to outside the loop only if it is also inserted in
@@ -677,8 +662,8 @@ down the instructions in a basic block, assigning value numbers to the
 expressions.  At an assignment, the assigned variable will be assigned
 the value number of the right hand side expression.  The assignment will also
 cause any value number that refers to that variable to be killed. For example,
-the program code in Figure~\ref{fig: bb-value-num}(a) will result in the
-value numbers $v_1$, $v_2$ and $v_3$ shown in Figure~\ref{fig: bb-value-num}(b).
+the program code in Figure~\ref{fig:bb-value-num}(a) will result in the
+value numbers $v_1$, $v_2$ and $v_3$ shown in Figure~\ref{fig:bb-value-num}(b).
 Note that variable $c$ is involved with both value numbers $v_2$ and $v_3$
 because it has been re-defined.
 
@@ -686,20 +671,20 @@ because it has been re-defined.
 \centering
 \includegraphics[scale=0.55]{fig-bb-value-num.pdf}
 \caption{Value numbering in a local scope}
-\label{fig: bb-value-num}
+\label{fig:bb-value-num}
 \end{figure}
 
 \begin{figure}[t]
 \centering
 \includegraphics[scale=0.55]{fig-glob-value-num.pdf}
 \caption{Global value numbering on SSA form}
-\label{fig: glob-value-num}
+\label{fig:glob-value-num}
 \end{figure}
 
 SSA form enables value numbering to be easily extended to the global scope,
 called global value numbering (GVN), because each SSA version of a variable
 corresponds to at most one static value for the variable.  In the example
-of~\ref{fig: glob-value-num}, the same value numbers can be arrived at
+of~\ref{fig:glob-value-num}, the same value numbers can be arrived at
 regardless of the order of processing the program code.  One subtlety is
 regarding the $\phi$'s.  When we value number a $\phi$, we would like the
 value numbers for its operands to have been determined.  One strategy is to
@@ -771,11 +756,11 @@ a unique value number.
 \end{code}
 \end{minipage}
 \caption{The partitioning algorithm}
-\label{fig: partition-alg}
+\label{fig:partition-alg}
 \end{figure}
 
 The details of this partitioning algorithm is shown in
-Figure~\ref{fig: partition-alg}.  At line 8, $(s \cap touched)$ being
+Figure~\ref{fig:partition-alg}.  At line 8, $(s \cap touched)$ being
 not empty implies $s$ uses a member of $c$ as its $p$th operand.  If
 $(s \cap touched)$ is a proper subset of $s$, it implies some member of $s$ 
 does not have a member
