@@ -96,68 +96,56 @@ In referring to the FRG, a \emph{use} node will refer to a node in the FRG that 
 
 The SSA form for $h$ is constructed in two steps similar to ordinary SSA form: 
 the $\Phi$-Insertion step followed by the Renaming step. 
-In the $\Phi$-Insertion step, we insert $\Phi$'s at the dominance frontiers of all the expression occurrences, to ensure that we do not miss any possible placement positions for the purpose of PRE, as in Figure~\ref{fig:phi-insertion}(a). 
+In the $\Phi$-Insertion step, we insert $\Phi$'s at the dominance frontiers of all the expression occurrences, to ensure that we do not miss any possible placement positions for the purpose of PRE, as in Figure~\ref{fig:phi-insertion-a}. 
 We also insert $\Phi$'s caused by expression alteration. 
 Such $\Phi$'s are triggered by the occurrence of $\phi$'s for any of the operands in the expression. 
-In Figure~\ref{fig:phi-insertion}(b), the $\Phi$ at block 3 is caused by the $\phi$ for $a$ in the same block, which in turns reflects the assignment to $a$ in block 2.
+In Figure~\ref{fig:phi-insertion-b}, the $\Phi$ at block 3 is caused by the $\phi$ for $a$ in the same block, which in turns reflects the assignment to $a$ in block 2.
 
 \begin{figure}
 \centering
 %\includegraphics[scale=0.45]{fig-phi-insertion.pdf}
 \subfloat[DF of expression occurences] {
+  \label{fig:phi-insertion-a}
   \tikzfigure{fig-phi-insertion-a}\hspace{1cm}
 }
 \subfloat[Expression alteration] {
+  \label{fig:phi-insertion-b}
   \tikzfigure{fig-phi-insertion-b}
 }
 \caption{Examples of $\Phi$ insertion}
 \label{fig:phi-insertion}
 \end{figure}
 
-The Renaming step assigns SSA versions to $h$ such that occurrences
-renamed to identical $h$-versions will compute to the same values.
-We conduct a pre-order traversal of the dominator tree similar to the renaming
-step in SSA construction for variables, but with the following modifications.
-In addition to a renaming stack for each variable, we
-maintain a renaming stack for the expression. Entries on the expression
-stack are popped as our dominator tree traversal backtracks past the
-blocks where the expression originally received the version.  
-Maintaining the variable and expression stacks
-together allows us to decide efficiently whether two occurrences of an
-expression should be given the same $h$-version.
+The Renaming step assigns SSA versions to $h$ such that occurrences renamed to identical $h$-versions will compute to the same values. 
+We conduct a pre-order traversal of the dominator tree similar to the renaming step in SSA construction for variables, but with the following modifications: 
+(1)~In addition to a renaming stack for each variable, we maintain a renaming stack for the expression\index{renaming, of expressions}; 
+(2)~Entries on the expression stack are popped as our dominator tree traversal backtracks past the blocks where the expression originally received the version. 
+Maintaining the variable and expression stacks together allows us to decide efficiently whether two occurrences of an expression should be given the same $h$-version.
 
-There are three kinds of occurrences of the expression in the program:
-(a) the occurrences in the original program, which we call \emph{real}
-occurrences; (b) the $\Phi$'s inserted in the $\Phi$-Insertion step; and
-(c) $\Phi$ operands, which are regarded as occurring at the ends of the
-predecessor blocks of their corresponding edges.  During the visitation in 
-Renaming, a $\Phi$'s is always given a new version.  For a non-$\Phi$, i.e.,
-cases (a) and (c),
-we check the current version of every variable in the expression (the
-version on the top of each variable's renaming stack) against the version of
-the corresponding variable in the occurrence on the top of the expression's
-renaming stack.  If all the variable versions match, we assign it the same
-version as the top of the expression's renaming stack.  If any of the 
-variable versions does not match, for case (a), we assign it a new version, as
-in the example of Figure~\ref{fig:rename}(a); for case (c),
-we assign the special class $\bot$ to the $\Phi$ operand to denote that
-the value of the expression is unavailable at that point, as in the example
-of Figure~\ref{fig:rename}(b).  If a new version is assigned, we push
-the version on the expression stack.
+There are three kinds of occurrences of the expression in the program: 
+(real)~the occurrences in the original program, which we call \emph{real} occurrences; 
+($\Phi$-def)~the inserted $\Phi$'s; 
+and ($\Phi$-use)~the use operands of the $\Phi$'s, which are regarded as occurring at the ends of the predecessor blocks of their corresponding edges. 
+During the visitation in Renaming, a $\Phi$'s is always given a new version. 
+For a non-$\Phi$, i.e., cases (real) and ($\Phi$-use), we check the current version of every variable in the expression (the version on the top of each variable's renaming stack) against the version of the corresponding variable in the occurrence on the top of the expression's renaming stack. 
+If all the variable versions match, we assign it the same version as the top of the expression's renaming stack. 
+If any of the variable versions does not match, for case (real), we assign it a new version, as in the example of Figure~\ref{fig:rename-ifthen}; 
+for case ($\Phi$-use), we assign the special class $\bot$ to the \PHIuse to denote that the value of the expression is unavailable at that point, as in the example of Figure~\ref{fig:rename-loop}. 
+If a new version is assigned, we push the version on the expression stack.
 
 \begin{figure}
 \centering
-\includegraphics[scale=0.45]{fig-rename.pdf}
+%\includegraphics[scale=0.45]{fig-rename.pdf}
+\subfloat[] {\tikzfigure{fig-rename-ifthen}\label{fig:rename-ifthen}}
+\subfloat[] {\tikzfigure{fig-rename-loop}\label{fig:rename-loop}}
 \caption{Examples of expression renaming}
 \label{fig:rename}
 %TODO: put [h1] & [h2] at the right place
 \end{figure}
   
-The FRG captures all the redundancies of $a+b$ in the program.  
-In fact, it contains just the right
-amount of information for determining the optimal code placement.  Because
-strictly partial redundancies can only occur at the $\Phi$ nodes,
-insertions for PRE only need to be considered at the $\Phi$'s.
+The FRG captures all the redundancies of $a+b$ in the program. 
+In fact, it contains just the right amount of information for determining the optimal code placement. 
+Because strictly partial redundancies can only occur at the $\Phi$ nodes, insertions for PRE only need to be considered at the $\Phi$'s.
 
 \section{How SSAPRE Works}
 \label{section:Part3:Pre_not_helped:SSAPRE}
