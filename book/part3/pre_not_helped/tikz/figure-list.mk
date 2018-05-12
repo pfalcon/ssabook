@@ -22,6 +22,9 @@ SUBFIGS= \
       fig-promotion-example-1 \
       fig-promotion-example-2 \
       fig-promotion-example-3 \
+      fig-ssupre-1 \
+      fig-ssupre-2 \
+      fig-ssupre-3 \
 
       
 
