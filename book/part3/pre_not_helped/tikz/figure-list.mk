@@ -16,7 +16,10 @@ SUBFIGS= \
       fig-spec-pre-1 \
       fig-spec-pre-2 \
       fig-spec-div-1 \
-      fig-spec-div-2
+      fig-spec-div-2 \
+      fig-lval-occur-1 \
+      fig-lval-occur-2 \
+      
 
 
 
