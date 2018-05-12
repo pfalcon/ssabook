@@ -4,7 +4,9 @@ FIGS= \
       fig-phi-insertion-b \
       fig-rename-ifthen \
       fig-rename-loop \
-      fig-later-example
+      fig-later-example \
+      fig-dual-load \
+      fig-dual-store
 
 SUBFIGS= \
       fig-pre-examples-ifthen-1 \
@@ -12,7 +14,9 @@ SUBFIGS= \
       fig-pre-examples-loop-1 \
       fig-pre-examples-loop-2 \
       fig-spec-pre-1 \
-      fig-spec-pre-2
+      fig-spec-pre-2 \
+      fig-spec-div-1 \
+      fig-spec-div-2
 
 
 
