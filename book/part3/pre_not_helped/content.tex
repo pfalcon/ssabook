@@ -116,7 +116,7 @@ In Figure~\ref{fig:phi-insertion-b}, the $\Phi$ at block 3 is caused by the $\ph
 \label{fig:phi-insertion}
 \end{figure}
 
-The Renaming step assigns SSA versions to $h$ such that occurrences renamed to identical $h$-versions will compute to the same values. 
+The Renaming step assigns SSA versions\index{variable version} to $h$ such that occurrences renamed to identical $h$-versions will compute to the same values. 
 We conduct a pre-order traversal of the dominator tree similar to the renaming step in SSA construction for variables, but with the following modifications: 
 (1)~In addition to a renaming stack for each variable, we maintain a renaming stack for the expression\index{renaming, of expressions}; 
 (2)~Entries on the expression stack are popped as our dominator tree traversal backtracks past the blocks where the expression originally received the version. 
@@ -217,8 +217,8 @@ The initialization of the \hasrealuse flags is performed in the earlier Renaming
 \vspace{1em}
 %\Func{Reset\_downsafe($X$)}
        {
-  \lIf{$def(X)$ is not a $\Phi$}{\Return}
-  $f \gets def(X)$\;
+  \lIf{$\Def(X)$ is not a $\Phi$}{\Return}
+  $f \gets \Def(X)$\;
   \lIf{{\bf not} $\downsafe(f)$}{\Return}
   $\downsafe(f) \leftarrow$ false\;
   \ForEach{operand $\omega$ of $f$}{
@@ -376,14 +376,14 @@ From the point of view of redundancy, loads behave like expressions:
 the later occurrences are the ones to be deleted. 
 For stores, this is the reverse: 
 as illustrated in the examples of Figure~\ref{fig:load-store-dual} the earlier stores are the ones to be deleted. 
-The PRE of stores, also called \emph{partial dead code elimination}, can thus be treated as the dual of the PRE of loads. 
-Thus, performing PRE of stores has the effects of moving stores forward while inserting them as early as possible. 
+The PRE of stores, also called \emph{partial dead code elimination}\index{dead code elimination, partial}, can thus be treated as the dual of the PRE of loads. 
+Thus, performing PRE of stores has the effects of moving stores forward, while inserting them as early as possible. 
 Combining the effects of the PRE of loads and stores results in optimal placements of loads and stores while minimizing the live ranges of the pseudo-registers, by virtue of the computational and lifetime optimality of our PRE algorithm.
 
 \begin{figure}
 \centering
 %\includegraphics[scale=0.55]{fig-load-store-dual.pdf}
-\subfloat[redundant load]{\tikzfigure{fig-dual-load}}
+\subfloat[redundant load]{\tikzfigure{fig-dual-load}}\hfill
 \subfloat[redundant store]{\tikzfigure{fig-dual-store}}
 \caption{Duality between load and store redundancies}
 \label{fig:load-store-dual}
@@ -393,9 +393,9 @@ Combining the effects of the PRE of loads and stores results in optimal placemen
 PRE applies to any computation, including loads from memory locations or creation of constants. 
 In program representations, loads can either be indirect through a pointer or direct. 
 Indirect loads are automatically covered by the PRE of expressions. 
-Direct loads correspond to scalar variables in the program, and since our input program representation is in HSSA form, the aliasing that affects the scalar variables are completely modeled by the $\chi$ and $\mu$ operations. 
+Direct loads correspond to scalar variables in the program, and since our input program representation is in HSSA form, the aliasing that affects the scalar variables are completely modeled by the $\chi$ and $\mu$ functions. 
 In our representation, both direct loads and constants are leaves of the expression trees. 
-When we apply SSAPRE to direct loads, since the hypothetical temporary $[h]$ can be regarded as the candidate variable itself, the FRG corresponds somewhat to the variable's SSA graph, so the $\Phi$-insertion step and Rename step can be streamlined.
+When we apply SSAPRE to direct loads, since the hypothetical temporary $h$ can be regarded as the candidate variable itself, the FRG corresponds somewhat to the variable's SSA graph, so the $\Phi$-insertion step and Rename step can be streamlined.
 
 When working on the PRE of memory loads, it is important to also take into account the stores, which we call \emph{l-value} occurrences. 
 A store of the form $X \leftarrow \texttt{<expr>}$ can be regarded as being made up of the sequence:
@@ -422,26 +422,28 @@ The $\Phi$-insertion step will insert $\Phi$'s at the iterated dominance frontie
 In the Rename step, a store occurrence is always given a new $h$-version, because a store is a definition. 
 Any subsequent load renamed to the same $h$-version is redundant with respect to the store.
 
-We apply the PRE of loads first, followed by the PRE of stores. 
-This ordering is based on the fact that the PRE of loads is not affected by the results of the PRE of stores, but the PRE of loads creates more opportunities for the PRE of stores by deleting loads that would otherwise have blocked the movement of stores. 
+We apply the PRE of loads (LPRE\index{PRE, of loads}) first, followed by the PRE of stores (STRE\index{PRE, of stores)}. 
+This ordering is based on the fact that LPRE is not affected by the result of STRE, but LPRE creates more opportunities for the SPRE by deleting loads that would otherwise have blocked the movement of stores. 
 In addition, speculation is required for the PRE of loads and stores in order for register promotion to do a decent job in loops.
 
-The example in Figure~\ref{fig:promotion-example} illustrates what we discuss in this section. 
-During the PRE of loads (LPRE), $a =$ is regarded as a store occurrence. 
-The hoisting of the load of $a$ to the loop header does not involve speculation. 
-The occurrence of $a =$ causes $r$ to be updated by splitting the store into the two statements $r =$ followed by $a = r$. 
-In the PRE of stores (SPRE), speculation is needed to sink $a =$ to outside the loop because the store occurs in a branch inside the loop. 
-Without performing LPRE first, the load of $a$ inside the loop would have blocked the sinking of $a =$.
+The example in Figure~\ref{fig:promotion-example} illustrates what is discussed in this section. 
+During LPRE, $A\gets \dots$ is regarded as a store occurrence. 
+The hoisting of the load of $A$ to the loop header does not involve speculation. 
+The occurrence of $A\gets\dots$ causes $r$ to be updated by splitting the store into the two statements $r\gets\dots$ followed by $A \gets r$. 
+In the PRE of stores (SPRE), speculation is needed to sink $A\gets \dots$ to outside the loop because the store occurs in a branch inside the loop. 
+Without performing LPRE first, the load of $A$ inside the loop would have blocked the sinking of $A\gets \dots$.
 
 \begin{figure}
 \centering
-\includegraphics[scale=0.55]{fig-promotion-example.pdf}
+%\includegraphics[scale=0.55]{fig-promotion-example.pdf}
+\subfloat[Original]{\tikzsubfigure[1]{fig-promotion-example}}\hfill
+\subfloat[After LPRE]{\tikzsubfigure[2]{fig-promotion-example}}\hfill
+\subfloat[Followed by SPRE]{\tikzsubfigure[3]{fig-promotion-example}}
 \caption{Register promotion via load PRE followed by store PRE}
 \label{fig:promotion-example}
 \end{figure}
 
 \subsection{Store Placement Optimization}
-
 As mentioned earlier, SPRE is the dual of LPRE. 
 In the presence of store redundancies, the earlier occurrences are redundant. 
 Code motion in SPRE will have the effect of moving stores forward with respect to the control-flow graph. 

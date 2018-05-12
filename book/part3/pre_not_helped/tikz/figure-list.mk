@@ -19,6 +19,10 @@ SUBFIGS= \
       fig-spec-div-2 \
       fig-lval-occur-1 \
       fig-lval-occur-2 \
+      fig-promotion-example-1 \
+      fig-promotion-example-2 \
+      fig-promotion-example-3 \
+
       
 
 
