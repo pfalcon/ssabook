@@ -1,4 +1,5 @@
-#!/usr/bin/perl
+#!/opt/local/bin/perl
+use re qw(eval);
 
 open GREP, "find . -name '*.tex' -exec grep -HE 'index\{.+\}' {} \\;|";
 my %indexes = ();
@@ -16,7 +17,7 @@ while (my $indexref=<GREP>) {
     if ($indexref =~ s/^\.\/(part\d)\/([^\/]+)\/.+://) {
 	($part,$section)=($1,$2);
     } else { die "pb parsing grep ".$indexref; }
-    while ($indexref=~ s/index\{($BALBRACE)\}//) {
+    while ($indexref=~ s/index\{([^\}]*)\}//) {
 	$indexes{$1}{$section}++;
     }
 }
