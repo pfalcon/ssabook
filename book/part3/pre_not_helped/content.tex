@@ -215,8 +215,7 @@ The initialization of the \hasrealuse flags is performed in the earlier Renaming
   }
 }
 \vspace{1em}
-%\Func{Reset\_downsafe($X$)}
-       {
+\Func{Reset\_downsafe($X$)}{
   \lIf{$\Def(X)$ is not a $\Phi$}{\Return}
   $f \gets \Def(X)$\;
   \lIf{{\bf not} $\downsafe(f)$}{\Return}
@@ -469,70 +468,111 @@ It is desirable not to sink the stores too far down.
 \label{fig:ssupre}
 \end{figure}
 
-Figure~\ref{fig:ssupre} gives an example program with (b) being the SSU representation for the program in (a). 
-(c) shows the result of applying SSUPRE to the code. 
-The store can be sunk to outside the loop only if it is also inserted in the branch inside the loop that contains the load. 
+Figure~\ref{fig:ssupre} gives the SSU form and the result of SSUPRE on an example program. 
+The sunk of the store to outside the loop is traded for the insertion of a store in the branch inside the loop. 
 The optimized code no longer exhibits any store redundancy.
 
 \section{Value-based Redundancy Elimination}
 \label{section:Part3:Pre_not_helped:SemanticPRE}
-
-The redundant computations stored into a temporary introduced by PRE may be of different static values because the same lexically identified expression may yield different results at different code paths in the program. 
 The PRE algorithm we have described so far is not capable of recognizing redundant computations among lexically different expressions that yield the same value. 
 In this section, we discuss redundancy elimination based on value analysis.
 
 \subsection{Value Numbering}
-\label{sec:pre_not_helped:GVN}
-\index{value numbering} The term \emph{value number} originated from the hash-based method developed by Cocke and Schwartz for recognizing when two expressions evaluate to the same value within a basic block. 
+\label{sec:pre_not_helped:GVN} \index{value numbering} 
+The term \emph{value number} originated from a hash-based method for recognizing when two expressions evaluate to the same value within a basic block. 
 The value number of an expression tree can be regarded as the index of its hashed entry in the hash table. 
 An expression tree is hashed recursively bottom up starting with the leaf nodes. 
 Each internal node is hashed based on its operator and the value numbers of its operands. 
 The local algorithm for value numbering will conduct a scan down the instructions in a basic block, assigning value numbers to the expressions. 
 At an assignment, the assigned variable will be assigned the value number of the right-hand side expression. 
 The assignment will also cause any value number that refers to that variable to be killed. 
-For example, the program code in Figure~\ref{fig:bb-value-num}(a) will result in the value numbers $v_1$, $v_2$ and $v_3$ shown in Figure~\ref{fig:bb-value-num}(b). 
+For example, the program code in Figure~\ref{fig:bb-value-num-code} will result in the value numbers $v_1$, $v_2$ and $v_3$ shown in Figure~\ref{fig:bb-value-num-H}. 
 Note that variable $c$ is involved with both value numbers $v_2$ and $v_3$ because it has been redefined.
 
 \begin{figure}[t]
 \centering
-\includegraphics[scale=0.55]{fig-bb-value-num.pdf}
+%\includegraphics[scale=0.55]{fig-bb-value-num.pdf}
+\subfloat[straightline code]{
+\label{fig:bb-value-num-code}
+\begin{minipage}[b]{0.3\textwidth}
+$$\begin{array}{l}
+a\gets\dots\\
+c\gets\dots\\
+b\gets c\\
+c\gets a+c\\
+d\gets a+c
+\end{array}$$
+\end{minipage}
+}
+\subfloat[value numbers]{
+\begin{minipage}[b]{0.6\textwidth}
+\label{fig:bb-value-num-H}
+$$\begin{array}{l}
+\GVN{a}=v_1\\
+\GVN{c}=v_2\\
+\GVN{b}=\GVN{c}=v_2\\
+\GVN{c}=\GVN{+(\GVN{a},\GVN{c})}=\GVN{+(v_1,v_2)}=v_3\\
+\GVN{d}=\GVN{+(\GVN{a},\GVN{b})}=\GVN{+(v_1,v_2)}=v_3\\
+\end{array}$$
+\end{minipage}
+}
 \caption{Value numbering in a local scope}
 \label{fig:bb-value-num}
 \end{figure}
 
 \begin{figure}[t]
 \centering
-\includegraphics[scale=0.55]{fig-glob-value-num.pdf}
+%\includegraphics[scale=0.55]{fig-glob-value-num.pdf}
+\subfloat[processed statements]{
+\begin{minipage}[b]{0.3\textwidth}
+$$\begin{array}{l}
+a_1\gets\dots\\
+c_1\gets\dots\\
+b_1\gets c_1\\
+c_2\gets a_1+c_1\\
+d_1\gets a_1+c_1
+\end{array}$$
+\end{minipage}
+}
+\subfloat[value numbers]{
+\begin{minipage}[b]{0.6\textwidth}
+$$\begin{array}{l}
+\GVN{a_1}=v_1\\
+\GVN{c_1}=v_2\\
+\GVN{b_1}=\GVN{c_1}=v_2\\
+\GVN{c_2}=\GVN{+(\GVN{a_1},\GVN{c_1})}=\GVN{+(v_1,v_2)}=v_3\\
+\GVN{d_1}=\GVN{+(\GVN{a_1},\GVN{b_1})}=\GVN{+(v_1,v_2)}=v_3\\
+\end{array}$$
+\end{minipage}
+}
 \caption{Global value numbering on SSA form}
 \label{fig:glob-value-num}
 \end{figure}
 
-SSA form enables value numbering to be easily extended to the global scope, called global value numbering (GVN), because each SSA version of a variable corresponds to at most one static value for the variable. 
-In the example of~\ref{fig:glob-value-num}, the same value numbers can be arrived at regardless of the order of processing the program code. 
-One subtlety is regarding the $\phi$'s. 
-When we value number a $\phi$, we would like the value numbers for its operands to have been determined. 
+SSA form enables value numbering to be easily extended to the global scope, called global value numbering (GVN\index{value numbering, global}), because each SSA version of a variable corresponds to at most one static value for the variable. 
+In the example of~\ref{fig:glob-value-num}, a traversal along any topological ordering of the SSA-graph can be used to assign value numbers to variables. 
+One subtlety is regarding the \phifuns. 
+When we value number a \phifun, we would like the value numbers for its use operands to have been determined already. 
 One strategy is to perform the global value numbering by visiting the nodes in the control-flow graph in a reverse post order traversal of the dominator tree. 
-This traversal strategy can minimize the instances when a $\phi$ operand has unknown value number when the $\phi$ itself needs to be value-numbered, except in the case of back edges arising from loops. 
-When this arises, we have no choice but to assign a new value number to the $\phi$. 
-For example, in this loop:
-\begin{tabbing}
-XX:\= while \= while \= while \= while \= while \= \kill
-
-\> \> $i_1 \leftarrow 0$; \\
-\> \> $j_1 \leftarrow 0$; \\
-\> \> do \{ \\
-\> \> \> $i_2 \leftarrow \phi(i_3, i_1)$; \\
-\> \> \> $j_2 \leftarrow \phi(j_3, j_1)$; \\
-\> \> \> $i_3 \leftarrow i_2 + 4$; \\
-\> \> \> $j_3 \leftarrow j_2 + 4$; \\
-\> \> while \texttt{<cond>}; \\
-\end{tabbing}
-When we try to hash a value number for either of the two $\phi$'s, the value numbers for $i_3$ and $j_3$ are not yet determined. 
+This traversal strategy can minimize the instances when a \phiuse has unknown value number which arises only in the case of back edges from loops. 
+When this arises, we have no choice but to assign a new value number to the variable defined by the \phifun. 
+For example, in the following loop:\\
+\begin{algorithm}[H]
+$i_1 \gets 0$\; 
+$j_1 \gets 0$\; 
+\While{\texttt<cond>}{
+  $i_2 \gets \phi(i_3, i_1)$\;
+  $j_2 \leftarrow \phi(j_3, j_1)$\; 
+  $i_3 \leftarrow i_2 + 4$\; 
+  $j_3 \leftarrow j_2 + 4$\;
+}
+\end{algorithm}
+when we try to hash a value number for either of the two $\phi$'s, the value numbers for $i_3$ and $j_3$ are not yet determined. 
 As a result, we create different value numbers for $i_2$ and $j_2$. 
 This makes the above algorithm unable to recognize that $i_2$ and $j_2$ can be given the same value number, or $i_3$ and $j_3$ can be given the same value number.
 
 The above hash-based value numbering algorithm can be regarded as pessimistic, because it will not assign the same value number to two different expressions unless it can prove they compute the same value. 
-There is a different approach to performing value numbering that is not hash-based and is optimistic. 
+There exists a different approach (see Section~\ref{sec:ssapre:related} for references) to performing value numbering that is not hash-based and is optimistic\index{value numbering, optimistic}. 
 It does not depend on any traversal over the program's flow of control, and so is not affected by the presence of back edges. 
 The algorithm partitions all the expressions in the program into \emph{congruence classes}. 
 Expressions in the same congruence class are considered \emph{equivalent} because they evaluate to the same static value. 
@@ -543,70 +583,77 @@ As the algorithm iterates, the congruence classes are subdivided into smaller on
 The algorithm terminates when no more subdivision can occur. 
 At this point, the set of congruence classes in this final partition will represent all the values in the program that we care about, and each congruence class is assigned a unique value number.
 
-\begin{figure}[t]
-\setcounter{linectr}{0}
-\centering
-\begin{minipage}[t]{6in}
-\begin{code}
-\x1 Place expressions with the same operator in the same congruence class
-\x1 $N \leftarrow$ maximum number of operands among all operators in the program
-\x1 $worklist \leftarrow$ set of all congruence classes
-\x1 {\bf while} $worklist \neq$ \{\} 
-\x2    Select and delete an arbitrary congruence class $c$ from $worklist$
-\x2    {\bf for} ($p = 0; p < N; p$++)
-\x3      $touched \leftarrow$ set of expressions in program that has a member of $c$ in position $p$
-\x3      {\bf for} each class $s$ such that $(s \cap touched)$ is not empty and $(s \cap touched) \subset s$
-\x4        Create a new class $n \leftarrow s \cap touched$
-\x4        $s \leftarrow s - n$
-\x4        {\bf if} $s \in worklist$
-\x5           Add $n$ to $worklist$
-\x4        {\bf else}
-\x5           Add smaller of $n$ and $s$ to $worklist$
-\end{code}
-\end{minipage}
-\caption{The partitioning algorithm}
-\label{fig:partition-alg}
-\end{figure}
-
-The details of this partitioning algorithm is shown in Figure~\ref{fig:partition-alg}. 
-At line 8, $(s \cap touched)$ being not empty implies $s$ uses a member of $c$ as its $p$th operand. 
-If $(s \cap touched)$ is a proper subset of $s$, it implies some member of $s$ does not have a member of $c$ as its $p$th operand. 
-This is the criterion for subdividing class $s$ because those members of $s$ that do not have a member of $c$ at its $p$th operand potentially compute to a different value. 
-After the partition into $n$ and the new $s$, if $s$ is not in the worklist (i.e., processed already), the partitioning was already stable with respect to the old $s$, and we can add either $n$ or the new $s$ to the worklist to re-stabilize with respect to that split of $s$. 
-Choosing the smaller one results in less overhead.
-
-While this partition-based algorithm is not obstructed by the presence of back edges, it does have its own deficiencies. 
+While such a partition-based algorithm is not obstructed by the presence of back edges, it does have its own deficiencies. 
 Because it has to consider one operand position at a time, it is not able to apply commutativity to detect more equivalences. 
 Since it is not applied bottom-up with respect to the expression tree, it is not able to apply algebraic simplifications while value numbering. 
 To get the best of both the hash-based and the partition-based algorithms, it is possible to apply both algorithms independently and then combine their results together to shrink the final set of value numbers.
 
-\subsection{Redundancy Elimination under Value Numbering}
+%% FAB: started to write this in the right format and concluded that there are too many missing/vague notions to have something that someone could understand... This corresponds to Alpern88 paper (Detecting Equality of Variables in Programs).
+%{
+%\def\cc\textit{cc}
+%\def\SS\mathcal{S}
+%\def\S{S}
+%\def\o{o}
+%\def\touched{\textit{touched}\xspace}
+%\begin{procedure}
+%\caption{Optimistic-GVN($S$)}
+%\KwIn{$\E$, set of all expressions}\;
+%\Let $W=\emptyset$\Comment*{Worklist of congruence classes}\;
+%\tcc{Place expressions with the same operator in the same congruence class}
+%\ForEach{operator $\o$}{
+%    \Let $\cc=\{\S\in \SS,\ \S\textrm{ uses operator }\o\}$\;
+%    $W=W\cup\{\cc\}$\;
+%}
+%\While{$W\neq\emptyset$}{ 
+%  \Let $\cc\in W$; $W=W-\{\cc\}$\;  
+%  \Let $\o$, common operator to all expressions in $\cc$\;  
+%  \ForEach{operand position $p$ of $\o$}{ 
+%    \Let $\touched$, set of expressions in $\SS$ that has a member of $\cc$ in position $p$
+%\x3      {\bf for} each class $s$ such that $(s \cap touched)$ is not empty and $(s \cap touched) \subset s$
+%\x4        Create a new class $n \leftarrow s \cap touched$
+%\x4        $s \leftarrow s - n$
+%\x4        {\bf if} $s \in worklist$
+%\x5           Add $n$ to $worklist$
+%\x4        {\bf else}
+%\x5           Add smaller of $n$ and $s$ to $worklist$
+%\end{code}
+%\end{minipage}
+%\caption{The partitioning algorithm}
+%\label{fig:partition-alg}
+%\end{figure}
+%
+%The details of this partitioning algorithm is shown in Figure~\ref{fig:partition-alg}. 
+%At line 8, $(s \cap touched)$ being not empty implies $s$ uses a member of $c$ as its $p$th operand. 
+%If $(s \cap touched)$ is a proper subset of $s$, it implies some member of $s$ does not have a member of $c$ as its $p$th operand. 
+%This is the criterion for subdividing class $s$ because those members of $s$ that do not have a member of $c$ at its $p$th operand potentially compute to a different value. 
+%After the partition into $n$ and the new $s$, if $s$ is not in the worklist (i.e., processed already), the partitioning was already stable with respect to the old $s$, and we can add either $n$ or the new $s$ to the worklist to re-stabilize with respect to that split of $s$. 
+%Choosing the smaller one results in less overhead.
+
+\section{Advanced Discussions and Further Readings}
+\paragraph{Redundancy Elimination under Value Numbering}
 So far, we have discussed finding computations that compute to the same values, but have not addressed eliminating the redundancies among them. 
 Two computations that compute to the same value exhibit redundancy only if there is an control-flow path that leads from one to the other.
 
 An obvious approach is to consider PRE for each value number separately. 
-A temporary $t$ will be introduced to store the redundant computations for each value number, but in this case, its value will stay the same throughout the lifetime of $t$. 
-If there are $\phi$'s introduced for the $t$, they will be merging identical values, and we know from experience that such $\phi$'s are rare. 
-A subset of such $\phi$'s is expected to come from PRE's insertions, and that implies that insertions introduced by value-number-based PRE are also rare.
-
-Value-number-based PRE also has to deal with the additional issue of \emph{how} to generate an insertion. 
+This can be done by introducing, for each value number, a temporary that stores the redundant computations.
+But value-number-based PRE has to deal with the issue of \emph{how} to generate an insertion. 
 Because the same value can come from different forms of expressions at different points in the program, it is necessary to determine which form to use at each insertion point. 
 If the insertion point is outside the live range of any variable version that can compute that value, then the insertion point has to be disqualified. 
-Due to this complexity, and the expectation that strictly partial redundancy is rare among computations that yield the same value, it is sufficient to perform only full redundancy elimination among computations that have the same value number.
+Due to this complexity, and the expectation that strictly partial redundancy is rare among computations that yield the same value, it seems to be sufficient to perform only full redundancy elimination among computations that have the same value number.
 
-But it is possible to broaden the scope and consider PRE among lexically identical expressions and value numbers at the same time. 
+However, it is possible to broaden the scope and consider PRE among lexically identical expressions and value numbers at the same time. 
 In this hybrid approach, it is best to relax our restriction on the style of program representation described in Section~\ref{section:Part3:Pre_not_helped:Intro}. 
-By not requiring Conventional SSA Form, we can more effectively represent the flow of values among the program variables~\footnote{We would remove the restriction that the result and operands of each $\phi$ have to be SSA versions derived from the same original program variable}. 
+By not requiring Conventional SSA Form, we can more effectively represent the flow of values among the program variables. 
 By regarding the live range of each SSA version to extend from its definition to program exit, we allow its value to be used whenever convenient. 
 The program representation can even be in the form of triplets, in which the result of every operation is immediately stored in a temporary. 
 It will just assign the value number of the right hand sides to the left-hand side variables.
-
-This hybrid approach can be implemented based on an adaptation of the SSAPRE framework. 
-Since each $\phi$ in the input can be viewed as merging different value numbers from the predecessor blocks to form a new value number, the $\Phi$-Insertion step will be driven by the presence of $\phi$'s for the program variables. 
+This hybrid approach (GVN-PRE\index{GVN-PRE} -- see below) can be implemented based on an adaptation of the SSAPRE framework. 
+Since each \phifun in the input can be viewed as merging different value numbers from the predecessor blocks to form a new value number, the \PHIfun insertion step will be driven by the presence of $\phi$'s for the program variables. 
 The FRGs can be formed from some traversal of the program code. 
 Each FRG can be regarded as a representation of the flow and merging of computed values based on which PRE can be performed by applying the remaining steps of the SSAPRE algorithm.
 
-\section{Additional Reading}
+\paragraph{Additional Reading}
+\label{sec:ssapre:related}
 The concept of partial redundancy was first introduced by Morel and Renvoise. 
 In their seminal work~\cite{MR79}, Morel and Renvoise showed that global common subexpressions and loop-invariant computations are special cases of partial redundancy, and they formulated PRE as a code placement problem. 
 The PRE algorithm developed by Morel and Renvoise involves bidirectional data-flow analysis, which incurs more overhead than unidirectional data-flow analysis. 
@@ -619,7 +666,7 @@ The above approaches to PRE are all based on encoding program properties in bit 
 Since the bit vector representation uses basic blocks as its granularity, a separate algorithm is needed to detect and suppress local common subexpressions. 
 Chow {\it et al}~\cite{Chow97,Kennedy99} came up with the first SSA-based approach to perform PRE. 
 Their SSAPRE algorithm is an adaptation of LCM that take advantage of the use-def information inherent in SSA. 
-It avoids having to encode data-flow information in bit vector form, and eliminates the need for a separate algorithm to suppress local common subexpressionsi. 
+It avoids having to encode data-flow information in bit vector form, and eliminates the need for a separate algorithm to suppress local common subexpressions. 
 Their algorithm was first to make use of SSA to solve data-flow problems for expressions in the program, taking advantage of SSA's sparse representation so that fewer number of steps are needed to propagate data-flow information. 
 The SSAPRE algorithm thus brings the many desirable characteristics of SSA-based solution techniques to PRE.
 
@@ -639,8 +686,8 @@ Hashed-based value numbering originated from Cocke and Schwartz~\cite{CS70}, and
 The partition-based algorithm was developed by Alpern {\it et al.}~\cite{AWZ88}. 
 Briggs {\it et al.}~\cite{Briggs97} presented refinements to both the hash-based and partition-based algorithms, including applying the hash-based method in a post order traversal of the dominator tree.
 
-VanDrunen and Hosking proposed their anticipation-based SSAPRE (A-SSAPRE) that removes the requirement of Convention SSA Form and is best for program representations in the form of triplets~\cite{Vandrunen03}. 
+VanDrunen and Hosking proposed A-SSAPRE (anticipation-based SSAPRE) that removes the requirement of Conventional SSA Form and is best for program representations in the form of triplets~\cite{Vandrunen03}. 
 Their algorithm determines optimization candidates and construct FRGs via a depth-first, preorder traversal over the basic blocks of the program. 
 Within each FRG, non-lexically identical expressions are allowed, as long as there are potential redundancies among them. 
-VanDrunen and Hosking subsequently presented their Value-based Partial Redundancy Elimination algorithm (GVN-PRE) that they claim to subsume both PRE and GVN~\cite{Vandrunen04}. 
-But in this algorithm, the PRE part is not SSA-based because it uses a system of data-flow equations at the basic block level to solve for insertion points.
+VanDrunen and Hosking~\cite{Vandrunen04} subsequently presented GVN-PRE (Value-based Partial Redundancy Elimination) which is claimed to subsume both PRE and GVN. 
+%But in this algorithm, the PRE part is not SSA-based because it uses a system of data-flow equations at the basic block level to solve for insertion points.
