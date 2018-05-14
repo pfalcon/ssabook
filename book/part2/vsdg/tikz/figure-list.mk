@@ -1,5 +1,6 @@
 FIGS= \
-      ssa-graph
+      ssa-graph \
+      pdg
 
 SUBFIGS= \
 
