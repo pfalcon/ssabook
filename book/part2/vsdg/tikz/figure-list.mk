@@ -1,0 +1,5 @@
+FIGS= \
+      ssa-graph
+
+SUBFIGS= \
+
