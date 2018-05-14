@@ -18,7 +18,7 @@ exploit micro-architecture features; and producing assembly source or object cod
 Historically, the 1986 edition of the ``Compilers Principles, Techniques, and
 Tools'' Dragon Book by Aho et al. \cite{Aho:1986:Book} lists the tasks of code generation as:
 \begin{itemize}
-\item Instruction selection and lowering of calling conventions.
+\item Instruction selection and lowering of the calling conventions.
 \item Control-flow (dominators, loops) and data-flow (variable liveness) analyses.
 \item Register allocation and stack frame building.
 \item Peephole optimizations.
@@ -35,24 +35,34 @@ LLVM \cite{Lattner:2004:CGO}, code generation techniques have significantly evol
 for exploiting the performance-oriented features of architectures and
 micro-architectures. In these compilers, code generator optimizations include:
 \begin{itemize}
-\item If-conversion \cite{chapter:if_conversion} using SELECT, conditional move, or predicated, instructions.
-\item Use of specialized addressing modes such as auto-modified and modulo
+\item If-conversion using SELECT, conditional move, or predicated, instructions (Chapter~\ref{chapter:if_conversion}).
+\item Use of specialized addressing modes such as auto-modified addressing \cite{Lee:2003:TODAES} and modulo
 addressing.
-\item Exploitation of hardware looping or static branch prediction hints.
+\item Exploitation of hardware looping \cite{Leupers:1997:Book} or static branch prediction hints.
 \item Matching fixed-point arithmetic and SIMD idioms to special instructions.
-\item Memory hierarchy optimizations, including cache prefetching and register preloading.
-\item VLIW instruction bundling, where instruction bundle encoding restrictions are enforced.
+\item Memory hierarchy optimizations, including cache prefetching and register preloading \cite{Dinechin:1999:CC}.
+\item VLIW instruction bundling, where parallel instruction groups constructed by postpass
+instruction scheduling are encoded into instruction bundles \cite{Kaestner:2001:LCTES}.
 %On architectures such as IA-64, some bundling constraints cannot be enforced by instruction scheduling \cite{Kaestner:2001:LCTES}.
 \end{itemize}
 
 This sophistication of modern compiler code generation motivates the
-introduction of the SSA form on the machine code program representation in order to simplify
-some of the analyses and optimizations. In particular, liveness analysis,
-unrolling-based loop optimizations, and exploitation of special instructions or
-addressing modes benefit significantly from the SSA form. On the other hand,
-the SSA form does not apply after register allocation, and there is
-debate as to whether or not it should be used in the register allocator itself
-\cite{Barik:2013:TACO}.
+introduction of the SSA form on the machine code program representation in
+order to simplify some of the analyses and optimizations. In particular,
+liveness analysis (Chapter~\ref{chapter:ssa_tells_nothing_of_liveness}),
+if-conversion (Chapter~\ref{chapter:if_conversion}), unrolling-based loop
+optimizations (Chapter~\ref{chapter:loop_tree}), and exploitation of special
+instructions or addressing modes benefit significantly from the SSA form.
+Chapter~\ref{chapter:code_selection} presents an advanced technique of
+instruction selection on the SSA form by solving a specialized quadratic
+assignment problem (PBQP). Although there is a debate as to whether or not SSA
+form should be used in a register allocator,
+Chapter~\ref{chapter:register_allocation} makes a convincing case for it. The
+challenge of correct and efficient SSA form destruction under the constraints
+of machine code is addressed in
+Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}. Finally,
+Chapter~\ref{chapter:hardware_compilation} illustrates how the SSA form has been successfully
+applied to hardware compilation.
 
 In this chapter, we review some of the issues of inserting the SSA form in a code
 generator, based on experience with a family of production code generators and linear
@@ -83,9 +93,9 @@ An \emph{instruction} is a member of the machine instruction set architecture
 with a specific bit-field in the instruction encoding, from \emph{implicit
 operands}, without any encoding bits.  Explicit operands correspond to
 allocatable architectural registers, immediate values, or instruction modifiers.
-Implicit operands correspond to architectural registers not part of a register
-class, and to registers implicitly used by some instructions; for instance, the
-status register, the procedure link register, or even the stack pointer.
+Implicit operands correspond to dedicated architectural registers,
+and to registers implicitly used by some instructions; for instance, the
+status register, the procedure link register, or the stack pointer.
 
 An \emph{operation} is an instance of an instruction that composes a program. It
 is seen by the compiler as an \emph{operator} applied to a list of operands
@@ -102,7 +112,7 @@ encoded in register mask immediates.
 \subsection{Representation of instruction semantics}
 
 Unlike IR operators, there is no straightforward mapping between machine
-instructions and their operational semantics. For instance, a substract instruction with
+instructions and their semantics. For instance, a substract instruction with
 operands $(a,b,c)$ may either compute $c \leftarrow a-b$ or $c \leftarrow b-a$
 or any such expression with permuted operands. Yet basic SSA form code cleanups
 such as constant propagation and sign extension removal need to know what is
@@ -110,8 +120,7 @@ actually computed by machine instructions. Machine instructions may also have
 multiple target operands, such as memory accesses with auto-modified addressing,
 combined division-modulus instructions, or side-effects on status registers.
 
-There are two ways to associate machine instructions with some
-semantics: \begin{itemize}
+There are two ways to associate machine instructions with semantics: \begin{itemize}
 
 \item Add properties to the instruction operator and to
 its operands, a technique used by the Open64 compiler. Operator properties
@@ -125,14 +134,15 @@ was implemented in the SML/NJ \cite{Leung:1999:PLDI} compiler and the LAO
 compiler \cite{Dinechin:2000:CASES}.  \end{itemize}
 
 An issue related to the representation of instruction semantics is how to
-encode it. Most information can be statically tabulated by the instruction operator,
-yet properties such as safety for control speculation, or being equivalent to a
-simple IR instruction, can be refined by the context where the instruction
+encode it. Most information can be statically tabulated by the instruction
+operator, yet properties such as safety for control speculation, or equivalence
+to a simple IR instruction, can be refined by the context where the instruction
 appears. For instance, range propagation may ensure that an addition cannot
-overflow, that a division by zero is impossible, or that a memory access is safe
-for control speculation.  Alternate semantic combinators, or modifiers of the
-instruction operator semantic combinator, need to be associated with each
-machine instruction of the code generator internal representation.
+overflow, that a division by zero is impossible, or that a memory access is
+safe for control speculation. Context-dependent semantics, which needs to be
+associated with specific machine instructions in the code generator internal
+representation, can be provided as annotations that overrides the statically
+tabulated information.
 
 Finally, code generation for some instruction set architectures require that
 pseudo-instructions with standard semantics be available, besides variants of
@@ -144,15 +154,15 @@ cases there is a need for pseudo-instructions to compose wide operands in
 register tuples, and to extract independently register allocatable operands from
 wide operands.
 
-\item Embedded architectures such as the Tensilica Xtensa
-\cite{Leison:2006:Book} provide hardware
-loops, where an implicit conditional branch back to the loop header is taken
+\item Embedded processor architectures such as the Tensilica Xtensa
+\cite{Gonzalez:2000:IEEEMicro} provide zero-overhead loops (hardware
+loops), where an implicit conditional branch back to the loop header is taken
 whenever the program counter matches some address. The implied loop-back branch
 is also conveniently materialized by a pseudo-instruction.
 
 \item Register allocation for predicated architectures requires that the live-ranges
 of temporary variables with predicated definitions be contained by
-kill pseudo-instructions \cite{Gillies:1996:MICRO}.
+pseudo-instructions \cite{Gillies:1996:MICRO} that provide backward kill points for liveness analysis.
 
 \end{itemize}
 
@@ -173,7 +183,7 @@ Explicit instruction operands may be constrained to use the same resource (an
 unspecified architectural register) between a source and a target operand, as
 illustrated by most x86 instructions \cite{Shanley:2010:Book} and by DSP-style auto-modified addressing
 modes \cite{Lee:2003:TODAES}.  A related naming constraint is to require different resources between
-two source operands, as with the MUL instructions on the ARM. The \emph{same
+source and destination operands, as with the MUL instructions on the ARMv5 processors. The \emph{same
 resource} naming constraints are represented under the SSA form by inserting a
 COPY operation between the constrained source operand and a new variable, then
 using this new variable as the constrained source operand. In case of multiple
@@ -192,7 +202,7 @@ analyses and optimizations.
 
 \subsection{Non-kill target operands} \label{sec:non-kill-target}
 
-The SSA form requires that variable definitions be kills. This is not the case
+The SSA form requires that variable definitions be killing definitions. This is not the case
 for target operands such as a status register that contains several independent
 bit-fields. Moreover, some instruction effects on bit-field may be \emph{sticky},
 that is, with an implied OR with the previous value. Typical sticky bits include
@@ -210,7 +220,9 @@ to distinguish four classes: \begin{description}
 
 \item[\bf Partial predicated execution support] SELECT instructions, first
 introduced by the Multiflow TRACE architecture \cite{Colwell:1987:ASPLOS}, are
-provided. The Multiflow TRACE 500 architecture was to include predicated store
+provided. These instructions write to a destination register the value of one
+among two source operands, depending on the condition tested on a third source
+operand. The Multiflow TRACE 500 architecture was to include predicated store
 and floating-point instructions \cite{Lowney:1993:JS}.
 
 \item[\bf Full predicated execution support] Most instructions accept a Boolean
@@ -272,8 +284,8 @@ encoded on 1 bit.
 % Enable to coalesce memory slots
 
 Engineering a code generator requires decisions about what information is
-transient, or belongs to the invariants of the program representation.  By
-invariant we mean a property which is ensured before and after each phase.
+transient, or belongs to the invariants of the program representation.  An
+\emph{invariant} is a property which is ensured before and after each phase.
 Transient information is recomputed as needed by some phases from the program
 representation invariants.  The applicability of the SSA form only spans the
 early phases of the code generation process: from instruction selection, down to
@@ -288,10 +300,10 @@ better engineered as invariants, in particular for operands, operations, basic
 blocks, and control-flow graph.  Operands which are SSA variables need to record
 the unique operation that defines them as a target operand, and possibly to
 maintain the list of where they appear as source operands. Operations such as
-$\phi$-functions, $\sigma$-functions of the SSI form \cite{BoissinotBDR12}, and
+$\phi$-functions, $\sigma$-functions of the SSI form \cite{Boissinot:2011:APLAS}, and
 parallel copies may appear as regular operations constrained to specific places
-in the basic blocks. The incoming arcs of basic blocks need also be kept in the
-same order as the source operands of each of its $\phi$-functions.
+in the basic blocks. The incoming (resp. outgoing) arcs of basic blocks need also be kept in the
+same order as the operands of each of its $\phi$-functions (resp. $\sigma$-functions).
 
 A program representation invariant that impacts SSA form engineering is the
 structure of loops. The modern way of identifying loops in a CFG is the
@@ -301,30 +313,27 @@ loop nesting forests for a given CFG, yet high-level information such as
 loop-carried memory dependences, or user-level loop annotations, are provided to
 the code generator. This information is attached to a loop structure, which thus
 becomes an invariant. The impact on the SSA form is that some loop nesting
-forests, such as the Havlak \cite{Havlak:1997:TOPLAS} loop structure, are better than
-others for key analyses such as SSA variable liveness
-\cite{Boissinot:2011:APLAS}.
+forests, such as the Havlak \cite{Havlak:1997:TOPLAS} loop structure, are more than
+others as they enable to attach to basic blocks the results of key analyses
+such as SSA variable liveness \cite{Boissinot:2011:APLAS}.
 
-Up-to-date live-in and live-out sets at basic block boundaries are also
+Live-in and live-out sets at basic block boundaries are also
 candidates for being program representation invariants. However, when using and
 updating liveness information under the SSA form, it appears convenient to
 distinguish the $\phi$-function contributions from the results of dataflow
 fix-point computation.  In particular, Sreedhar et al.  \cite{Sreedhar:1999:SAS}
 introduced the $\phi$-function semantics that became later known as
-\emph{multiplexing mode},% (see
-%Chapter~\ref{chapter:alternative_ssa_destruction_algorithm})
-where a
-$\phi$-function $B_0:a_0=\phi(B_1:a_1,\dots,B_n:a_n)$ makes $a_0$ live-in of
+\emph{multiplexing mode} (see Chapter~\ref{chapter:alternative_ssa_destruction_algorithm})
+where a $\phi$-function $B_0:a_0=\phi(B_1:a_1,\dots,B_n:a_n)$ makes $a_0$ live-in of
 basic block $B_0$, and $a_1,\dots a_n$ live-out of basic blocks $B_1,\dots B_n$.
 The classic basic block invariants $\hbox{LiveIn}(B)$ and $\hbox{LiveOut}(B)$
-are then complemented with $\hbox{PhiDefs}(B)$ and $\hbox{PhiUses}(B)$
-\cite{Boissinot:2011:APLAS}.
+are then complemented with $\hbox{PhiDefs}(B)$ and $\hbox{PhiUses}(B)$.
 
 Finally, some compilers adopt the invariant that the SSA form be
 \emph{conventional} across the code generation phases. This approach is
 motivated by the fact that classic optimizations such as SSA-PRE
 \cite{Kennedy:1999:TOPLAS} require that 'the live ranges of different versions
-of the same original program variable do not overlap', implying the SSA form is
+of the same original program variable do not overlap', implying the SSA form to be
 conventional. Other compilers that use SSA numbers and omit the $\phi$-functions
 from the program representation \cite{Lapkowski:1996:CASCON} are similarly
 constrained. Work by Sreedhar et al.  \cite{Sreedhar:1999:SAS} and by Boissinot
@@ -380,7 +389,7 @@ if-conversion is improved by supporting speculative execution. Speculative
 execution (control speculation) refers to executing an operation before knowing
 that its execution is required, such as when moving code above a branch
 \cite{Lowney:1993:JS} or promoting operation predicates \cite{Mahlke:1995:ISCA}.
-Speculative execution assumes instructions have reversible side effects, so
+Speculative execution assumes that instructions have reversible side effects, so
 speculating potentially excepting instructions requires architectural support.
 On the Multiflow TRACE 300 architecture and later on the Lx VLIW architecture
 \cite{Faraboschi:2000:ISCA}, non-trapping memory loads known as
@@ -390,9 +399,9 @@ execution \cite{August:1998:ISCA} is generalized from the \emph{sentinel} model
 
 \medskip
 The classic contributions to if-conversion
-did not consider the SSA form.
+did not consider the SSA form: \begin{itemize}
 
-\paragraph{Allen et al. \cite{Allen:1983:POPL}} convert control dependences to data
+\item[Allen et al. \cite{Allen:1983:POPL}] convert control dependences to data
 dependences, motivated by inner loop vectorization. They distinguish forward
 branches, exit branches, and backward branches, and compute Boolean guards
 accordingly. As this work pre-dates the Program Dependence Graph
@@ -400,22 +409,22 @@ accordingly. As this work pre-dates the Program Dependence Graph
 an issue. When comparing to later if-conversion techniques, only the conversion
 of forward branches is relevant.
 
-\paragraph{Park \& Schlansker \cite{Park:1991:TR58}} propose the RK algorithm based
+\item[Park \& Schlansker \cite{Park:1991:TR58}] propose the 'RK algorithm' based
 on control dependences. They assume a fully predicated architecture with only
 Conditional PDIs. The R function assigns a minimal set of Boolean predicates to
 basic blocks, and the K function express the way these predicates are computed.
 The algorithm is general enough to process cyclic and irreducible rooted flow
-graphs, but it practice it is applied to single entry acyclic regions.
+graphs, but in practice it is applied to single entry acyclic regions.
 
-\paragraph{Blickstein et al. \cite{Blickstein:1992:DTJ}} pioneer the use of CMOV
+\item[Blickstein et al. \cite{Blickstein:1992:DTJ}] pioneer the use of CMOV
 instructions to replace conditional branches in the GEM compilers for the Alpha
 AXP architecture.
 
-\paragraph{Lowney et al. \cite{Lowney:1993:JS}} match the innermost if-then
+\item[Lowney et al. \cite{Lowney:1993:JS}] match the innermost if-then
 constructs in the Multiflow Trace Scheduling compiler in order to generate the
 SELECT and the predicated memory store operations.
 
-\paragraph{Fang \cite{Fang:1996:LCPC}} assumes a fully predicated architecture with
+\item[Fang \cite{Fang:1996:LCPC}] assumes a fully predicated architecture with
 Conditional PDIs. The proposed algorithm is tailored to acyclic regions with
 single entry and multiple exits, and as such is able to compute R and K
 functions without relying on explicit control dependences.  The main improvement
@@ -424,20 +433,21 @@ instructions up the dominance tree through predicate promotion, except for
 stores and PDIs. This work further proposes a pre-optimization pass to hoist or
 sink common sub-expressions before predication and speculation.
 
-\paragraph{Leupers \cite{Leupers:1999:DATE}} focuses on if-conversion of nested
-if-then-else (ITE) statements on architectures with full conditional execution
+\item[Leupers \cite{Leupers:1999:DATE}] focuses on if-conversion of nested
+if-then-else statements on architectures with full conditional execution
 support. A dynamic programming technique appropriately selects either a
 conditional jump or a conditional instruction based implementation scheme for
-each ITE statement, and the objective is the reduction of worst-case execution
-time (WCET).
+each if-then-else statement, and the objective is the reduction of worst-case
+execution time (WCET).
 
-\medskip
+\end{itemize}
+
 A few contributions to if-conversion did use the SSA form
-but only internally.
+but only internally: \begin{itemize}
 
-\paragraph{Jacome et al. \cite{Jacome:2001:DAC}} propose the Static Single
+\item[Jacome et al. \cite{Jacome:2001:DAC}] propose the Static Single
 Assignment - Predicated Switching (SSA-PS) transformation aimed at clustered
-VLIW architectures, with predicated move instructions that operate inside
+VLIW architectures fitted with predicated move instructions that operate inside
 clusters (internal moves) or between clusters (external moves). The first idea
 of the SSA-PS transformation is to realize the conditional assignments
 corresponding to $\phi$-functions via predicated switching operations, in
@@ -446,7 +456,7 @@ external moves leverage the penalties associated with inter-cluster data
 transfers. The SSA-PS transformation predicates non-move operations and is
 apparently restricted to innermost if-then-else statements.
 
-\paragraph{Chuang et al. \cite{Chuang:2003:CGO}} introduce a predicated execution
+\item[Chuang et al. \cite{Chuang:2003:CGO}] introduce a predicated execution
 support aimed at removing non-kill register writes from the micro-architecture.
 They propose SELECT instructions called \emph{phi-ops}, predicated memory
 accesses, Unconditional PDIs, and ORP instructions for OR-ing multiple
@@ -459,16 +469,16 @@ operand is associated with the predicate of its source basic block. The
 $\phi$-lists are processed by topological order of the predicates to
 generate the {phi-ops}.
 
+\end{itemize}
+
 
 \subsection{If-conversion under SSA form}
 
 The ability to perform if-conversion on the SSA form of a program representation
 requires the handling of operations that do not kill the target operand because
-of predicated or conditional execution.
+of predicated or conditional execution: \begin{itemize}
 
-%See Chapter~\ref{chapter:if_conversion}
-
-\paragraph{Stoutchinin \& Ferri\`ere \cite{Stoutchinin:2001:MICRO}} introduce
+\item[Stoutchinin \& Ferri\`ere \cite{Stoutchinin:2001:MICRO}] introduce
 $\psi$-functions in order to represent fully predicated code under the SSA form,
 which is then called the $\psi$-SSA form.  The $\psi$-functions arguments are
 paired with predicates and are ordered in dominance order in the $\psi$-function
@@ -476,22 +486,22 @@ argument list, a correctness condition re-discovered by Chuang et al.
 \cite{Chuang:2003:CGO} for their phi-ops.
 % The $\psi$-SSA form is presented in Chapter~\ref{chapter:psi_ssa}.
 
-\paragraph{Stoutchinin \& Gao \cite{Stoutchinin:2004:EuroPar}} propose an
+\item[Stoutchinin \& Gao \cite{Stoutchinin:2004:EuroPar}] propose an
 if-conversion technique based on the predication of Fang \cite{Fang:1996:LCPC}
 and the replacement of $\phi$-functions by $\psi$-functions. They prove the
 conversion is correct provided the SSA form is conventional. The technique is
 implemented in Open64 for the ia64 architecture.
 
-\paragraph{Bruel \cite{Bruel:2006:ODES}} targets VLIW architectures with SELECT and
+\item[Bruel \cite{Bruel:2006:ODES}] targets VLIW architectures with SELECT and
 dismissible load instructions. The proposed framework reduces acyclic
 control-flow constructs from innermost to outermost, and the monitoring of the
 if-conversion benefits provides the stopping criterion. The core technique
 control speculates operations, reduces height of predicate computations, and
 performs tail duplication. It can also generate $\psi$-functions instead of
-SELECT operations. %A generalization of this framework, which also accepts
-%$\psi$-SSA form as input, is described in Chapter~\ref{chapter:if_conversion}.
+SELECT operations. A generalization of this framework, which also accepts
+$\psi$-SSA form as input, is described in Chapter~\ref{chapter:if_conversion}.
 
-\paragraph{Ferri\`ere \cite{Ferriere:2007:SCOPES}} extends the $\psi$-SSA form
+\item[Ferri\`ere \cite{Ferriere:2007:SCOPES}] extends the $\psi$-SSA form
 algorithms of \cite{Stoutchinin:2001:MICRO} to architectures with partial
 predicated execution support, by formulating simple correctness conditions for
 the predicate promotion of operations that do not have side-effects. This work
@@ -499,7 +509,8 @@ also details how to transform the $\psi$-SSA form to conventional $\psi$-SSA
 form by generating CMOV operations.
 %A self-contained explanation of these techniques appears in %Chapter~\ref{chapter:psi_ssa}.
 
-\medskip
+\end{itemize}
+
 Thanks to these contributions, virtually all if-conversion techniques formulated
 without the SSA form can be adapted to the $\psi$-SSA form, with the added
 benefit that already predicated code may be part of the input. In practice, these
@@ -521,16 +532,16 @@ enter from the top, but may exit from one or more locations
 \medskip
 Although if-conversion based on the $\psi$-SSA form appears effective for the
 different classes of architectural support, the downstream phases of the code
-generator require at least some adaptations of the plain SSA form algorithms to
+generator require some adaptations of the plain SSA form algorithms to
 handle the $\psi$-functions. The largest impact of handling $\psi$-function is
 apparent in the $\psi$-SSA form destruction \cite{Ferriere:2007:SCOPES}, whose
 original description \cite{Stoutchinin:2001:MICRO} was incomplete.
 
-In order to avoid such complexities, the Kalray VLIW code generator adopts
-simpler solution than $\psi$-functions to represent the non-kill effects of
-conditional operations on target operands.  This solution is based on the
-observation that under the SSA form, a CMOV operation is equivalent to a SELECT
-operation with a {same resource} naming constraint between one source and the
+In order to avoid such complexities, a code generator may adopt a simpler solution than
+the $\psi$-functions to represent the non-kill effects of
+conditional operations on target operands. The key observation is that under the SSA form,
+a CMOV operation is equivalent to a SELECT
+operation with a \emph{same resource} naming constraint between one source and the
 target operand. Unlike other predicated or conditional instructions, a SELECT
 instruction kills its target register.  Generalizing this observation provides a
 simple way to handle predicated or conditional operations in plain SSA form:
@@ -544,7 +555,7 @@ with the corresponding target operand.
 
 \end{itemize}
 This simple transformation enables the SSA form analyses and optimizations to
-remain oblivious to predicated or conditional code. The drawback of this
+remain oblivious to predicated or conditional execution. The drawback of this
 solution is that non-kill definitions of a given variable (before SSA variable
 renaming) remain in dominance order across program transformations, as opposed
 to $\psi$-SSA where predicate value analysis may enable this order to be relaxed.
