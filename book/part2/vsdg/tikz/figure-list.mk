@@ -1,6 +1,9 @@
 FIGS= \
       ssa-graph \
-      pdg
+      pdg \
+      gsa-example \
+      pdg-structured-a \
+      pdg-structured-b \
 
 SUBFIGS= \
 
