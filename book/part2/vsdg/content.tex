@@ -30,7 +30,7 @@ For this chapter, we assume that the reader already has familiarity with SSA (se
 Since all of the graphs in this chapter are data-flow graphs, let us define them. A data-flow graph\index{data-flow graph|mainidx} (DFG) is a directed graph $G=(V,E)$ where the edges $E$ represent the flow of data from the result of one instruction to the input of another. 
 An instruction executes once all of its input data values have been computed. When an instruction executes, it produces a new data value which is propagated to other connected instructions.
 
-Whereas the CFG imposes a total ordering on instructions - the same ordering that the programmer wrote them in - the DFG has no such concept of ordering; it just models the flow of data. This means that is typically needs a companion representation such as the CFG to ensure that optimized programs are still correct.
+Whereas the CFG imposes a total ordering on instructions - the same ordering that the programmer wrote them in - the DFG has no such concept of ordering; it just models the flow of data. This means that it typically needs a companion representation such as the CFG to ensure that optimized programs are still correct.
 However, with access to both the CFG and DFG, optimizations such as dead code elimination, constant folding and common subexpression elimination can be performed effectively. But this comes at a price: keeping both graphs updated during optimization can be costly and complicated. 
 
 \section{The SSA Graph}
@@ -119,7 +119,7 @@ the control dependence subgraph $E_{C}$ and the data dependence subgraph $E_{D}$
 %% $E_{C}$ can be cyclic if a loop is present in the program, since a loop in the PDG is defined by a control back edge forming an SCR. $E_{D}$ is always acyclic, and can be seen as a series of data dependency DAGs for each basic block, which are then connected together based on the data flow through the program. 
 
 Statement nodes\index{PDG, statement nodes} represent instructions in the program. 
-Predicate nodes\index{PDG, predicate nodes} test a conditional statement and have {\sf true} and {\sf false} edges to represent the choice taken on evaluation of the predicate. 
+Predicate nodes\index{PDG, predicate nodes} test a conditional statement and have \true and \false edges to represent the choice taken on evaluation of the predicate. 
 Region nodes\index{PDG, region nodes} group control dependencies with identical source and label together. 
 If the control dependence for a region node is satisfied, then it follows that all of its children can be executed. 
 Thus, if a region node has three different control-independent statements as immediate children, then those statements could potentially be executed in parallel. 
@@ -187,9 +187,9 @@ We usually distinguish the three following forms of gating functions:
 \item The $\phiif$\index{$\phiif$-function} function explicitly represents the condition which determines which $\phi$ value to select. 
   A $\phiif$ function of the form $\phiif(p,v_{1},v_{2})$ has $p$ as a predicate, and $v_{1}$ and $v_{2}$ as the values to be selected if the predicate evaluates to true or false respectively. 
   This can be read simply as \textit{if-then-else}.
-\item The $\phientry$\index{$\phientry$-function} function is inserted at loop headers to select the initial and loop carried values. A $\phientry$ function of the form $\phientry(v_{init},v_{iter})$, has $v_{init}$ as the initial input value for the loop, and $v_{iter}$ as the iterative input. We replace \phifuns at loop headers with $\phientry$ functions.
+\item The $\phientry$\index{$\phientry$-function} function is inserted at loop headers to select the initial and loop carried values. A $\phientry$ function of the form $\phientry(v_\textit{init},v_\textit{iter})$, has $v_\textit{init}$ as the initial input value for the loop, and $v_\textit{iter}$ as the iterative input. We replace \phifuns at loop headers with $\phientry$ functions.
 \item The $\phiexit$\index{$\phiexit$-function} function determines the value of a variable when a loop terminates. 
-  A $\phiexit$ function of the form $\phiexit(p,v_{final})$ has $P$ as predicate and $v_{final}$ as the definition reaching beyond the loop.
+  A $\phiexit$ function of the form $\phiexit(p,v_\textit{exit})$ has $P$ as predicate and $v_\textit{exit}$ as the definition reaching beyond the loop.
 \end{itemize}
 
 \begin{figure}
@@ -288,83 +288,74 @@ One approach has been to combine both of these into one representation, as is do
 Alternatively, we can utilize gating functions along with a data-flow graph for an effective way of representing whole program information using data-flow information.
 
 \subsection{Backwards symbolic analysis with GSA}
-GSA is useful for performing symbolic analysis. 
+GSA is useful for performing symbolic analysis\index{analysis, symbolic}. 
 Traditionally, symbolic analysis is performed by forward propagation of expressions through a program. 
 However, complete forward substitution is expensive and can result in a large quantity of unused information and complicated expressions. 
-Instead, \textit{backward}, demand-driven substitutions can be performed using GSA which only substitutes \textit{needed} information. 
+Instead, \textit{backward}, demand-driven\index{analysis, demand-driven} substitutions can be performed using GSA which only substitutes \textit{needed} information. 
 Consider the following program:
 
-\begin{figure*}[ht]
-\centering
-\subfloat{
-  \begin{minipage}[b]{0.3\linewidth}
-    \texttt{\begin{tabbing}
-        R: \= JMAX = Expr\\
-        S: \> if(P) \= then J = JMAX - 1\\
-           \> \> else J = JMAX\\
-        T: \> $assert$(J ${\leq}$ JMAX)
-      \end{tabbing}}
-  \end{minipage}
-}
-\caption{A program on which to perform symbolic analysis.}
+{
+  \def\Expr{\textit{EXPR}}
+  \def\JMAX{\textit{JMAX}}
+  \newcommand\assert[1]{\textbf{assert}\left(#1\right)}
+  
+\begin{algorithm}[H]
+  $\JMAX\gets\Expr$\;
+  \eIf{$p$}{
+    $J\gets\JMAX-1$\;
+  }{
+    $J\gets\JMAX$\;
+  }
+  $\assert{J\leq \JMAX}$\;
 \label{fig:tupaduaexample}
-\end{figure*}
+\end{algorithm}
 
-If forward substitutions were to be used in order to determine whether the assertion is correct, then the symbolic value of \texttt{J} must be discovered, starting at the top of the program in statement \texttt{R}. 
-Forward propagation through this program results in statement \texttt{T} being $assert((if $ $\texttt{P}$ $then$ $\texttt{Expr-1}$ $else$ $\texttt{Expr)}$ $\leq$ $\texttt{Expr}$ $\texttt{)}$, thus the \textit{assert} statement evaluates to true. 
+If forward substitutions were to be used in order to determine whether the assertion is correct, then the symbolic value of $J$ must be discovered, starting at the top of the program in statement at line~1. 
+Forward propagation through this program results in statement at line~6 being
+$$\assert{\textbf{if } p \textbf{ then } \Expr-1 \textbf{ else }\Expr)\leq \Expr}$$
+thus the $\assert{}$ statement evaluates to \true. 
 In real, non-trivial programs, these expressions can get unnecessarily long and complicated.
+
 
 Using GSA instead allows for backwards, demand-driven substitutions. The program above has the following GSA form:
 
-\begin{figure*}
-\centering
-  \begin{minipage}[b]{0.3\linewidth}
-    \texttt{\begin{tabbing}
-        R: \= ${JMAX_1}$ = Expr\\
-        S: \> if(P) \= then ${J_1}$ = ${JMAX_1}$ - 1\\
-           \> \> else ${J_2}$ = ${JMAX_1}$\\
-           \> ${J_3}$ = $\phiif$(P,${J_1}$,${J_2}$)\\
-        T: \> $assert$(${J_3}$ ${\leq}$ ${JMAX_1}$)
-      \end{tabbing}}
-  \end{minipage}
-\caption{Figure~\ref{fig:tupaduaexample} in GSA form.}
+\begin{algorithm}[H]
+  $\JMAX_1\gets\Expr$\;
+  \eIf{$p$}{
+    $J_1\gets\JMAX_1-1$\;
+  }{
+    $J_2\gets\JMAX_1$\;
+  }
+  $J_3\gets\phiif(p,J_1,J_2)$\;
+  $\assert{J_3\leq \JMAX_1}$\;
 \label{fig:tupaduagsasubs}
-\end{figure*}
+%\caption{Figure~\ref{fig:tupaduaexample} in GSA form.}
+\end{algorithm}
 
-Using this backwards substitution technique, we start at statement \texttt{T}, and follow the SSA links of the variables from ${J_3}$. 
-This allows for skipping of any intermediate statements that do not affect variables in \texttt{T}. 
+Using this backwards substitution technique, we start at statement on line~7, and follow the SSA links of the variables from $J_3$. 
+This allows for skipping of any intermediate statements that do not affect variables in this statement. 
 Thus the substitution steps are:
 
-\begin{figure*}
-\centering
-  \begin{minipage}[b]{0.3\linewidth}
-    \texttt{\begin{tabbing}
-        ${J_3}$ = \= $\phiif$(P,${J_1}$,${J_2}$)\\
-        \> = $\phiif$(P,${JMAX_1 - 1}$,${JMAX_1}$)
-      \end{tabbing}}
-  \end{minipage}
-\caption{Substitution steps in backwards symbolic analysis.}
-\label{fig:tuapaduagsaexample}
-\end{figure*}
+    \begin{tabbing}
+        ${J_3}$ \= = $\phiif(p,J_1,J_2$)\\
+        \> = $\phiif(p,\JMAX_1 - 1,\JMAX_1)$
+    \end{tabbing}
 
-The backwards substitution then stops because enough information has been found, avoiding the redundant substitution of ${JMAX_1}$ by ${Expr}$. 
+The backwards substitution then stops because enough information has been found, avoiding the redundant substitution of $\JMAX_1$ by $\Expr$. 
 In non-trivial programs this can greatly reduce the number of redundant substitutions, making symbolic analysis significantly cheaper.
 
 \section{Value State Dependence Graph}
-
-The gating functions defined in the previous section were used in the development of a sparse data-flow graph IR called the Value State Dependence Graph (VSDG). 
+The\index{value state dependence graph}\index{VSDG} gating functions defined in the previous section were used in the development of a sparse data-flow graph IR called the Value State Dependence Graph (VSDG). 
 The VSDG is a directed graph consisting of operation nodes, loop and merge nodes together with value and state dependency edges. 
 Cycles are permitted but must satisfy various restrictions. 
 A VSDG represents a single procedure: 
 this matches the classical CFG.
-
+%
 An example VSDG is shown in Figure~\ref{fig:fac}. 
-In (a) we have the original C source for a recursive factorial function. 
-The corresponding VSDG (b) shows both value and state edges and a selection of nodes.
 
 \begin{figure}[!htb]
   \centering
-  \subfloat[code]{
+  \subfloat[code]{\label{fig:fac-code}
 \begin{minipage}[b]{2.2in}
 \texttt{\begin{tabbing}
 int \=fac(int n) \{\\
@@ -378,7 +369,7 @@ int \=fac(int n) \{\\
 \end{tabbing}}
 \end{minipage}
   }
-  \subfloat[VSDG]{
+  \subfloat[VSDG]{\label{fig:fac-vsdg}
 %  \includegraphics[scale=0.5]{example-fac}
   \tikzfigure{example-fac}
 }
@@ -393,13 +384,13 @@ int \=fac(int n) \{\\
 A VSDG is a labeled directed graph $G=(N,E_V,E_S,\ell,N_0,N_\infty)$ consisting of nodes $N$ (with unique entry node $N_0$ and exit node $N_\infty$), value dependency edges $E_V \subseteq N \times N$, state dependency edges $E_S \subseteq N \times N$. 
 The labelling function $\ell$ associates each node with an operator.
 
-The VSDG corresponds to a reducible program, e.g.~there are no cycles in the VSDG except those mediated by $\theta$ (loop) nodes.
+The VSDG corresponds to a reducible program, e.g.~there are no cycles in the VSDG except those mediated by \Tns (loop).
 
 Value dependency ($E_V$) indicates the flow of values between nodes. 
 State dependency ($E_S$) represents two things; 
-the first is essential sequential dependency required by the original program, e.g.~a given \texttt{load} instruction may be required to follow a given \texttt{store} instruction without being re-ordered, and a \texttt{return} node in general must wait for an earlier loop to terminate even though there might be no value-dependency between the loop and the \texttt{return} node. 
+the first is essentially a sequential dependency required by the original program, e.g.~a given \texttt{load} instruction may be required to follow a given \texttt{store} instruction without being re-ordered, and a \texttt{return} node in general must wait for an earlier loop to terminate even though there might be no value-dependency between the loop and the \texttt{return} node. 
 The second purpose is that state dependency edges can be added incrementally until the VSDG corresponds to a unique CFG. 
-Such state dependency edges are called {\em serializing} edges.
+Such state dependency edges are called {\em serializing} edges\index{VSDG, serializing edge}.
 
 The VSDG is implicitly represented in SSA form: 
 a given operator node, $n$, will have zero or more $E_V$-consumers using its value. 
@@ -415,25 +406,19 @@ it is therefore useful to talk about the idea of an output {\em port} for $n$ be
 %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\subsection{Nodes}
 There are four main classes of VSDG nodes: 
-value nodes (representing pure arithmetic), \Gns\ (conditionals), \Tns\ (loops), and state nodes (side effects). 
+value nodes (representing pure arithmetic)\index{VSDG, value nodes}, \Gns\ (conditionals)\index{VSDG, \Gns}, \Tns\ (loops)\index{VSDG, \Tns}, and state nodes\index{VSDG, state nodes} (side effects). 
 The majority of nodes in a VSDG generate a value based on some computation (add, subtract, etc.) applied to their dependent values (constant nodes, which have no dependent nodes, are a special case).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\subsection{$\gamma$-Nodes}
-
+\paragraph{\Gns}\index{VSDG, \Gns}
 The \Gn\ is similar to the $\phiif$ gating function in being dependent on a control predicate, rather than the control-independent nature of SSA \phifuns.
-%
-
-A \Gn\ $\gamma(C, T, F)$ evaluates the condition dependency $C$, and returns the value of $T$ if $C$ is true, otherwise $F$.
-
-%
+A \Gn\ $\gamma(C:p,\ T:v_{\true},\ F:v_{\false})$ evaluates the condition dependency $p$, and returns the value of $v_{\true}$ if $p$ is true, otherwise $v_{\false}$.
 We generally treat \Gns\ as single-valued nodes (contrast \Tns, which are treated as tuples), with the effect that two separate \Gns\ with the same condition can be later combined into a tuple using a single test. 
 Figure~\ref{fig:twinPhis} illustrates two \Gns\ that can be combined in this way. 
-Here, we use a pair of values (2-tuple) of values for $T$ and $F$. 
+Here, we use a pair of values (2-tuple) of values for prots $T$ and $F$. 
 We also see how two syntactically different programs can map to the same structure in the VSDG.
 
 \begin{figure}[!hb]
@@ -473,20 +458,18 @@ b) if (p) then
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\subsection{$\theta$-Nodes}
-
+\paragraph{\Tns}\index{VSDG, \Tns}
 The \Tn\ models the iterative behavior of loops, modeling loop state with the notion of an \emph{internal value} which may be updated on each iteration of the loop. 
 It has five specific elements which represent dependencies at various stages of computation. 
 The \Tn\ corresponds to a merge of the $\phientry$ and $\phiexit$ nodes in Gated SSA.
 %
-
-A \Tn\ $\theta(C,I,R,L,X)$ sets its internal value to initial value $I$ then, while condition value $C$ holds true, sets $L$ to the current internal value and updates the internal value with the repeat value $R$. 
-When $C$ evaluates to false computation ceases and the last internal value is returned through $X$.
+A \Tn\ $\theta(C:p,\ I:v_\textit{init},\ R:v_\textit{return},\ L: v_\textit{iter},\ X:v_{exit})$ sets its internal value to initial value $v_\textit{init}$ then, while condition value $p$ holds \true, sets $v_\textit{iter}$ to the current internal value and updates the internal value with the repeat value $v_\textit{return}$. 
+When $p$ evaluates to \false computation ceases and the last internal value is returned through $v_\textit{exit}$.
 
 %
 A loop which updates $k$ variables will have: 
-a single condition $C$, initial values $I_1,\ldots,I_k$, loop iterations $L_1,\ldots,L_k$, loop returns $R_1,\ldots,R_k$, and loop exits $X_1,\ldots,X_k$. 
-The example in Figure~\ref{fig:thetatuple} also shows a pair (2-tuple) of values being used for $I,R,L,X$, one for each loop-variant value.
+a single condition $p$, initial values $v_{\textit{init}}^1,\ldots,v_{\textit{init}}^k$, loop iterations $v_{\textit{iter}}^1,\ldots,v_{\textit{iter}}^k$, loop returns $v_{\textit{return}^1},\ldots,v_{\textit{return}}^k$, and loop exits $v_{\textit{exit}}^1,\ldots,v_{\textit{exit}}^k$.
+The example in Figure~\ref{fig:thetatuple} also shows a pair (2-tuple) of values being used on ports $I,R,L,X$, one for each loop-variant value.
 
 \begin{figure}[!ht]
 \centering
@@ -498,7 +481,7 @@ for(i = 0;
     i < 10; 
     ++i)
          --j;
-	
+	 
 ... = j;
 \end{verbatim}
 \end{minipage}
@@ -520,12 +503,11 @@ for(i = 0;
 The \Tn\ directly implements pretest loops (\instruction{while}, \instruction{for}); 
 post-test loops (\instruction{do...while}, \instruction{repeat...until}) are synthesized from a pre-test loop preceded by a duplicate of the loop body. 
 At first this may seem to cause unnecessary duplication of code, but it has two important benefits: 
-({\it i\/}) it exposes the first loop body iteration to optimization in post-test loops (cf. 
-loop-peeling), and ({\it ii\/}) it normalizes all loops to one loop structure, which both reduces the cost of optimization, and increases the likelihood of two schematically dissimilar loops being isomorphic in the VSDG.
+(1)~it exposes the first loop body iteration to optimization in post-test loops (cf.~loop-peeling), and (2)~it normalizes all loops to one loop structure, which both reduces the cost of optimization, and increases the likelihood of two schematically dissimilar loops being isomorphic in the VSDG.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\subsection{State Nodes}
+\paragraph{State Nodes}\index{VSDG, state nodes}
 Loads and stores compute a value and state. 
 The \instruction{call} node takes both the name of the function to call and a list of arguments, and returns a list of results; 
 it is treated as a state node as the function body may read or update state.
