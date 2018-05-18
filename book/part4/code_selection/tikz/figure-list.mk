@@ -1,0 +1,5 @@
+FIGS= \
+      demo
+
+SUBFIGS= \
+
