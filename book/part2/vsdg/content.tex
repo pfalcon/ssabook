@@ -41,28 +41,27 @@ To demonstrate what the graph looks like, we present some sample code in Figure~
 
 \begin{figure}[ht]
 \centering
-\subfloat{
-  \begin{minipage}{0.3\linewidth}
-    \texttt{\begin{tabbing}
-  begin: \=$a_{0}$ = 0; \\
-  \> $i_{0}$ = 0; \\
-  loop: \> $a_{1}$ = $\phi$($a_{0}$,$a_{2}$); \\
-  \> $i_{1}$ = $\phi$($i_{0}$,$i_{2}$); \\
-        \> if $i_1$ > 100 goto end; \\
-  \> $a_{2}$ = $a_{1}$ * $i_{1}$; \\
-  \> $i_{2}$ = $i_{1}$ + 1; \\
-  \> if $a_2$ > 20 goto end;\\
-        \> goto loop;\\
-  end: \> $a_{3}$ = $\phi$($a_{1}$,$a_{2}$); \\
-  \> $i_{3}$ = $\phi$($i_{1}$,$i_{2}$); \\
-  \> print($a_{3}$ + $i_{3}$);
-      \end{tabbing}}
-  \end{minipage}
+\subfloat[SSA code]{
+  \tikzfigure{ssa-graph-CFG}
+  %% \begin{minipage}{0.3\linewidth}
+  %%   \texttt{\begin{tabbing}
+  %% begin: \=$a_{0}$ = 0; \\
+  %% \> $i_{0}$ = 0; \\
+  %% loop: \> $a_{1}$ = $\phi$($a_{0}$,$a_{2}$); \\
+  %% \> $i_{1}$ = $\phi$($i_{0}$,$i_{2}$); \\
+  %%       \> if $i_1$ > 100 goto end; \\
+  %% \> $a_{2}$ = $a_{1}$ * $i_{1}$; \\
+  %% \> $i_{2}$ = $i_{1}$ + 1; \\
+  %% \> if $a_2$ > 20 goto end;\\
+  %%       \> goto loop;\\
+  %% end: \> $a_{3}$ = $\phi$($a_{1}$,$a_{2}$); \\
+  %% \> $i_{3}$ = $\phi$($i_{1}$,$i_{2}$); \\
+  %% \> print($a_{3}$ + $i_{3}$);
+  %%     \end{tabbing}}
+  %% \end{minipage}
 }
-\subfloat{
-  \begin{minipage}{0.6\linewidth}
+\subfloat[SSA graph]{
     \tikzfigure{ssa-graph}
-  \end{minipage}
 }
 
 \caption{Some SSA code translated into an SSA graph. Note how edges \textit{demand} the input values for a node.}
@@ -238,17 +237,20 @@ Diverse approaches can be used to generate the correct nested $\phiif$ or $\phie
 \begin{figure}
 \subfloat[structured code]{
   \begin{minipage}[b]{0.2\linewidth}
-    \texttt{\begin{tabbing}
-        $a_1=...$\\
-        if \= ($p$) then \\
-        \> if \= ($q$) then\\
-        \> \> $a_2=\dots$\\
-        \> else $a_3=\dots$\\
-        else\\ 
-        \> if ($r$) then\\
-        \> \> \dots\\ 
-        \> else \dots
-    \end{tabbing}}
+    \begin{algorithm}[H]
+      $a_1\gets\dots$\;
+      \eIf{$p$}{
+        \eIf{$q$}{
+          $a_2\gets\dots$\;
+        }{
+          $a_3\gets\dots$\;
+        }}{
+          \eIf{$r$}{
+            \dots
+          }{\dots
+          }
+      }
+    \end{algorithm}
   \end{minipage}
 }
 %% \subfloat{
@@ -423,35 +425,34 @@ We also see how two syntactically different programs can map to the same structu
 
 \begin{figure}[!hb]
 \centering
-\begin{tabular}{ccc}	\cline{1-1}
-\begin{minipage}[l]{2.0in}
-\begin{verbatim}
-a) if (p) then
-     x = 2;
-     y = 3;
-   else
-     x = 4;
-     y = 5;
-
-b) if (p) then
-     x = 2;
-   else 
-     x = 4;
-   ...
-   if (p) then
-     y = 3
-   else 
-     y = 5;
-\end{verbatim}
-\end{minipage}	
-& \hspace {0.2in}
-\begin{minipage}[m][\height][l]{1.6in}
-\tikzfigure{vsdg-gammanodes}
-\end{minipage} \\ \cline{1-1}
-\end{tabular}
-
-\caption{Two different code schemes (a) \& (b) map to the same
-\Gn\ structure.}
+\subfloat[two different code schemes]{
+  \begin{minipage}[l]{2.0in}
+    \begin{algorithm}[H]
+      \eIf{p}{
+        $x\gets 2$\;
+        $y\gets 3$\;
+      }{
+        $x\gets 4$\;
+        $y\gets 5$\;
+      }
+    \end{algorithm}
+    \begin{algorithm}[H]
+      \eIf{p}{
+        $x\gets 2$\;
+      }{
+        $x\gets 4$\;
+      }
+      \eIf{p}{
+        $y\gets 3$\;
+      }{
+        $y\gets 5$\;
+      }
+    \end{algorithm}
+\end{minipage}}
+\subfloat[same \Gn]{
+  \tikzfigure{vsdg-gammanodes}
+}
+\caption{Two different code schemes map to the same \Gn\ structure.}
 
 \label{fig:twinPhis}
 \end{figure}
@@ -521,8 +522,8 @@ Note also that the VSDG neither forces loop invariant code into nor out-of loop 
 
 \subsection{Dead node elimination with the VSDG}
 By representing a program as a VSDG, many optimizations become trivial. 
-For example, consider dead node elimination (Figure~\ref{fig:dnevsdg}). 
-This combines both dead code elimination and unreachable code elimination. 
+For example, consider dead node elimination\index{dead node elimination} (Figure~\ref{fig:dnevsdg}). 
+This combines both dead code elimination\index{dead code elimination} and unreachable code elimination. 
 Dead code generates VSDG nodes for which there is no value or state dependency path from the \texttt{return} node, i.e., the result of the function does not in any way depend on the results of the dead nodes. 
 Unreachable code generates VSDG nodes that are either dead, or become dead after some other optimization. 
 Thus, a \textit{dead node} is a node that is not post dominated by the exit node $N_{\infty}$. 
@@ -530,63 +531,48 @@ To perform dead node elimination, only two passes are required over the VSDG res
 one pass to identify all of the live nodes, and a second pass to delete the unmarked (i.e., dead) nodes. 
 It is safe because all nodes which are deleted are guaranteed never to be reachable from the \texttt{return} node.
 
-\begin{figure}[!ht]
-\centering
-\begin{minipage}[t]{5in}
-\noindent{\bf Input:} A VSDG $G(N,E_V,E_S,N_{\infty})$ with zero or more dead nodes.\\
-\noindent{\bf Output:} A VSDG with no dead nodes.
-\setcounter{linectr}{0}
-
-Procedure DNE($G$) \{
-\begin{code}
-\x1 WalkAndMark($N_{\infty},G$);
-\x1 DeleteMarked($G$);
-\end{code}
-\}
-
-\setcounter{linectr}{0}
-Procedure WalkAndMark($n,G$) \{
-\begin{code}
-\x1 {\bf if} $n$ is marked {\bf then} finish;
-\x1 mark $n$;
-\x1 {\bf foreach} (node $m \in N \wedge (n,m) \in (E_V \cup E_S)$) {\bf do}
-\x2    WalkAndMark($m$);
-\end{code}
-\}
-
-\setcounter{linectr}{0}
-Procedure DeleteMarked($G$) \{
-\begin{code}
-\x1 {\bf foreach} (node $n \in N$) {\bf do}
-\x2    {\bf if} $n$ is unmarked {\bf then} $delete$($n$);
-\end{code}
-\}
-
-\end{minipage}
+\begin{algorithm}[!ht]
+{\bf Input:} A VSDG $G(N,E_V,E_S,N_{\infty})$ with zero or more dead nodes\;
+{\bf Output:} A VSDG with no dead nodes\;
+$\textit{WalkAndMark}(N_{\infty},G)$\;
+$\textit{DeleteMarked}(G)$\;
+\vspace{1em}
+\Func{WalkAndMark($n,G$)}{
+  \lIf{$n$ is marked}{\textbf{return}}
+  mark $n$\;
+  \ForEach{node $m \in N \wedge (n,m) \in (E_V \cup E_S)$}{
+    $\textit{WalkAndMark}(m)$\;
+  }
+}
+\vspace{1em}
+\Func{DeleteMarked($G$)}{
+  \ForEach{node $n \in N$}{
+    \lIf{$n$ is unmarked}{$\textit{delete}(n)$}\;
+  }
+}
 \caption{Dead node elimination on the VSDG.}
 \label{fig:dnevsdg}
-\end{figure}
+\end{algorithm}
 
-%\section{Summary}
 \section{Further readings}
 A compiler's intermediate representation can be a graph, and many different graphs exist in the literature. 
 We can represent the control flow of a program as a Control-Flow Graph (CFG)~\cite{808479}, where straight-line instructions are contained within basic blocks and edges show where the flow of control may be transferred to once leaving that block. 
 A CFG is traditionally used to convert a program to SSA form~\cite{115320}. 
 We can also represent programs as a type of Data-flow Graph (DFG)~\cite{dennis74first,dennis80data}, and SSA can be represented in this way as an SSA Graph~\cite{504710}. 
-An example was given that used the SSA Graph to detect a variety of induction variables in loops~\cite{143131,201003}. 
-It has also been used for performing instruction selection techniques~\cite{1375663,1269857}, operator strength reduction~\cite{504710}, rematerialization~\cite{143143}, and has been combined with an extended SSA language to aid compilation in a parallelizing compiler~\cite{Stoltz_extendedssa}.
+An example was given that used the SSA Graph to detect a variety of induction variables\index{scalar evolution} in loops~\cite{143131,201003}. 
+It has also been used for performing instruction selection\index{code selection} techniques~\cite{1375663,1269857}, operator strength reduction\index{strenght reduction}~\cite{504710}, rematerialization\index{rematerialization}~\cite{143143}, and has been combined with an extended SSA language to aid compilation in a parallelizing\index{parallelisation} compiler~\cite{Stoltz_extendedssa}.
 
 % cite Harrold.
-The Program Dependence Graph (PDG) as defined by Ferrante et al.~\cite{ferrante87the} represents control and data dependencies in one graph. 
+The Program Dependence Graph (PDG)\index{program dependence graph} as defined by Ferrante et al.~\cite{ferrante87the} represents control and data dependencies in one graph. 
 Their definition of control dependencies that turns out to be equivalent to the post-dominance frontier leads to confusions at it uses a non-standard definition of post-dominance. 
 We choose to report the definition of Bilardi and Pingali~\cite{Bilardi1996}. 
 Section~\ref{section:vsdg:pdg} mentions possible abstractions to represent data dependencies for dynamically allocated objects. 
 Among others, the book of Darte et al.~\cite{DarteRV-book} provides a good overview of such representations. 
-The PDG has been used for program slicing~\cite{ottenstein84program}, testing~\cite{bates93incremental}, and widely for parallelization~\cite{ferrante85on,ferrante88generating,simons90a,baxter89program}. 
-We showed an example of how the PDG directly exposes parallel code.
+The PDG has been used for program slicing\index{program slicing}~\cite{ottenstein84program}, testing~\cite{bates93incremental}, and widely for parallelization~\cite{ferrante85on,ferrante88generating,simons90a,baxter89program}. 
+%We showed an example of how the PDG directly exposes parallel code.
 
 Gating functions can be used to create directly interpretable \phifuns. 
-These are used in Gated Single Assignment Form. 
+These are used in Gated Single Assignment Form\index{gated single assignment}. 
 Alpern et al.~\cite{AlpernWZ88} presented a precursor of GSA for structured code, to detect equality of variables. 
 This chapter adopts their notations, i.e., a $\phiif$ for a if-then-else construction, a $\phientry$ for the entry of a loop, and a $\phiexit$ for its exit. 
 The original usage of GSA was by Ballance et al.~\cite{93578} as an intermediate stage in the construction of the Program Dependence Web IR. 
