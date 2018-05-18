@@ -6,7 +6,8 @@ FIGS= \
       pdg-structured-b \
       example-fac \
       vsdg-gammanodes \
-      vsdg-theta
+      vsdg-theta \
+      ssa-graph-CFG
 
 SUBFIGS= \
 
