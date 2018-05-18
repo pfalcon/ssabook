@@ -1,6 +1,7 @@
 FIGS= \
       ssa-graph \
       pdg \
+      pdg-CFG \
       gsa-example \
       pdg-structured-a \
       pdg-structured-b \
