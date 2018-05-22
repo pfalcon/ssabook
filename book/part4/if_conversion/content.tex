@@ -295,7 +295,7 @@ $ d = \psi(q\cond d_1, \overline{q} \cond d_2) $
 
 Speculating code is the easiest part as it could be done prior to the actual if-conversion by simply hoisting the code above the conditional branch. Still we would like to outline that since \psifuns are part of the intermediate representation, they can be considered for inclusion in a candidate region for if-conversion, and in particular for speculation. However, the strength of $\psi$-SSA allows to treat \psifuns just as any other operation. Consider the code of Figure~\ref{nested_psi} containing a sub region already processed. To speculate the operation $d_1=\texttt{f}(x)$, the operation defining $x$, i.e., the \psifun, also has to be speculated. Similarly, all the operations defining the operands $x_1$ and $x_2$ should also be speculated. If one of them can produce hazardous execution, then the \psifun cannot be speculated, which forbids in turn the operation $d_1=\texttt{f}(x)$ to be speculated. Marking operations that cannot be speculated can be done easily using a forward propagation along def-use chains\index{def-use chains}.
 
-All operations that cannot be speculated, including possibly some \psifuns, must be predicated. Suppose we are considering a none-speculated operation we aim at if-converting, that is part of the \texttt{then} branch on predicate $q$. Just as for $x_2=c$ in Figure~\ref{nested_psi}, this operation might be already predicated (on $\overline{p}$ here) prior to the if-conversion. In that case, a \textit{projection}\index{projection}\index{$\psi$-projection} on $q$ is performed, meaning that instead of predicating $x_2=c$ by $\overline{p}$ it gets predicated by $q\wedge \overline{p}$. A \psifun can also be projected on a predicate $q$ as described in Chapter~\ref{chapter:psi_ssa}: All gates of each operand are individually projected on $q$. As an example, originally non-gated operand $x_1$ gets gated by $q$, while the $\overline{p}$ gated operand $x_2$ gets gated by $s=q\wedge\overline{p}$. Note that as opposed to speculating it, predicating a \psifun does not impose to predicate the operation that define its operands. The only subtlety related to projection is related to generating the new predicate as the logical conjunction of the original guard (e.g., $\overline{p}$)\index{guard} and the current branch predicate (e.g., $q$). Here $s$ needs to be computed at some point. Our heuristic consists in first listing the set of all necessary predicates and then emitting the corresponding code at the earlier place. Here, used predicates are $q$, $\overline{q}$, and $q\wedge\overline{p}$. $q$ and $\overline{q}$ are already available. The earlier place where $q\wedge\overline{p}$ can be computed is just after calculating $p$.
+All operations that cannot be speculated, including possibly some \psifuns, should be predicated. Suppose we are considering a none-speculated operation we aim at if-converting, that is part of the \texttt{then} branch on predicate $q$. Just as for $x_2=c$ in Figure~\ref{nested_psi}, this operation might be already predicated (on $\overline{p}$ here) prior to the if-conversion. In that case, a \textit{projection}\index{projection}\index{$\psi$-projection} on $q$ is performed, meaning that instead of predicating $x_2=c$ by $\overline{p}$ it gets predicated by $q\wedge \overline{p}$. A \psifun can also be projected on a predicate $q$ as described in Chapter~\ref{chapter:psi_ssa}: All gates of each operand are individually projected on $q$. As an example, originally non-gated operand $x_1$ gets gated by $q$, while the $\overline{p}$ gated operand $x_2$ gets gated by $s=q\wedge\overline{p}$. Note that as opposed to speculating it, predicating a \psifun does not impose to predicate the operation that define its operands. The only subtlety related to projection is related to generating the new predicate as the logical conjunction of the original guard (e.g., $\overline{p}$)\index{guard} and the current branch predicate (e.g., $q$). Here $s$ needs to be computed at some point. Our heuristic consists in first listing the set of all necessary predicates and then emitting the corresponding code at the earlier place. Here, used predicates are $q$, $\overline{q}$, and $q\wedge\overline{p}$. $q$ and $\overline{q}$ are already available. The earlier place where $q\wedge\overline{p}$ can be computed is just after calculating $p$.
 
 Once operations have been speculated or projected (on $q$ for the \texttt{then} branch, on $\overline{q}$ for the \texttt{else}), each \phifuns at the merge point is replaced by a \psifun: operands of speculated operations are placed first and guarded by true; operands of projected operations follow, guarded by the predicate of the corresponding branch.
 
@@ -307,42 +307,46 @@ Hot regions are rarely just composed of simple \texttt{if-then-else-end} control
 
 %% For each basic block considered within the region, a predicate must be computed and assigned to the corresponding instructions. Those predicate computations introduce new instructions and new data dependencies, that need to be controlled while the region is been if-converted.
 
-The algorithm takes as input a CFG in SSA form and applies incremental reductions on it using a list of candidate conditional basic blocks sorted in post-order. 
-Each basic block in the list designates the head of a sub-graph that can be if-converted using the transformations described in Section~\ref{sec:basic}. Post-order traversal allows to process the regions from inner to outer. When the if-converted region cannot grow anymore because of resources, or because a basic block cannot be if-converted, then another candidate is considered in the post-order list until all the CFG is explored.
+The algorithm takes as input a CFG in SSA form and applies incremental reductions using the list of candidate conditional basic blocks sorted in post-order. 
+Each basic block in the list designates the head of a sub-graph that can be if-converted using the transformations described in Section~\ref{sec:basic}. Post-order traversal allows to process each region from inner to outer. When the if-converted region cannot grow anymore because of resources, or because a basic block cannot be if-converted, then the next sub-graph candidate is considered until all the CFG is explored.
 %
 %% During this incremental process, since nested regions are already predicated when evaluating the if-conversion of a branch, all the side effects, such as new predicate merging instructions, new conditional moves merging flow or new data dependencies, will be accounted to evaluate the profitability.
 %
-Note that as the reduction proceeds, maintaining SSA\index{incremental update, of SSA} can be done using the general technique described in Chapter~\ref{chapter:repair_maintain_ssa_after_optimization}. However, basic ad-hoc updates can be implemented instead. 
+Note that as the reduction proceeds, maintaining SSA\index{incremental update, of SSA} can be done using the general technique described in Chapter~\ref{chapter:repair_maintain_ssa_after_optimization}, or basic ad-hoc updates can be implemented instead locally. 
 
-Consider for example the CFG from the gnu \texttt{wc} (word count) program reported in Figure~\ref{fig:wc1}. The exit node $\textit{BB}7$, and basic block $\textit{BB}3$ that contains a function call cannot be if-converted (represented in gray). 
- The post-order list of conditional blocks (represented in bold) is [$\textit{BB}11$, $\textit{BB}17$, $\textit{BB}16$, $\textit{BB}14$, $\textit{BB}10$, $\textit{BB}9$, $\textit{BB}6$, $\textit{BB}2$]. 
-The first candidate region is composed of $\{\textit{BB11}, \textit{BB}2, \textit{BB}12\}$. $\phi$ reduction can be applied, promoting the instructions of $\textit{BB}12$ in $\textit{BB}11$. $\textit{BB}2$ becomes the single successor of $\textit{BB}11$. 
-%
-The region headed by $\textit{BB}17$ is then considered. $\textit{BB}19$ cannot yet be promoted because of the side entries coming both from $\textit{BB}15$ and $\textit{BB}16$. $\textit{BB}19$ is duplicated into a $\textit{BB}19'$ with $\textit{BB}2$ as successor. $\textit{BB}19'$ can then be promoted into $\textit{BB}17$.
-%
-The region headed by $\textit{BB}16$ that have now $\textit{BB}17$ and $\textit{BB}19$ as successors is considered. $\textit{BB}19$ is duplicated into $\textit{BB}19''$, so as to promote $\textit{BB}17$ and $\textit{BB}19'$ into $\textit{BB}16$ through $\phi$ reduction. $\textit{BB}19'$ already contains predicated operations from the previous transformation. So, a new merging predicate is computed and inserted. After the $\phi$ removal is fully completed $\textit{BB}16$ has a unique successor, $\textit{BB}2$.
-%
-$\textit{BB}14$ is the head of the new candidate region where $\textit{BB}15$, $\textit{BB}16$ can be promoted. Again since $\textit{BB}16$ contains predicated and predicate setting operations, a newly predicate must be created to hold the merged conditions.
-$\textit{BB}10$ is then considered; $\textit{BB}14$ needs to be duplicated to $\textit{BB}14'$. The process finished with the region head by $\textit{BB}9$.
+Consider for example the CFG in Figure~\ref{fig:wc1}. The exit node $\textit{BB}7$, and basic block $\textit{BB}3$ that contains a function call cannot be if-converted (represented in gray) and are excluded from the critical path and the considered region can be if-converted into an hyperblock.
 
 \begin{figure}
   \subfloat[Initial] {
-    \includegraphics[scale=0.7]{graph_a}
+    \includegraphics[scale=0.6]{graph_a}
     \label{fig:wc1}}
-  \subfloat[If-conversion] {
-    \hspace{1em}\includegraphics[scale=0.7]{graph_b}\hspace{1em}
+  \subfloat[If-converted] {
+    \hspace{1em}\includegraphics[scale=0.6]{graph_b}\hspace{1em}
     \label{fig:wc2}}
-  \subfloat[Tail duplication] {
-    \includegraphics[scale=0.7]{graph_c}
-    \label{fig:wc3}}
-\caption{\label{fig:wc example}If-conversion of \texttt{wc} (word count program). basic blocks in gray cannot be if-converted. Tail duplication can be used to exclude \textit{BB3} from the to-be-if-converted region.}
+\caption{\label{fig:wc example}If-conversion of \texttt{wc} (word count program). basic blocks in gray cannot be if-converted.}
 \end{figure}
 
+ The post-order list of conditional blocks (represented in bold) is [$\textit{BB}9$, $\textit{BB}14$, $\textit{BB}13$, $\textit{BB}11$, $\textit{BB}8$, $\textit{BB}7$, $\textit{BB}5$, $\textit{BB}2$]. 
+The first candidate region is composed of $\textit{BB}9$, $\textit{BB}10$, $\textit{BB}2$. $\phi$ reduction can be applied, promoting the instructions of $\textit{BB}10$ in $\textit{BB}9$. $\textit{BB}2$ becomes the single successor of $\textit{BB}9$. 
+%
+The region headed by $\textit{BB}14$ is then considered. $\textit{BB}15$ cannot yet be promoted because of the multiple side entries. Thus $\textit{BB}15$ is duplicated into a $\textit{BB}15'$ and can then be promoted into $\textit{BB}14$.
+%
+The region headed by $\textit{BB}13$ that have now $\textit{BB}17$ and $\textit{BB}15$ as successors is considered. $\textit{BB}15$ is duplicated into $\textit{BB}15'$, so as to promote $\textit{BB}17$ and $\textit{BB}15'$ into $\textit{BB}16$ through $\phi$ reduction. Note that $\textit{BB}15'$ already contains predicated operations from the previous transformation. So, a new merging predicate is computed and inserted. After the $\phi$ removal is fully completed $\textit{BB}16$ has a unique successor, $\textit{BB}2$.
+%
+$\textit{BB}11$ is the head of the new candidate region where $\textit{BB}15$, $\textit{BB}16$ can be promoted. Again since $\textit{BB}16$ contains predicated and predicate setting operations, a newly predicate must be created to hold the merged conditions.
+$\textit{BB}10$ is then considered; $\textit{BB}11$ needs to be duplicated to $\textit{BB}11'$. The process finished with the region head by $\textit{BB}7$.
 
 \subsection{Tail Duplication}
 
 \index{tail duplication}
-Just as for the example of Figure~\ref{fig:wc example}, some basic blocks (such as \textit{BB3}) may have to be excluded from the region to if-convert. \emph{Tail duplication} can be used for this purpose. Similar to path duplication\index{path duplication} described in Section~\ref{sec:basic}, the goal of tail duplication is to get rid of incoming edges of a region to if-convert. This is usually done in the context of hyperblock formation\index{hyperblock formation}, which technique consists in, as opposed to the inner-outer incremental technique described in this chapter, to if-convert a region in ``one shot''. Consider again the example of Figure~\ref{fig:wc1}, and suppose the set of selected basic blocks defining the region to if-convert consists of all basic blocks from \textit{BB2} to \textit{BB19} excluding \textit{BB3}, \textit{BB4}, and \textit{BB7}. Getting rid of the incoming edge from \textit{BB4} to \textit{BB6} is possible by duplicating all basic blocks of the region reachable from \textit{BB6} as shown in Figure~\ref{fig:wc2}. 
+Just as for the example of Figure~\ref{fig:wc example}, some basic blocks (such as \textit{BB3}) may have to be excluded from the region to if-convert. \emph{Tail duplication} can be used for this purpose. Similar to path duplication\index{path duplication} described in Section~\ref{sec:basic}, the goal of tail duplication is to get rid of incoming edges of a region to schedule. This is usually done in the context of hyperblock formation\index{hyperblock formation}, which technique consists in, as opposed to the inner-outer incremental technique described in this chapter, to if-convert a region in ``one shot''. Consider again the example of Figure~\ref{fig:wc2}, getting rid of the incoming edge from \textit{BB3} is possible by duplicating all basic blocks of the region reachable from \textit{BB5} as shown in Figure~\ref{fig:wc3}. The duplicated \textit{BB5} can now be scheduled with respectively \textit{BB3} and \textit{BB4}.
+
+\begin{figure}
+    \subfloat[Tail duplication] {
+    \includegraphics[scale=0.6]{graph_d}
+    \label{fig:wc3}}
+\caption{\label{fig:tail example}Tail duplication can be used to exclude \textit{BB3} from the selected region.}
+\end{figure}
 
 Formally, consider a region $\cal R$ made up of a set of basic blocks, a distinguished one $\textit{entry}$ and the others denoted $\left(B_i\right)_{2\leq i\leq n}$, such that any $B_i$ is reachable from \textit{entry} in $\cal R$. Suppose a basic block $B_s$ has some predecessors $\textit{out}_1,\ \dots,\ \textit{out}_m$ that are not in $\cal R$. Tail duplication consists in: (1) for all $B_j$ (including $B_s$) reachable from $B_s$ in $\cal R$, create a basic block $B'_j$ as a copy of $B_j$; (2) any branch from $B'_j$ that points to a basic block $B_k$ of the region is rerouted to its duplicate $B'_k$; (3) any branch from a basic block $\textit{out}_k$ to $B_s$ is rerouted to $B'_s$. In our example, we would have $\textit{entry}=\textit{BB2}$, $B_s=\textit{BB6}$, and $\textit{out}=\textit{BB4}$.
 
