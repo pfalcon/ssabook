@@ -255,22 +255,29 @@ As these optimizations are not specific to the SSA representation, we will not d
 \label{sec:cfg_ssa_mapping}
 In the case of the spatial mapping approach, the SSA form plays an important role in the minimization of multiplexers and thus in the simplification of the corresponding data-path logic and execution control.
 
-Consider the illustrative example in Figure~\ref{fig:Fig.4.5}(a). 
+Consider the illustrative example in Figure~\ref{fig:Fig.4.5-a}. 
 Here basic block {\tt BB0} defines a value for the variables $x$ and $y$. 
 One of the two subsequent basic blocks {\tt BB1} redefines the value of $x$ whereas the other basic block {\tt BB2} only reads them.
 
-A naive implementation based exclusively on liveness analysis (see Chapter~\ref{chapter:ssa_tells_nothing_of_liveness}) would use for both variables $x$ and $y$ multiplexers\index{multiplexer} to merge their values as inputs to the hardware circuit implementing basic block {\tt BB3} as depicted in Figure~\ref{fig:Fig.4.5}(b). 
+A naive implementation based exclusively on liveness analysis (see Chapter~\ref{chapter:ssa_tells_nothing_of_liveness}) would use for both variables $x$ and $y$ multiplexers\index{multiplexer} to merge their values as inputs to the hardware circuit implementing basic block {\tt BB3} as depicted in Figure~\ref{fig:Fig.4.5-b}. 
 As can be observed, however, the SSA-form representation captures the fact that such a multiplexer is only required for variable $x$. 
-The value for the variable $y$ can be propagated either from the output value in the hardware circuit for basic block {\tt BB0} (as shown in Figure~\ref{fig:Fig.4.5}(c)) or from any other register that has a valid copy of the $y$ variable. 
+The value for the variable $y$ can be propagated either from the output value in the hardware circuit for basic block {\tt BB0} (as shown in Figure~\ref{fig:Fig.4.5-c}) or from any other register that has a valid copy of the $y$ variable. 
 The direct flow of the single definition point to all its uses, across the hardware circuits corresponding to the various basic blocks in the SSA form thus allows a compiler to use the minimal number of multiplexer strictly required\footnote{Under the scenarios of a spatial mapping and with the common disclaimers about static control-flow analysis.}.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[scale=0.4]{Fig-4-5}
-\caption{Mapping of variable values across hardware circuit using spatial mapping; 
-  CFG in SSA form (a); 
-  naive hardware circuit using live variable information for multiplexer placement (b); 
-  hardware circuit using \phifun for multiplexer placement (c).}
+  \subfloat[CFG]{\label{fig:Fig.4.5-a}
+    \tikzfigure{Fig-4-5-a}
+  }
+  
+  \subfloat[naive multiplexer placement using liveness]{\label{fig:Fig.4.5-b}
+    \tikzfigure{Fig-4-5-b}
+  }
+  \subfloat[multiplexer placement using \phifun]{\label{fig:Fig.4.5-c}
+    \tikzfigure{Fig-4-5-c}
+  }
+%\includegraphics[scale=0.4]{Fig-4-5}
+\caption{Mapping of variable values across hardware circuit using spatial mapping.}
 \label{fig:Fig.4.5}
 \end{figure}
 
@@ -283,14 +290,36 @@ The generation of the hardware circuit simply uses the register that holds the c
 Figure~\ref{fig:Fig.4.6} illustrates an example of a mapping using the information provided by the Gated-SSA form.
 
 \begin{figure}[htbp]
-\centering
-\includegraphics[scale=0.375]{Fig-4-6}
-\caption{Hardware generation example using Gated-SSA form;\newline (a) original 
-code; (b) Gated-SSA representation; (c) hardware circuit implementation 
-using spatial mapping.}
+  \centering
+  \adjustbox{valign=b}{
+  \begin{minipage}{0.3\textwidth}
+  \subfloat[original code]{
+    \begin{algorithm}[H]
+      \eIf{$x>0$}{
+        $x\gets \dots$\;}{
+        $x\gets \dots$\;}
+      $v\gets x+\dots$
+  \end{algorithm}}
+  
+  \subfloat[Gated-SSA form]{
+    \begin{algorithm}[H]
+      $p_0\gets (x_0>0)$\;
+      \eIf{$p_0$}{
+        $x_1\gets \dots$\;}{
+        $x_2\gets \dots$\;}
+      $x_3\gets \phiif(p, x_1, x_2)$\;
+      $v_1\gets x_3+\dots$
+  \end{algorithm}}
+  \end{minipage}}
+  \hfill
+  \adjustbox{valign=b}{
+  \subfloat[Hardware circuit implementation using spatial mapping]{
+    \hspace{4em}\tikzfigure{Fig-4-6}
+  }}
+%\includegraphics[scale=0.375]{Fig-4-6}
+\caption{Hardware generation example using Gated-SSA form.}
 \label{fig:Fig.4.6}
 \end{figure}
-%TODO: use the gamma notation here instead
 
 When combining multiple predicates in the Gated-SSA form, it is often desirable to leverage the control-flow representation in the form of the Program Dependence Graph\index{program dependence graph} (PDG) described in Chapter~\ref{chapter:vsdg}. 
 In this representation, basic blocks that share common execution predicates (i.e., both execute under the same predicate conditions) are linked to the same {\em region} nodes\index{region node}. 
@@ -301,12 +330,32 @@ Otherwise, creates a new hardware circuit.
 This lazy code generation and predicate composition achieves the goal of hardware circuit sharing as illustrated by the example in Figure~\ref{fig:Fig.4.7} where some of the details were omitted for simplicity.
 
 \begin{figure}[htb]
-\centering
-\includegraphics[scale=0.35]{Fig-4-7}
-\caption{Use of the predicates in region nodes of the PDG for mapping into the multiplexers associated with each \phifun; 
-  (a)~source code; 
-  (b)~the PDG representation skeleton; 
-  (c)~outline of hardware design implementation.}
+  \centering
+  \adjustbox{valign=b}{
+    \begin{minipage}{0.3\textwidth}
+      \subfloat[source code]{
+        \begin{algorithm}[H]
+          \eIf{$P(x,y)$}{
+            $\dots$\;
+            \eIf{$Q(x,y)$}{
+              $\dots$\;
+            }{$\dots$}
+          }{$\dots$\;}
+        \end{algorithm}
+      }
+      
+      \subfloat[PDG skeleton. Region nodes omitted.]{
+        \tikzfigure{Fig-4-7-b}
+      }
+    \end{minipage}
+  }
+  \adjustbox{valign=b}{
+    \subfloat[hardware design implementation]{
+      \tikzfigure{Fig-4-7-c}
+    }
+  }
+%\includegraphics[scale=0.35]{Fig-4-7}
+\caption{Use of the predicates in region nodes of the PDG for mapping into the multiplexers associated with each \phifun.}
 \label{fig:Fig.4.7}
 \end{figure}
 
