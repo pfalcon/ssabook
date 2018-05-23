@@ -47,20 +47,20 @@
 \def\pop{\textrm{pop}}
 
 \section{Introduction}
-This chapter illustrates the use of strict SSA properties\index{strict SSA form} to simplify and accelerate \emph{liveness analysis}, which determines for all variables the set of program points where they are \emph{live}, i.e., their values are potentially used by subsequent operations.
+This chapter illustrates the use of strict SSA properties\index{strict SSA form} to simplify and accelerate \emph{liveness analysis}\index{liveness}, which determines for all variables the set of program points where they are \emph{live}, i.e., their values are potentially used by subsequent operations.
 Liveness information is essential to solve storage assignment problems, eliminate redundancies, and perform code motion.
-For instance, optimizations like software pipelining, trace scheduling, register-sensitive redundancy elimination, if-conversion, as well as register allocation heavily rely on liveness information.
+For instance, optimizations like software pipelining, trace scheduling, register-sensitive redundancy elimination (see Chapter~\ref{chapter:pre_not_helped}), if-conversion (see Chapter~\ref{chapter:if_conversion}), as well as register allocation (see Chapter~\ref{chapter:register_allocation}) heavily rely on liveness information.
 
 % What is the problem
 
-Traditionally, liveness information is obtained by data-flow analysis\index{data-)flow analysis}:
+Traditionally, liveness information is obtained by data-flow analysis\index{data-flow analysis}:
 liveness sets are computed for all basic blocks and variables simultaneously by solving a set of data-flow equations.
-These equations are usually solved by an iterative algorithm, propagating information backwards through the control-flow graph (CFG) until a fixed point is reached and the liveness sets stabilize.
+These equations are usually solved by an iterative algorithm, propagating information backwards\index{backward analysis} through the control-flow graph (CFG) until a fixed point is reached and the liveness sets stabilize.
 The number of iterations depends on the control-flow structure of the considered program, more precisely on the structure of its loops.
 
 % What is our main result. I think this is simple enough so that is can be put it in the introduction
 In this chapter, we show that, for strict SSA-form programs, the live-range of a variable has nice properties that can be expressed in terms of loop nesting forest of the CFG and its corresponding directed acyclic graph, the \emph{forward-CFG}\index{forward control-flow graph}.
-Informally speaking, and restricted to reducible CFGs, those properties for a variable $v$ are:
+Informally speaking, and restricted to reducible CFGs\index{reducible CFG}, those properties for a variable $v$ are:
 \begin{itemize}
 \item
 	$v$ is live at a program point~$q$ if and only if $v$ is live at the entry~$h$ of the largest loop/basic block (highest node in the loop nesting forest\index{loop nesting forest}) that contains~$q$ but not the definition of~$v$.
@@ -75,12 +75,12 @@ at most two passes over the CFG are necessary.
 The first pass, very similar to traditional data-flow analysis, computes partial liveness sets by traversing the forward-CFG backwards.
 The second pass refines the partial liveness sets and computes the final solution by propagating forward along the loop nesting forest.
 For the sake of clarity, we first present the algorithm for reducible CFGs.
-Irreducible CFGs can be handled with a slight variation of the algorithm, with no need to modify the CFG itself.
+Irreducible CFGs\index{irreducible CFG} can be handled with a slight variation of the algorithm, with no need to modify the CFG itself.
 
 % Other var-by-var etc approaches for liveness sets computation
 Another approach to liveness analysis more closely follows the classical definition of liveness:
 a variable is live at a program point~$q$ if~$q$ belongs to a path of the CFG leading from a definition of that variable to one of its uses without passing through another definition of the same variable.
-Therefore, the live-range of a variable can be computed using a backward traversal starting on its uses and stopping when reaching its definition (unique under SSA).
+Therefore, the live-range\index{live-range} of a variable can be computed using a backward traversal starting on its uses\index{upward exposed use} and stopping when reaching its definition (unique under SSA).
 
 % Our liveness check solution
 One application of the properties of live-ranges under strict SSA-form is the design of an extremely simple liveness check algorithm.
@@ -108,8 +108,8 @@ Liveness\index{liveness} is a property relating program points to sets of variab
 Intuitively, a variable is considered live at a given program point when its value will be used in the future of any dynamic execution.
 Statically, liveness can be approximated by following paths backwards on the control-flow graph, connecting the uses of a given variable to its definitions---or, in the case of SSA forms, to its unique definition.
 The variable is said to be \emph{live} at all program points along these paths.
-For a CFG node~$q$, representing an instruction or a basic block, a variable $\var{v}$ is \emph{live-in} at~$q$ if there is a path, not containing the definition of $\var{v}$, from~$q$ to a node where $\var{v}$ is used (including $q$ itself).
-It is \emph{live-out} at~$q$ if it is live-in at some successor of~$q$.
+For a CFG node~$q$, representing an instruction or a basic block, a variable $\var{v}$ is \emph{live-in}\index{live-in} at~$q$ if there is a path, not containing the definition of $\var{v}$, from~$q$ to a node where $\var{v}$ is used (including $q$ itself).
+It is \emph{live-out}\index{live-out} at~$q$ if it is live-in at some successor of~$q$.
 
 The computation of live-in and live-out sets at the entry and the exit of basic blocks is usually termed \emph{liveness analysis}.
 It is indeed sufficient to consider only these sets at basic block boundaries since liveness within a basic block is trivial to recompute from its live-out set with a backward traversal of the block.
@@ -119,17 +119,17 @@ Live-ranges of programs under strict SSA form exhibit certain useful properties 
 
 The special behavior of $\phi$-functions often causes confusion on where exactly its operands are actually used and defined.
 For a regular operation, variables are used and defined where the operation takes place.
-However, the semantics\index{liveness!\phifun} of \phifuns\ (and in particular the actual place of \phiuses) should be defined carefully, especially when dealing with SSA destruction.
+However, the semantics\index{liveness!\phifun}\index{\phifun, as multiplexer} of \phifuns\ (and in particular the actual place of \phiuses) should be defined carefully, especially when dealing with SSA destruction.
 In algorithms for SSA destruction (see Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}), a use in a \phifun is considered live somewhere inside the corresponding predecessor block, but, depending on the algorithm and, in particular, the way copies are inserted, it may or may not be considered as live-out for that predecessor block.
 Similarly, the definition of a \phifun is always considered to be at the beginning of the block, but, depending on the algorithm, it may or may not be marked as live-in for the block.
 %These subtleties need to be taken into account when building liveness sets.
-To make the description of algorithms easier, we follow the same definition as the one used in Chapter~\ref{chap:alternative_ssa_destruction_algorithm}, Section~\ref{sec:alternative_ssa_destruction_algorithm:liveness}:
+To make the description of algorithms easier, we follow the same definition as the one used in Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}, Section~\ref{sec:alternative_ssa_destruction_algorithm:liveness}:
 For a $\phi$-function $a_0 = \phi(a_1, \ldots, a_n)$ in block~$B_0$, where $a_i$ comes from block~$B_i$:
 \begin{compactitem}
 \item
-	Its definition-operand is considered to be at the entry of $B_0$, in other words variable $a_0$ is live-in of $B_0$;
+	Its definition-operand\index{definitions, of \phifuns} is considered to be at the entry of $B_0$, in other words variable $a_0$ is live-in of $B_0$;
 \item
-	Its use-operands are at the exit of the corresponding predecessor basic blocks, in other words, variable $a_i$ is live-out of basic block $B_i$.
+	Its use-operands\index{uses, of \phifuns} are at the exit of the corresponding predecessor basic blocks, in other words, variable $a_i$ is live-out of basic block $B_i$.
 \end{compactitem}
 This corresponds to placing a copy $a_0\gets a_i$ on each edge from $B_i$ to $B_0$.
 The data-flow equations given hereafter and the presented algorithms follow the same semantics.
@@ -140,7 +140,7 @@ They require minor modifications when other $\phi$-semantics are desired.
 \label{sec:data-flow}
 
 A well-known and frequently used approach to compute the live-in and live-out sets of basic blocks is backward data-flow analysis~\index{backward analysis} (see Chapter \ref{chapter:constant_propagation_is_easier}, Section~\ref{novillo:sec:preliminaries}).
-The liveness sets are given by a set of equations that relate \emph{upward-exposed} uses and definitions to live-in and live-out sets.
+The liveness sets are given by a set of equations that relate \emph{upward-exposed} uses\index{upward exposed use} and definitions to live-in and live-out sets.
 We say a use is \emph{upward-exposed} in a block when there is no local definition preceding it, i.e., the live-range ``escapes'' the block at the top.
 
 The sets of upward-exposed uses and definitions do not change during liveness analysis and can thus be pre-computed.
@@ -168,7 +168,7 @@ Instead of computing a fixed point, we show that liveness information can be der
 The first version of the algorithm requires the CFG to be reducible.
 We then show that arbitrary control-flow graphs can be handled elegantly and with no additional cost, except for a cheap pre-processing step on the loop nesting forest.
 
-The key properties of live-ranges under strict SSA form on a reducible CFG that 
+The key properties of live-ranges\index{live-in} under strict SSA form on a reducible CFG that 
 we exploit for this purpose %and that we will formalize later on,
 can be outlined as follow:
 \begin{enumerate}
@@ -271,7 +271,7 @@ The live-in and live-out sets of all basic blocks within a loop are unified with
         }
       }
     }
-  \caption{Propagate live variables within loop bodies.}
+  \caption{Propagate live variables within loop bodies\index{loop header}.}
   \label{alg:loop_dfs}
 \end{algorithm}
 \medskip
@@ -324,7 +324,7 @@ The live-in and live-out sets of all basic blocks within a loop are unified with
 
 
 The first pass propagates the liveness sets using a post-order traversal of the 
-forward CFG, $\mathcal{F}_\mathcal{L}(G)$, obtained by removing all back-edges 
+forward CFG, $G_{\textit{fwd}}$\index{forward control flow graph}, obtained by removing all back-edges\index{back-edge} 
 from the \@CFG $G$.
 The first two lemmas show that this pass correctly propagates liveness information to the loop-headers of the original \@CFG.
 \begin{lemma}
@@ -332,7 +332,7 @@ The first two lemmas show that this pass correctly propagates liveness informati
 	Let~$G$ be a reducible CFG, $\var{v}$ an SSA variable, and~$d$ its definition.
         If~$L$ is a maximal loop not containing~$d$, then~$\var{v}$ is live-in 
         at the loop-header~$h$ of~$L$ iff there is a path in 
-        $\mathcal{F}_\mathcal{L}(G)$ (i.e., back-edge free) from~$h$ to a use 
+        $G_{\textit{fwd}}$ (i.e., back-edge free) from~$h$ to a use 
         of $\var{v}$ that does not go through $d$.
 \end{lemma}
 
@@ -341,7 +341,7 @@ The first two lemmas show that this pass correctly propagates liveness informati
 	Let~$G$ be a reducible CFG, $\var{v}$ an SSA variable, and~$d$ its definition.
 	Let~$p$ be a node of~$G$ such that all loops containing~$p$ also contain~$d$.
         Then $\var{v}$ is live-in at~$p$ iff there is a path in 
-        $\mathcal{F}_\mathcal{L}(G)$, from~$p$ to a use of $\var{v}$ that does 
+        $G_{\textit{fwd}}$, from~$p$ to a use of $\var{v}$ that does 
         not go through $d$.
 \end{lemma}
 
@@ -350,7 +350,7 @@ The important property used in the proof is the dominance property that enforces
 As a consequence, any back-edge part of the live-range is dominated by $d$, and 
 the associated loop cannot contain $d$.
 
-Algorithm~\ref{alg:dag_dfs}, which propagates liveness information along the DAG $\mathcal{F}_\mathcal{L}(G)$, can only mark variables as live-in that are indeed live-in.
+Algorithm~\ref{alg:dag_dfs}, which propagates liveness information along the DAG $G_{\textit{fwd}}$, can only mark variables as live-in that are indeed live-in.
 Furthermore, if, after this propagation, a variable~$\var{v}$ is missing in the live-in set of a CFG node~$p$, Lemma~\ref{lemma:firstpass2} shows that~$p$ belongs to a loop that does not contain the definition of~$\var{v}$.
 Let~$L$ be such a maximal loop.
 According to Lemma~\ref{lemma:firstpass}, $\var{v}$ is correctly marked as live-in at the header of~$L$.
@@ -390,7 +390,7 @@ equivalent} to the original one, only isomorphism of liveness is required.
 
 There exists loop nesting forest representations with possibly multiple headers 
 per irreducible loop.
-For the sake of clarity (and simplicity of implementation), we consider a representation where each loop has a unique entry node as header.
+For the sake of clarity (and simplicity of implementation), we consider a representation where each loop has a unique entry node\index{entry node} as header.
 In this case, the transformation simply relies in redirecting any edge $s\rightarrow t$ arriving in the middle of a loop to the header of the outermost loop (if it exists) that contains $t$ but not $s$.
 The example of Figure~\ref{fig:examplecfg} illustrates this transformation, with the modified edge highlighted.
 Considering the associated loop nesting forest (with nodes $2$, $5$, and $8$ as loop headers), edge $9\rightarrow 6$ is redirected to node $5$.
@@ -446,7 +446,7 @@ Redirecting an incoming edge to another node of the loop---in particular, the he
 To avoid building this transformed graph explicitly, an elegant alternative is to modify the CFG traversal in Algorithm~\ref{alg:dag_dfs}.
 Whenever an entry-edge $s\rightarrow t$ is encountered during the traversal, instead of visiting $t$, we visit the header of the largest loop containing $t$ and not $s$.
 This header node is nothing else than the highest ancestor of~$t$ in the loop nesting forest that is not an ancestor of~$s$.
-We represent such as node as $\OLE{t}{s}$ (for ``Outermost Loop Excluding'').
+We represent such as node as $\OLE{t}{s}$ (for ``Outermost Loop Excluding\index{outermost loop excluding}'').
 As an example in Figure~\ref{fig:examplecfg},
 considering edge $9\rightarrow 6$, the highest ancestor of $6$ not an ancestor of $9$ is $\OLE{9}{6}=L_5$. 
 Overall, the transformation amounts to replacing all occurrences of~$S$ by $\OLE{S}{B}$ at Lines~\ref{alg:dag_dfs:irreducible_dfs} and~\ref{alg:dag_dfs:irreducible} of Algorithm~\ref{alg:dag_dfs}, which allows it to handle irreducible control-flow graphs.
@@ -458,7 +458,7 @@ Overall, the transformation amounts to replacing all occurrences of~$S$ by $\OLE
 \subsection{Computing the Outermost Excluding Loop (\textit{OLE})}
 \label{sec:ole}
 Our approach involves potentially many outermost excluding loop queries, especially for the liveness check algorithm as developed further.
-An efficient implementation of \textit{OLE} is required.
+An efficient implementation of \textit{OLE}\index{outermost excluding loop!OLE} is required.
 The technique proposed here and shown in Algorithm~\ref{alg:hnca} is to pre-compute the set of ancestors from the loop-tree for every node.
 A simple set operation can then find the node we are looking for:
 the ancestors of the definition node are removed from the ancestors of the query point.
@@ -521,10 +521,10 @@ Using this information, finding the outermost excluding loop can be done by simp
 
 
 In contrast to liveness sets, liveness check\index{liveness check} does not provide the set of variables live at a block, but provides a query system to answer questions such as ``is variable $v$ live at location $q$?''
-Such a framework is well suited for tree-scan based register allocation, SSA destruction, or Hyperblock scheduling.
+Such a framework is well suited for tree-scan based register allocation\index{tree scan} (see Chapter~\ref{chapter:register_allocation}), SSA destruction\index{destruction, SSA} (see Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}, or Hyperblock scheduling (see Chapter~\ref{chapter:machine_dependent_optimization_codegen}).
 Most register-pressure aware algorithms such as code-motion are not designed to take advantage of liveness a check query system and still require sets.
 Such a query system can obviously be built on top of pre-computed liveness sets.
-Queries in $O(1)$ are possible, at least for basic block boundaries, providing the use of sparsesets or bitsets to allow for efficient element-wise queries.
+Queries in $O(1)$ are possible, at least for basic block boundaries, providing the use of sparsesets\index{sparseset} or bitsets\index{bitsets} to allow for efficient element-wise queries.
 If sets are only stored at basic block boundaries, to allow a query system at instruction granularity, it is possible to use the list of uses of variables or backward scans.
 Constant time worst case complexity is lost in this scenario and liveness sets that have to be incrementally updated at each (even minor) code transformation can be avoided and replaced by less memory consuming data structures that only depend on the \@CFG.
 
@@ -545,7 +545,7 @@ In other words, $v$ is live-in at $q$ if and only if there exists a forward path
 Given the forward control-flow graph and the loop nesting forest, finding out if a variable is live at some program point can be done in two steps.
 First, if there exists a loop containing the program point $q$ and not the definition, pick the header of the biggest such loop instead as the query point.
 Then check for reachability from $q$ to any use of the variable in the forward \@CFG.
-As explained in Section~\ref{sec:irreducible}, for irreducible CFG, the \emph{modified forward CFG} that redirects any edge $s\rightarrow t$ to the loop header of the outermost loop containing $t$ but excluding $s$ ($\OLE{t}{s}$), has to be used instead.
+As explained in Section~\ref{sec:irreducible}, for irreducible CFG, the \emph{modified forward CFG}\index{foward control flow graph, modified} that redirects any edge $s\rightarrow t$ to the loop header of the outermost loop containing $t$ but excluding $s$ ($\OLE{t}{s}$), has to be used instead.
 Correctness is proved from the theorems used for liveness sets.
 
 \newcommand{\BB}[1]{\textrm{basicBlock}(#1)}
