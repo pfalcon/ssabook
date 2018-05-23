@@ -12,6 +12,9 @@ FIGS= \
       Fig-4-6 \
       Fig-4-7-b \
       Fig-4-7-c \
+      Fig-4-8-a \
+      Fig-4-8-b \
+      Fig-4-8-c \
 
 SUBFIGS= \
 
