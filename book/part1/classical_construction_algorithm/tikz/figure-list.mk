@@ -3,7 +3,8 @@ FIGS= \
       iDF-J \
       iDF-DF \
       iDF-iDF \
-      t1_t2_transforms \
+      t1 \
+      t2
 
 SUBFIGS= \
 	 initial-1 \
