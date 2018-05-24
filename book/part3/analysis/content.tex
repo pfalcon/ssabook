@@ -3,60 +3,110 @@
 \inputpath{part3}{analysis}
 \inputprogress
 
-The goal of this chapter is to provide an overview of the benefits of SSA for diverse program analysis.
-We will talk about alias analysis that do not have its own chapter but also GV-PRE of Van Drunen that subsums the SSA-PRE of F. Chow.
-We will finally also list the chapters of this part.
+The goal of this chapter is to provide an overview of the benefits of
+SSA for program analyses and optimizations. We illustrate how SSA
+makes an analyses more convenient because of its similarity to
+functional programs. Technically, the def-use chains explicitly
+expressed through the SSA graph, but also the static-single
+information property, is what makes SSA so convenient.
+%There are several analysis that propagate information through the SSA graph.
+%chapter removed
+%The \emph{chapter ``propagation engine''}\ref{chapter:constant_propagation_is_easier} gives a somehow general description of the mechanism.
+%chapter removed
+%The \emph{``chapter on scalar evolution''}\ref{chapter:loop_tree} illustrates also this approach by capturing properties of the graph itself (circuits).
+%Global value numbering like algorithms such as the one descibed at the end of chapter ``PRE''\ref{chapter:pre_not_helped} but also the more general PRE of \emph{Van Drunen} is also a perfect illustrattion.
+%We roughly describe this last algorithm here.
+As already mentioned in Chapter~\ref{chapter:properties_and_flavors},
+SSA form can come in different flavors. The vanilla one is strict SSA, or said
+equivalently, SSA form with the dominance property. The most common SSA
+construction algorithm exploits this dominance property by two means:
+First it allows to compute join sets for $\phi$-placement in a very
+efficient way using the dominance frontier.  Second it allows variable
+renaming using a folding scheme along the dominance tree.  The notion
+of dominance and dominance frontier are two structural properties that
+make SSA form singular for compiler analysis and transformations.
 
-\section{Propagation Engine}
-In this sections we illustrate how SSA makes several analysis convenient mostly because of its similarity to functional programs. 
-Technically the def-use chains explicitely expressed through the SSA graph but also the static-single information property (that mainly comes from the single definition property and the fact that most properties come from definitions) is what makes SSA so convenient.
-There are several analysis that propagate information through the SSA graph.
-The \emph{chapter ``propagation engine''}\ref{chapter:constant_propagation_is_easier} gives a somehow general description of the mechanism.
-The \emph{``chapter on scalar evolution''}\ref{chapter:loop_tree} illustrates also this approach by capturing properties of the graph itself (circuits).
-Global value numbering like algorithms such as the one descibed at the end of chapter ``PRE''\ref{chapter:pre_not_helped} but also the more general PRE of \emph{Van Drunen} is also a perfect illustrattion.
-We roughly describe this last algorithm here.
+Those two aspects are illustrated in this part through two chapters:
+Chapter~\ref{chapter:ssa_tells_nothing_of_liveness} shows how loop
+nesting forest and dominance property can be exploited to devise very
+efficient liveness analysis; Chapter~\ref{chapter:pre_not_helped}
+shows how the dominance frontier that allows to insert a minimal number of
+\phifun\ for SSA construction can also be used to minimize redundant
+computations.
 
-\section{Structural properties}
-As already mentioned in Chapter~\ref{chapter:properties_and_favors}, can come in different flavors. 
-Vanilla one, is strict SSA, or said equivalently, SSA with dominance property. 
-The most common SSA construction algorithm, exploits this dominance property by two means: 
-First it allows to compute join sets for \phifun\ placement in a very efficient way using the dominance frontier. 
-Second it allows variable renaming using a folding scheme along the dominance tree. 
-The notion of dominance and dominance frontier are two structural properties that make SSA form singular for compiler analysis and transformations. 
-Those two aspects are illustrated in this part through two chapters: 
-Chapter~\ref{chapter:ssa_tells_nothing_of_liveness} shows how loop nesting forest and dominance property can be exploited to devise very efficient liveness analysis;
-Chapter~\ref{chapter:pre_not_helped} shows how dominance frontier that allows to insert minimal number of \phifun\ for SSA construction can also be used to minimize redundant computations.
+\paragraph{Faster Liveness Analysis with SSA form}
+A data-flow analysis iterates potentially up to as many times as the
+maximum loop depth of a given program until it stabilizes and
+terminates. In contrast, the properties of SSA form allow to
+accelerate liveness analysis without the requirement of any iteration
+to reach a fixed point: it only requires at most two passes over the
+CFG. Also an extremely simple liveness check is possible by providing
+a query system to answer questions such as ``is variable $v$ live at
+location $q$?''.
 
-\paragraph{Liveness}
-SSA simplifies, accelerates liveness analysis.
-Ususal approach: data-flow abnalysis iteratively (potentially as many times as max loop depth).
-Live-in of a loop, then live everywhere in the loop.
-Dominance => live everywhere in a loop then live-in of a loop.
-live-in of a loop in the CFG then also live-in of loop in forward CFG (and reciproquely) => compute all loop headers where variable is alive using data-flow (without any iterations).
-Chapter presents also two other approaches: 1. path exploration (variable live if belongs path from definition to use -- SSA does not help much for this algorithm but for sumarising better liveness within a BB); 2. 
+We first present an algorithm for computing liveness information on
+reducible CFGs and continue with deriving an algorithm that can also
+be applied to irreducible graphs. This can be achieved by transforming
+an irreducible graph into a reducible graph such that the liveness in
+both graphs is equivalent. In practice we do not modify the graph, but
+adapt the algorithm for reducible graphs such that it simulates the
+modification of some edges on the fly.
 
+%SSA simplifies, accelerates liveness analysis.
+%Ususal approach: data-flow abnalysis iteratively (potentially as many times as max loop depth).
+%Live-in of a loop, then live everywhere in the loop.
+%Dominance => live everywhere in a loop then live-in of a loop.
+%live-in of a loop in the CFG then also live-in of loop in forward CFG (and reciproquely) => compute all loop headers where variable is alive using data-flow (without any iterations).
+%Chapter presents also two other approaches: 1. path exploration (variable live if belongs path from definition to use -- SSA does not help much for this algorithm but for sumarising better liveness within a BB); 2. 
 
-live-range has following property: v live at program point q if and only if v is live at the entry of the largest loop/basic-block that contains q but not the definition of v; v is live at h if and only if there is a path in the forward-CFG from h to a use of v that does not contain the definition.
+%live-range has following property: v live at program point q if and only if v is live at the entry of the largest loop/basic-block that contains q but not the definition of v; v is live at h if and only if there is a path in the forward-CFG from h to a use of v that does not contain the definition.
 
+%In this section we illustrate how the structural properties of SSA are useful. 
+%The first one is the dominance property whic underlying tree structure is really interesting. 
+%We can do any greedy or dynamic programming along this tree. 
+%We illustrate the advantages of dominance property on \emph{liveness analysis} and check. 
 
-An interesting In this section we illustrate how the structural properties of SSA are useful. 
-The first one is the dominance property whic underlying tree structure is really interesting. 
-We can do any greedy or dynamic programming along this tree. 
-We illustrate the advantages of dominance property on \emph{liveness analysis} and check. 
+\paragraph{Relation between Partial Redundancy Elimination and SSA form}
 
-\paragraph{Partial Redundancy Elimination}
-The second property is related to the dominance frontier that actually turn out to be the ``frontier of redundancy''. 
-It is not the SSA form itself that is interesting at that point but the formalism introduced to the construction of SSA that we use. 
-This is illustrated through the\emph{chapter on SSAPRE}\ref{chapter:pre_not_helped}.
+The elimination of redundant computations is an important compiler
+optimization. In chapter \ref{chapter:pre_not_helped} we show that the
+dominance frontiers that define where \phifuns\ are inserted
+in SSA form also form the ``frontier'' between full redundancy and
+partial redundancy. A computation is {\em fully redundant} if it has
+also occurred earlier regardless of control flow, a computation is {\em
+  partially redundant} if it is has occurred earlier only on certain
+paths. Following the program flow, once we are past the dominance
+frontiers, any further occurrence of a redundant expression is
+partially redundant, whereas any occurrence before the dominance
+frontier is fully redundant. The difference for the optimization is
+that fully redundant expressions can be deleted, whereas for
+(strictly) partially redundant expressions insertions are required to
+eliminate the redundancy. Thus, since partial redundancies start at
+dominance frontiers they are related to SSA's $\phi$ statements. In
+chapter \ref{chapter:pre_not_helped} on SSAPRE we present an
+algorithm, named SSAPRE, performing partial redundancy elimination
+(PRE) by efficiently taking advantage of the use-def information
+inherent in its input conventional SSA form. SSAPRE builds redundancy
+edges between redundant expressions (in SSA form) and has the effect
+of factoring the redundancy edges at merge pointer in the CFG. The
+resulting {\em factored redundancy graph (FRG)} can be regarded as the
+SSA form for expressions. We also discuss speculative code motion
+which suppresses redundancy in some path at the expense of another
+path where the computation is added but the result is unused.
 
-\section{Sparse Analysis}
-In this section we illustrate through an important problem (\emph{alias analysis}) how SSA really helps in having effective analysis on complex problems. 
-This is about sparsity (as mentioned in chapter ``Properties of SSA'') which is provided by the SSA form as an ``optimal'' (minimal size) sparse evaluation graph. 
-For that we report the work of Ben and Li on sparse analysis. 
-We take the opportunity to outline that we can start from (partial) SSA as top level variables already provide insightful information for this analysis. 
-I we believe other variables (that alias with others) must be used for this analysis, and want fully sparse analysis then we need to consider SSA extensions such as HSSA.
+This PRE algorithm is not capable of recognizing redundant
+computations among lexically different expressions that yield the same
+value. Therefore we also discuss redundancy elimination based on value
+analysis, which can determine redundancy whenever two computations
+yield the same value. A technique for such a value analysis is {\em
+  value numbering}. In this case the benefit of SSA form is that it
+enables value numbering to be easily extended to the global scope,
+called {\em global value numbering}, because each SSA version of a
+variable corresponds to at most one static value for the variable.
 
-
-
-
-
+%\section{Sparse Analysis}
+%In this section we illustrate through an important problem (\emph{alias analysis}) how SSA really helps in having effective analysis on complex problems. 
+%This is about sparsity (as mentioned in chapter ``Properties of SSA'') which is provided by the SSA form as an ``optimal'' (minimal size) sparse evaluation graph. 
+%For that we report the work of Ben and Li on sparse analysis. 
+%We take the opportunity to outline that we can start from (partial) SSA as top level variables already provide insightful information for this analysis. 
+%I we believe other variables (that alias with others) must be used for this analysis, and want fully sparse analysis then we need to consider SSA extensions such as HSSA.
