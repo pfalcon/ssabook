@@ -5,6 +5,11 @@
 \inputprogress
 
 {
+  \def\vir{\textrm{in\_regs}}
+  \def\vim{\textrm{in\_mem}}
+  \def\prot{\textrm{protected}}
+
+
 
 \newenvironment{important}{%
 \bgroup \color{blue!50!black}
@@ -13,11 +18,11 @@
 }
 
 %% Local macros for personal use
-\newcount\todocount \todocount=0
-\def\todo#1{\global\advance\todocount by 1 {\color{blue} {\bf TODO:} #1}}
-\newlinechar=`\^^J
-\def\endofchapter{\ifnum\todocount>0\immediate\write16{^^J! WARNING: There was 
-still TODO macros: \the\todocount.^^J}\fi}
+% \newcount\todocount \todocount=0
+% \def\todo#1{\global\advance\todocount by 1 {\color{blue} {\bf TODO:} #1}}
+% \newlinechar=`\^^J
+% \def\endofchapter{\ifnum\todocount>0\immediate\write16{^^J! WARNING: There was 
+% still TODO macros: \the\todocount.^^J}\fi}
 
 
 \def\
@@ -80,12 +85,13 @@ Figure~\ref{fig:ra:running} will be used in the next paragraphs to illustrate ho
       \label{sub:ra:running-linear}
     }
     \kern-2em
-    \subfloat[Graph-based]{\tikzsubfigure[1]{running}%
+    \subfloat[Graph-based]{%
+      \defuseheight{\tikzsubfigure[1]{running}}%
       \label{sub:ra:running-gr}
     }
     \subfloat[Interference graph]{%
       \quad
-      \tikzfigure{running-ig}%
+      \centerheight{\tikzfigure{running-ig}}%
       \label{sub:ra:running-ig}%
     }
   % \end{center}
@@ -173,7 +179,7 @@ The number of simultaneously alive variables at a program point is called the \e
 The maximum register pressure over all program points in a procedure is called the register pressure of that procedure, or ``\maxlive.'' 
 One can observe that \maxlive expresses the \emph{minimum} number of required registers for a spill-free register assignment, i.e., an allocation that does not require memory.
 For instance, in Figure~\ref{fig:ra:running}, $\maxlive = 3$ so a minimum number of 3 registers is required.
-For a straight-line code (basic-block), \maxlive constitutes also a \emph{sufficient number of registers}.
+For a straight-line code (basic block), \maxlive constitutes also a \emph{sufficient number of registers}.
 % For instance, in Figure~\ref{fig:ra:running}, if the linearized code on the left of Figure~\ref{fig:ra:running} was an actual basic block, it would effectively require exactly four registers.
 But in general, a procedure might require \emph{more than \maxlive registers} to be spill-free, indeed, we have seen that the code example actually requires 4 registers, because of the $a,b,p,x$ clique of interferences.
 
@@ -211,7 +217,7 @@ Linear_Scan(B)
   \subfloat[Example]{\includegraphics[width=0.27\textwidth]{figures/ra_linearscan.pdf}}
   \hfill
   \subfloat[Linear scan]{\usebox{\linearscanbox}}
-  \caption{Linear-scan assignment scheme on a basic-block: assigning registers 
+  \caption{Linear-scan assignment scheme on a basic block: assigning registers 
   to live intervals from top to bottom ($a$, then $d$, followed by $e$) always 
 succeeds if \maxlive (here two) does not exceed the number of available 
 registers.}
@@ -290,7 +296,7 @@ But if one wants to avoid spill code (memory loads and stores) as much as possib
 For that purpose, at the same time coloring and spilling decisions are made, classical algorithms also perform copy coalescing (i.e.,~undoing live-range splitting).
 However, if done aggressively, coalescing may increase the chromatic number of the graph, or make the graph harder to color for the heuristic.
 Thus, existing techniques often apply \emph{conservative} coalescing approaches which are guaranteed not to increase the chromatic number of the graph, at the expense of the quality of the coalescing.
-The main issue with conservative coalescing is that, with an extreme solution that would split all live-ranges at every basic-block boundaries, it is either slow or inefficient in removing most of the spurious introduced copies.
+The main issue with conservative coalescing is that, with an extreme solution that would split all live-ranges at every basic block boundaries, it is either slow or inefficient in removing most of the spurious introduced copies.
 Thus, the splitting or not splitting trade-off has to be addressed by the register allocator.
 
 We will see that live-range splitting based on SSA form is an elegant solution to this trade-off problem as it is sufficient in bringing the interference graph \maxlive-colorable without blowing-up the number of live-ranges.
@@ -387,7 +393,7 @@ In the graph-coloring setting, spilling means removing a node of the interferenc
 This is a called a \emph{spill everywhere} strategy, which implies inserting load instructions in front of every use and store instructions after each definition of the (non-SSA) variables.
 These loads and stores require temporary variables that were not present in the initial graph.
 Those variables also need to be assigned to registers, which means that whenever the spilling/coloring is done, the interference graph is rebuilt and a new pass of allocation is triggered, until no variable is spilled anymore: this is where the ``Iterated'' comes from in the IRC name.
-In practice, a post-pass of a graph coloring scheme scans each basic-block separately, so as to, whenever possible, keep a reloaded variable in a register between multiple uses.
+In practice, a post-pass of a graph coloring scheme scans each basic block separately, so as to, whenever possible, keep a reloaded variable in a register between multiple uses.
 
 \smallskip
 
@@ -498,10 +504,10 @@ Hence, it is imperative to cleverly split the live-range of the variable accordi
 \label{sec:ra:spill-scan}
 
 
-In the context of a basic block, a simple algorithm that works well is the ``furthest first'' algorithm that is presented in Figure~\ref{fig:ra:ff}.
+In the context of a basic block, a simple algorithm that works well is the ``furthest first'' algorithm that is presented in Algorithm~\ref{ra:code:ff}.
 The idea is to scan the block from top to bottom:
 whenever the register pressure is too high, we will spill the variable whose next use is the furthest away, and it is spilled only \emph{up to this next use}.
-In Figure~\ref{fig:ra:ff}, this correspond to maximizing \verb+distance_to_next_use_after(p)+ in function \verb+evict+.
+In the \textit{evict} function of Algorithm~\ref{ra:code:ff}, this correspond to maximizing \textrm{distance\_to\_next\_use\_after($p$)}.
 %
 Spilling this variable frees a register for the longest time, hence diminishing the chances to have to spill other variables later.
 This algorithm is not optimal because it does not take into account the fact that the first time we spill a variable is more costly than subsequent spills of the same variable (the first time, a store and a load are added, but only a load must be added afterwards).
@@ -509,65 +515,89 @@ However, the general problem is NP-complete, and this heuristic, although it may
 %(e.g., by spilling two variables while spilling an other part of the first one would have been enough)
 , gives good results on ``straight-line codes,'' i.e., basic blocks.
 
-\begin{figure}
-\begin{verbatim}
-# var_in_regs holds the set of variables in register at entry of B
-Further_First(B: basic block, var_in_regs)
-  function evict(p, &in_regs, &in_mem, in_solidstate)
-    while |in_regs|>R
-      let v in (in_regs - in_solidstate) with max v.distance_to_next_use_after(p)
-      if v not in in_mem 
-         insert a store of v to memory just before p
-         in_mem = in_mem U {v}
-      in_regs = in_regs \ {v}
+\begin{algorithm}[h]
+  \caption{Furthest First spilling algorithm for straight-line code}
+  \label{ra:code:ff}
 
-  foreach prog point p in B from top to bottom
-    #uses of v must be in a register before p
-    foreach v used at p
-       if v not in var_in_regs 
-          insert a load of v from memory just before p
-          var_in_regs = var_in_regs U {v}
-    evict(p, var_in_regs, var_in_mem, var_to_load)
-    #there must be space for vars defined at p
-    foreach v last use at p  
-      var_in_regs = var_in_regs \ {v}
-    foreach v defined at p
-      var_in_regs = var_in_regs U {v}
-    evict(p, var_in_regs, var_in_mem, {vars defined at p})
-\end{verbatim}
-\caption{\label{fig:ra:ff}Further First spilling algorithm for straight-line code}
-\end{figure}
+  \KwIn{$B$, the basic block to process}
+  \KwIn{\vir, the set of variables in registers at entry of $B$}
+  % \KwOut{color, an assignment of live-ranges to registers}
+
+% \_First ($B$: basic block, var\_in\_regs)}{
+
+
+  \ForEach{program point $p$ in $B$ from top to bottom}{
+    \Comment{uses of $v$ must be in a register before $p$}
+    $\prot \gets \emptyset$\;
+    \ForEach{$v$ used at $p$}{
+      \If{$v \notin \vir$}{
+          insert a load of $v$ from memory just before $p$\;
+          add $v$ to \vir\;
+          add $v$ to \prot\;
+          %$\vir \gets \vir \cup \{v\}$\;
+      }
+    }
+
+    evict($p$, \vir, \vim, \prot)
+    \Comment*{need space for vars loaded at $p$}
+
+    \ForEach{$v$ last use at $p$}{
+      remove $v$ from \vir\;
+    }
+    $\prot \gets \emptyset$\;
+    \ForEach{$v$ defined at $p$}{
+      add $v$ to \vir\;
+      add $v$ to \prot\;
+    }
+    evict($p$, \vir, \vim, \prot) \Comment*{need space for vars defined at $p$}
+  }
+
+
+  \Fn{evict ($p$, \vir, \vim, \prot)}{
+    \Comment{remove variables from registers until there are enough registers}
+    \While{$| \vir | > R$}{
+      let $v \in (\vir \setminus \prot)$ with maximum $v$.distance\_to\_next\_use\_after($p$)\;
+      \If{$v \notin \vim$}{
+         insert a store of $v$ to memory just before $p$\;
+         add $v$ to \vim\;
+       }
+       remove $v$ from \vir\;
+    }
+  }
+\end{algorithm}
+
+\medskip
 
 We now present an algorithm that extends this ``furthest first'' algorithm to general control-flow graphs.
 The idea is to scan the CFG using a topological order and greedily evict sub live-ranges whenever the register pressure is too high.
 There are two main issues:
 \begin{enumerate}
-  \item Generalize the priority function \verb+distance_to_next_use_after+ to a general CFG;
-  \item Find a way to initialize the \verb+var_in_regs+ set when starting to scan a basic-block, in the situation where predecessor basic-blocks have not been processed yet (e.g., at the entry of a loop).
+  \item Generalize the priority function distance\_to\_next\_use\_after to a general CFG;
+  \item Find a way to initialize the ``in\_regs'' set when starting to scan a basic block, in the situation where predecessor basic blocks have not been processed yet (e.g., at the entry of a loop).
 \end{enumerate}
 
 
 \paragraph{Profitability to Spill}
-To illustrate the generalization of further-first priority strategy to a CFG, let us consider the example of Figure~\ref{fig:ra:priority-spill-CFG}.
+To illustrate the generalization of the further-first priority strategy to a CFG, let us consider the example of Figure~\ref{fig:ra:priority-spill-CFG}.
 In this figure, the $\lightning +n$ sign denotes regions with (high) register pressure of $\regs+n$.
-We suppose we have only $R=2$ registers. At program point $p_0$, register pressure is too high by one variable as we need a register for variable $a$.
+At program point $p_0$, register pressure is too high by one variable (suppose there are other hidden variables that we do not want to spill).
 We have two candidates for spilling: $x$ and $y$, and the classical furthest first criteria would depend on which branch is chosen:
 
 \begin{itemize}
-  \item Suppose the left branch is taken, and consider the execution trace ($AB^{100}C$).
-  In this branch, the next use of $y$ appears in a loop, while the next use of $x$ appears way further after the loop has fully executed. 
+  \item If the left branch is taken, and consider the execution trace ($AB^{100}C$).
+  In this branch, the next use of $y$ appears in a loop, while the next use of $x$ appears way further, after the loop has fully executed. 
   It is clearly considered to be more profitable to evict variable $x$ (at distance 101).
 
   % Looking at this execution trace in isolation, and using the further first strategy described above for straight-line code
 
-\item Suppose now that the right branch is taken, and consider the execution trace ($AD$).
+\item If the right branch is taken, and consider the execution trace ($AD$).
   In that case, this is variable $y$ has the further use (at distance 2) so we would evict variable $y$.
 
 \end{itemize}
 
-Looking at the example as a whole, it is however clear that one would prefer to evict variable $y$ as the loop on the left branch is not under pressure: spilling $x$ would only help for program point $p_0$, and one would need to spill another variable in block $D$ ($x$ is used at the beginning of $D$).
+Looking at the example as a whole, we see that the left branch is not under pressure, so spilling $x$ would only help for program point $p_0$, and one would need to spill another variable in block $D$ ($x$ is used at the beginning of $D$), hence it would be preferable to evict variable $y$.
 
-On the other hand, modifying a little bit the example by assuming a high register pressure within the loop at program point $p_1$ (e.g., by using $a$), then evicting variable $x$ would be preferred in order to avoid a load and store in a loop!
+On the other hand, modifying a little bit the example by assuming a high register pressure within the loop at program point $p_1$ (by introducing other variables), then evicting variable $x$ would be preferred in order to avoid a load and store in a loop!
 
 % \bigskip
 
@@ -581,6 +611,7 @@ This dictates the following remarks:
 \begin{figure}
   \todo{ add variable 'a' defined after 'y' and used everywhere, and set R = 2)
   => or better : explain there are other code not shown, but for pedagogical purposes we know the pressure and want only to spill x or y.
+  There should be a use of $y$ in the loop, no ?! Remove also $z$.
 }
   \includegraphics[width=0.45\textwidth]{figures/priority-spill-CFG.pdf}
 
@@ -627,78 +658,88 @@ Let us see how the profitability applies to our running example with two scenari
 \end{tabular}
 \end{center}
 
-In the first case, we would evict $y$, in the second, we would evict $x$ (plus another variable later, when arriving at $p_3$).
+In the first case, we would evict $y$, in the second, we would evict $x$ (plus another variable later, when arriving at $p_3$), which is the behaviour we wanted in the first place.
 
-\paragraph{Initial Register Filling at the Beginning of a Basic-Block}
-For each visited basic-block $B$, the set of variables that must reside in a register is stored in \verb+B.vars_in_regs+.
-For each basic-block, initial value of this set has to be computed prior to starting processing it.
-The heuristic for computing this set is different for a ``normal'' basic-block and for a loop entry.
-For a normal basic-block, as we assume a topological order traversal of the CFG, all its predecessors have been processed yet.
+\paragraph{Initial Register Filling at the Beginning of a Basic Block}
+For each visited basic block $B$, the set of variables that must reside in a register is stored in $B.\vir$.
+For each basic block, the initial value of this set has to be computed before we start processing it.
+The heuristic for computing this set is different for a ``regular'' basic block and for a loop entry.
+For a regular basic block, as we assume a topological order traversal of the CFG, all its predecessors will have been processed.
 Live-in variables fall into three sets:
 \begin{enumerate}
-\item the ones that are available in all predecessor basic-blocks:
-  $$B.\texttt{allpreds\_in\_regs}=\bigcap_{P\in \textrm{pred}(B)} P.\texttt{in\_regs}$$
-\item the ones that are available in some of the predecessor basic-blocks:
-  $$B.\texttt{somepreds\_in\_regs}=\bigcup_{P\in \textrm{pred}(B)} P.\texttt{in\_regs}$$
-\item the ones that are available in none of them.
+\item The ones that are available in all predecessor basic blocks:
+  $$B.\textrm{allpreds\_in\_regs}=\bigcap_{P\in \textrm{pred}(B)} P.\vir$$
+\item The ones that are available in some of the predecessor basic blocks:
+  $$B.\textrm{somepreds\_in\_regs}=\bigcup_{P\in \textrm{pred}(B)} P.\vir$$
+\item The ones that are available in none of them.
 \end{enumerate}
-As detailed in Figure~\ref{fig:ra:initnormal}, $B.\texttt{in\_regs}$ is initialized with $B.\texttt{allpreds\_in\_regs}$ plus, as space allows, elements of $B.\texttt{somepreds\_in\_regs}$ sorted in decreasing order of their \texttt{spill\_profitability} metric.
 
-\begin{figure}
-\begin{verbatim}
-Init_inregs(B)
-  allpreds_in_regs = Union for all P in B.preds of P.in_regs
-  somepreds_in_regs = Intersection for all P in B.preds of P.in_regs
-  B.in_regs = allpreds_in_regs
-  while |B.in_regs| < R and |somepreds| > |B.in_regs|
-    let v in (somepreds - B.in_regs) with min v.spill_profitability(B.entry)
-    B.in_regs = B.in_regs U {v}
-\end{verbatim}
-\caption{\label{fig:ra:initnormal}Initial value of $B.\texttt{in\_regs}$ for normal basic-block}
-\end{figure}
+As detailed in Algorithm~\ref{ra:code:initnormal}, $B.\vir$ is initialized with $B.\texttt{allpreds\_in\_regs}$ plus, as space allows, elements of $B.\texttt{somepreds\_in\_regs}$ sorted in decreasing order of their \texttt{spill\_profitability} metric.
+\todo{need to mention that we load them somewhere also : at beginning of block or on edges or end of previous blocks ? : put a comment in algo ?}
+
+
+\begin{algorithm}[h]
+\caption{Initial value of $B.\vir$ for a regular basic block}
+\label{ra:code:initnormal}
+  \KwIn{$B$, the basic block to process}
+
+  $\textrm{allpreds\_in\_regs} \gets \bigcap_{P\in \textrm{pred}(B)} P.\vir$\;
+  $\textrm{somepreds\_in\_regs} \gets \bigcup_{P\in \textrm{pred}(B)} P.\vir$\;
+
+  $B.\vir \gets \textrm{allpreds\_in\_regs}$\;
+  \While{$|B.\vir| < R$ and $|\textrm{somepreds\_in\_regs}| > |B.\vir|$}{
+    let $v \in (\textrm{somepreds\_in\_regs} \setminus B.\vir)$ with mininum $v$.spill\_profitability($B$.entry)\;
+    add $v$ to $B$.\vir\;
+  }
+\end{algorithm}
+
 
 \begin{figure}
   \begin{center}
-    \subfloat[\label{fig:ra:loopentry_example_a}\texttt{in\_regs} at $B$'s entry]{\includegraphics[width=0.15\textwidth]{figures/loopentry_example_a.pdf}}
-    \qquad
-    \subfloat[\label{fig:ra:loopentry_example_b}not \texttt{in\_regs} at $B$'s entry]{\includegraphics[width=0.15\textwidth]{figures/loopentry_example_b.pdf}}
+    \subfloat[\label{sub:ra:loopentry_example_a}\vir\ at $B$'s entry]{\qquad\includegraphics[width=0.15\textwidth]{figures/loopentry_example_a.pdf}\qquad}
+    \hfil
+    \subfloat[\label{sub:ra:loopentry_example_b}not \vir\ at $B$'s entry]{\qquad\quad\includegraphics[width=0.15\textwidth]{figures/loopentry_example_b.pdf}\qquad\quad}
   \end{center}
-  \caption{\label{fig:ra:loopentry_example}Initial values of $B.\texttt{in\_regs}$ at loop entry. Illustrating examples.}
+  \caption{\label{fig:ra:loopentry_example}Initial values of $B.\vir$ at loop entry. Illustrating examples.}
 \end{figure}
-For a basic-block at the entry of a loop, as illustrated by the example of Figure~\ref{fig:ra:loopentry_example}, one do not want to account for allocation on predecessor basic-block, but start from scratch instead.
-Assume the first basic-block has already been processed and one wants to compute $B.\texttt{in\_regs}$:
+For a basic block at the entry of a loop, as illustrated by the example of Figure~\ref{fig:ra:loopentry_example}, one do not want to account for allocation on predecessor basic block, but start from scratch instead.
+Assume the first basic block has already been processed and one wants to compute $B.\vir$:
 \begin{enumerate}
-\item Take Example~(a): 
-  Even if at the end of the predecessor basic-block , $x$ is not available in a register, one wants to insert a reload of $x$ at $p_1$, i.e. include $x$ in $B.\texttt{in\_regs}$.
+  \item Example~\subref{sub:ra:loopentry_example_a}: 
+  even if at the end of the predecessor basic block, $x$ is not available in a register, one wants to insert a reload of $x$ at $p_1$, i.e., include $x$ in $B.\vir$.
   Not doing so would involve a reload at every iteration of the loop at $p_2$. 
-\item Consider Example~(b): 
+\item Example~\subref{sub:ra:loopentry_example_b}: 
   Even if at the entry of the loop, $x$ is available in a register, one wants to spill it and restore at $p_2$ so as to lower the register pressure that is too high within the loop.
-  This means excluding $x$ from $B.\texttt{in\_regs}$.
+  This means excluding $x$ from $B.\vir$.
 \end{enumerate}
-This leads to the algorithm given in Figure~\ref{fig:ra:initloop} where $B.\texttt{livein}$ represent the set of live-in variables of $B$ and $L.\texttt{MAXLIVE}$ is the maximal register pressure in the whole loop $L$.
+This leads to Algorithm~\ref{ra:code:initloop} where $B.\texttt{livein}$ represent the set of live-in variables of $B$ and $L.\maxlive$ is the maximal register pressure in the whole loop $L$.
 \texttt{Init\_inregs} first fills $B.\texttt{in\_regs}$ with live-in variables that are used within the loop $L$.
-It then, fills with live-through variables, but only those that can survive the loop:
-if $L.\texttt{MAXLIVE}>\regs$, then  $L.\texttt{MAXLIVE}-\regs$ variables will have to be spilled (hopefully some live-through variables);
-so no more than $|B.\texttt{livein}|-(L.\texttt{MAXLIVE}-\regs)$ are allocated to a register at the entry of $B$.
+Then, we fill with live-through variables, but only those that can survive the loop:
+if $L.\maxlive>\regs$, then  $L.\maxlive-\regs$ variables will have to be spilled (hopefully some live-through variables);
+so no more than $|B.\texttt{livein}|-(L.\maxlive-\regs)$ are allocated to a register at the entry of $B$.
 
-\begin{figure}
-\begin{verbatim}
-Init_inregs(B,L)
-  B.in_regs = emptyset
-  while |B.in_regs| < R  and
-        |B.livein| > |B.in_regs| and
-        |B.in_regs| < R + |B.livein| - L.MAXLIVE
-    let v in (B.livein - B.in_regs) with min v.spill_profitability(B.entry)
-    B.in_regs = B.in_regs U {v}
-\end{verbatim}
-\caption{\label{fig:ra:initloop}Initial value of $B.\texttt{in\_regs}$ at the entry of a loop $L$}
-\end{figure}
+\begin{algorithm}[h]
+\caption{\label{ra:code:initloop}Initial value of $B.\vir$ at the entry of a loop $L$}
+% Init_inregs(B,L)
+  $B.\vir \gets \emptyset$\;
+  \While{\\
+        \begin{tabular}{@{\hspace*{1.5em}}l@{}}
+    $|B.\vir| < R$ \quad and \\
+    $|B.\textrm{livein}| > |B.\vir|$ \quad and\\
+    $|B.\vir| < R + |B.\textrm{livein}| - L.\maxlive$
+      \end{tabular}\\}
+    {
+    let $v \in (B.\textrm{livein} \setminus B.\vir)$ with minimum $v$.spill\_profitability($B$.entry)\;
+    add $v$ to $B.\vir$\;
+  }
+\end{algorithm}
+
 
 \paragraph{Putting all Together}
 The overall algorithm for spilling is made-up of several phases:
 First, both liveness, and profitability metric have to be pre-computed.
-Then the traversal in topological order of the CFG can be done, where each basic-block is scanned using initial value of \verb+B.in_regs+ as explained above.
-During this phase, the sets of live-variables respectively available in register and in memory are maintained at basic-block boundaries.
+Then the traversal in topological order of the CFG can be done, where each basic block is scanned using initial value of \verb+B.in_regs+ as explained above.
+During this phase, the sets of live-variables respectively available in register and in memory are maintained at basic block boundaries.
 This allows the insertion of shuffle code (loads and store) performed during the last phase of the algorithm.
 
 \section{Coloring and coalescing}
@@ -707,9 +748,9 @@ In a decoupled register allocation scheme as advocated here, the spilling phase 
 With the help of live-range splitting through the insertion of register-to-register copies, then no more than \regs registers are required to successfully allocate variables.
 But this is to the price of splitting live-ranges, i.e. inserting register-to-register copies.
 Possibly many:
-One could conservatively insert a copy for every variable at every basic-block boundary.
+One could conservatively insert a copy for every variable at every basic block boundary.
 Now, SSA form has the good property that it provides sufficient live-range splitting.
-Also, when dressed with its minimal flavor (see Chapter~\ref{chapter:properties_and_flavors}), the increase in terms of variables is reasonable (usually less than 20 percent in practice) compared to splitting all global live-range at the border of every basic-block.
+Also, when dressed with its minimal flavor (see Chapter~\ref{chapter:properties_and_flavors}), the increase in terms of variables is reasonable (usually less than 20 percent in practice) compared to splitting all global live-range at the border of every basic block.
 The fact that a greedy tree-scan coloring scheme (see Figure~\ref{ra:code:assign-tree-scan}) can ``optimally'' do the job, is quite useful property of SSA form.
 Even more interestingly, one of the goal of this section is to show that the underlying structural property is such that it also makes the extensively used graph coloring simplification scheme (recalled below) an ``optimal'' scheme.
 In other words, the well-known IRC allocation scheme can take advantage of SSA form property.
@@ -983,15 +1024,15 @@ In other words, spilling has the effect of removing the live-range with holes i.
 Those subtleties and associated complexity issues are exhaustively studied in~\cite{Bouchez07b}. 
 
 %Lowering of phi functions
-As already mentioned, the semantic of \phifuns correspond to parallel copies on the incoming edges of the basic-block where they textually appear.
+As already mentioned, the semantic of \phifuns correspond to parallel copies on the incoming edges of the basic block where they textually appear.
 Done naively, the lowering of \phifuns for which the register that appear at the def operand does not match the register that appears at the use operand, imposes:
 1.~the \emph{spitting of the corresponding control-flow edge};
-2.~the insertion of copies on this freshly created basic-block;
+2.~the insertion of copies on this freshly created basic block;
 3.~the use of spill code in case the required temporary to perform the parallel copy (permutation) is not available.
 This issue shares similarities with the SSA destruction that was described in Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}.
 The advocated approach is, just as for the register constraints, to express the cost of an afterward repairing in the objective function of the register allocation scheme.
 Then, locality, the repairing can be expressed as a standard graph coloring problem on a very small graph made-up of the variables created by $\phi$-nodes isolation (see Figure~\ref{fig:phi_isolation}).
-However, it turns out that most of the associated shuffle code can usually be moved (and even annihilated) to and within the surrounding basic-blocks.
+However, it turns out that most of the associated shuffle code can usually be moved (and even annihilated) to and within the surrounding basic blocks.
 Such post-pass optimizations correspond to the optimistic move insertion of Braun et al.~\cite{braun2010preference} or the parallel copy motion of Bouchez et al.~\cite{Bouchez:2010:PCM}.
 
 \paragraph{Decoupled Load/Store and Coalescing Optimization Problems}
@@ -1001,7 +1042,7 @@ It is an extension of Belady's algorithm~\cite{belady:1966:storage} originally d
 For straight-line code but multiple-uses per variable Farrach and Liberatore~\cite{farach:98:local} showed that if this further-first strategy works reasonably well, it can also be formalized as a flow problem.
 For a deeper discussion about the complexity of the spilling problem under different configurations, we refer to~\cite{Bouchez07b}.
 To conclude on the spilling part of the register allocation problem, remains to mention the important problem of load/store placement.
-As implicitly done by our heuristic given in Figure~\ref{fig:ra:initloop}, one should, whenever possible, hoist shuffle code outside of loops.
+As implicitly done by our heuristic given in Algorithm~\ref{ra:code:initloop}, one should, whenever possible, hoist shuffle code outside of loops.
 This problem corresponds to the global code-motion addressed in Chapter~\ref{chapter:pre_not_helped} that should idealistically be coupled to the register allocation problem.
 Another related problem, not mentioned in this chapter, is rematerialization~\cite{rematerialization}.
 Experience shows that:
@@ -1017,7 +1058,7 @@ The notion of value-based interference described in Paragraph~\ref{par:alternati
 Details on the brute-force approach that extends the conservative coalescing scheme depicted in this chapter can be found in~\cite{}.
 However, there exists several other schemes which complexity are studied in~\cite{BouchezDR07:coalescing-cplx}.
 Among others, the optimistic approach of Park and Moon~\cite{park2004optimistic} has been shown to be extremely competitive~\cite{Grund07,Bouchez:case08} in the context of the, somehow restricted, coalescing challenge initiated by~\cite{{Appel01}}.
-\endofchapter
+% \endofchapter
 }
 
 %%% Local Variables:
