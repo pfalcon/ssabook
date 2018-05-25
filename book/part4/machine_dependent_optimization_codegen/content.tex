@@ -6,7 +6,7 @@
 In a compiler for imperative languages such as C, C++, or FORTRAN, the code
 generator\index{code generation} covers the set of code transformations and optimizations that operate
 on a program representation close to the target machine Instruction Set
-Architecture (ISA)\index{instruction set architecture!ISA}. The code geberator produces an
+Architecture (ISA)\index{instruction set architecture!ISA}. The code generator produces an
 assembly source or relocatable file with debugging information as result.
 
 The main duties of code generation are: lowering the program Intermediate
@@ -110,7 +110,7 @@ encoded in register mask immediates.
 \subsection{Representation of instruction semantics}
 
 Unlike IR operators, there is no straightforward mapping between machine
-instructions and their semantics. For instance, a substract instruction with
+instructions and their semantics. For instance, a subtract instruction with
 operands $(a,b,c)$ may either compute $c \leftarrow a-b$ or $c \leftarrow b-a$
 or any such expression with permuted operands. Yet basic SSA form code cleanups,
 such as constant propagation\index{constant propagation} or sign extension removal need to know what is
@@ -221,7 +221,7 @@ among two source operands, depending on the condition tested on a third source
 operand. The Multiflow TRACE 500 architecture was to include predicated store
 and floating-point instructions~\cite{Lowney:1993:JS}.
 
-\item[\textbf{Full predicated execution support}] Most instructions accept a boolean
+\item[\textbf{Full predicated execution support}] Most instructions accept a Boolean
 predicate operand, which nullifies the instruction effects if the predicate
 evaluates to \false. EPIC-style architectures\index{EPIC} also provide predicate define
 instructions (PDIs)\index{instruction, predicate define} to efficiently evaluate predicates corresponding to nested
@@ -390,7 +390,7 @@ did not consider the SSA form: \begin{description}
 \item[\textbf{Allen et al.~\cite{Allen:1983:POPL}}] Conversion of control
 dependences to data dependences, motivated by inner loop vectorization. They
 distinguish forward branches, exit branches, and backward branches, and compute
-Boolean guards accordingly. As this work pre-dates the Program Dependence Graph\index{program dependence graph}~\cite{Ferrante:1987:TOPLAS} (see Chapter~\ref{chapter:vsdg}), complexity of the resulting boolean expressions is
+Boolean guards accordingly. As this work pre-dates the Program Dependence Graph\index{program dependence graph}~\cite{Ferrante:1987:TOPLAS} (see Chapter~\ref{chapter:vsdg}), complexity of the resulting Boolean expressions is
 an issue. When comparing to later if-conversion techniques, only the conversion
 of forward branches is relevant.
 
@@ -697,13 +697,13 @@ dependences in the instruction scheduling problem. Other reasons why it seems
 there is little to gain from scheduling instructions on a SSA form of the program
 representation include: \begin{itemize}
 
-\item Except in case of trace scheduling which pre-dates the use of SSA form in
-production compilers, the classic scheduling regions are single-entry and do not
+\item Except in case of trace scheduling,
+the classic scheduling regions are single-entry and do not
 have control-flow merge\index{CFG merge}. So there are no \phifuns in case of acyclic
 scheduling, and only \phifuns in the loop header in case of software
-pipelining. Keeping those \phifuns in the scheduling problem has no
-benefits and raises engineering issues, due to their parallel execution
-semantics and the constraint to keep them first in basic blocks.
+pipelining. Keeping those \phifuns in the scheduling problem has no direct
+benefits while adding significant complexity to the computation of loop-carried
+dependences on virtual registers.
 
 \item Instruction scheduling must account for all the instruction issue slots
 required to execute a code region. If the only ordering constraints between
@@ -712,32 +712,31 @@ true data dependences on operands, code motion will create interferences that
 must later be resolved by inserting copy operations in the scheduled code
 region. (Except for interferences created by the overlapping of live ranges
 that results from modulo scheduling, as these are resolved by modulo renaming
-\cite{Lam:1988:PLDI}.) So scheduling instructions with SSA variables as operands
-is not effective unless extra dependences are added to the scheduling problem to
-prevent such code motion. 
+\cite{Lam:1988:PLDI}.) To prevent such code motion, scheduling instructions with
+SSA variables as operands must be constrained by adding extra dependences to the
+scheduling problem.
 
 \item Some machine instructions have partial effects on special resources such
 as the status register. Representing special resources as SSA variables even
 though they are accessed at the bit-field level requires coarsening the
 instruction effects to the whole resource, as discussed in
-Section~\ref{sec:non-kill-target}. In turn this implies def-use variable
-ordering that prevents aggressive instruction scheduling. For instance, all
-{sticky} bit-field definitions can be reordered with regards to the next use,
-and an instruction scheduler is expected to do so. Scheduling OR-type predicate
-define operations~\cite{Schlansker:1999:PLDI} raises the same issues.  An
+Section~\ref{sec:non-kill-target}. Moreover, def-use ordering implied by SSA
+form is not adapted
+to resources composed of sticky bits, whose definitions can be reordered with
+regards to the next use. Scheduling OR-type predicate
+define operations~\cite{Schlansker:1999:PLDI} raises the same issues. An
 instruction scheduler is also expected to precisely track accesses to unrelated
 or partially overlapping bit-fields in a status register.
 
 \item Aggressive instruction scheduling relaxes some flow data dependences that
-are normally implied by SSA variable def-use ordering. A first example is
+are normally implied by def-use ordering. A first example is
 \emph{move renaming}~\cite{Young:1998:MICRO}, the dynamic switching of the
 definition of a source operand defined by a copy operation when the consumer
 operations ends up being scheduled at the same cycle or earlier. Another example
 is \emph{inductive relaxation}~\cite{Dinechin:1997:PaCT}, where the dependence
 between additive induction variables and their use as base in base+offset
 addressing modes is relaxed to the extent permitted by the induction step and
-the range of the offset. These techniques apply to acyclic scheduling and to
-modulo scheduling.
+the range of the offset.
 
 \end{itemize}
 
@@ -754,15 +753,14 @@ the SSA form should be re-constructed.
 
 The destruction of the SSA form in a code generator is required before the
 prepass instruction scheduling and software pipelining, as discussed earlier,
-and also before non-SSA register allocation.  A weaker form is the conversion of
+and also before non-SSA register allocation.  A weaker form of SSA destruction is the conversion of
 transformed SSA form to conventional SSA form, which is required by classic SSA
 form optimizations such as SSA-PRE~\cite{Kennedy:1999:TOPLAS} and SSA form
 register allocators~\cite{Pereira:2008:PLDI}. For all such cases, the main
-objective besides removing the SSA form extensions from the program
-representation is to ensure that the operand naming constraints are satisfied.
-Another objective is to avoid critical edge splitting, as this interferes with
-branch alignment~\cite{Calder:1994:ASPLOS}, and is not possible on some
-control-flow edges of machine code such as hardware loop back edges.
+objective is to ensure that the operand naming constraints are satisfied.
+%Another objective is to avoid critical edge splitting, as this interferes with
+%branch alignment~\cite{Calder:1994:ASPLOS}, and is not possible on some
+%control-flow edges of machine code such as hardware loop back edges.
 
 The contributions to SSA form destruction techniques can be characterized as an
 evolution towards correctness, the ability to manage operand naming constraints,
@@ -820,7 +818,8 @@ adapting the SSA optimizations to enforce operand naming constraints is not
 practical.  They operate in three steps: collect the renaming constraints; mark
 the renaming conflicts; and reconstruct code, which adapts the SSA destruction
 of Briggs et al.~\cite{Briggs:1998:SPE}. This work is also the first to make
-explicit use of parallel copy operations.
+explicit use of parallel copy operations. A few correctness issues were later
+identified and corrected by Rastello et al.~\cite{Rastello:2004:CGO}.
 
 \item[\textbf{Budimli\'c et al.~\cite{Budimlic:2002:PLDI}}] Contribution of a lightweight SSA form
 destruction motivated by JIT compilation. It uses the (strict) SSA form property
@@ -845,11 +844,12 @@ patent 6182284).
 
 %Errors in missing parallel copies in case of W shaped CFG, the copies in the pointy edge need to be in parallel
 
-\item[\textbf{Boissinot et al.~\cite{Boissinot:2009:CGO}}] Analysis of the previous
-contributions to SSA form destruction to their root principles. Formulation
+\item[\textbf{Boissinot et al.~\cite{Boissinot:2009:CGO}}] Formulation
 of a generic approach to SSA form destruction that is proved correct, handles
-operand naming constraints, and can be optimized for speed. The foundation of
-the approach is to transform the program to conventional SSA form by isolating
+operand naming constraints, and can be optimized for speed.
+(See Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} for details of
+this generic approach.) The foundation of
+this approach is to transform the program to conventional SSA form by isolating
 the \phifuns like in Method~I of Sreedhar et al.
 \cite{Sreedhar:1999:SAS}.  However, the copy operations inserted are parallel,
 so a parallel copy sequentialization algorithm is provided. The task of
