@@ -1,14 +1,16 @@
-\chapter{Hardware Compilation using SSA\Author{Pedro C. Diniz \andAuthor Philip Brisk}}
+\chapter{Hardware Compilation using SSA
+\Author{Pedro C. Diniz \andAuthor Philip Brisk}}
 \label{chapter:hardware_compilation}
 \inputpath[Figs]{part4}{hardware_compilation}
 \inputprogress
 % \makeatletter
 % \show\input@path
 % \makeatother
+%\renewcommand{\adjustbox}[1]{#1}
 
-This \index{hardware compilation}chapter describes the use of SSA-based high-level program representation for the realization of the corresponding computation using hardware circuits. 
+This \index{hardware compilation}chapter describes the use of SSA-based high-level program representation for the realization of the corresponding computation using hardware digital circuits. 
   We begin by highlighting the benefits of using a compiler SSA-based intermediate representation in this hardware mapping process using an illustrative example. 
-  The following sections describe hardware translation schemes for the core hardware logic or data-paths of hardware circuits. 
+  The subsequent sections describe hardware translation schemes for discrete hardware logic structures or data-paths of hardware circuits. 
   In this context we also outline several compiler transformations that benefit from the SSA-based representation of a computation. 
   We conclude with a brief survey of various hardware compilation efforts both from academia as well as industry that have adopted SSA-based internal representations.
 
@@ -19,19 +21,21 @@ This \index{hardware compilation}chapter describes the use of SSA-based high-lev
 
 Hardware compilation is the process by which a high-level language, or behavioral, description of a computation is translated into a hardware-based implementation i.e., a circuit expressed in a hardware design language such as VHDL\index{VHDL} or Verilog\index{Verilog} which can be directly realized as an electrical (often digital) circuit. 
 
-While, initially, developers were forced to design hardware circuits using schematic-capture tools, high-level behavioral synthesis allowed them over the years to leverage the wealth of hardware-mapping and design exploration techniques to realize substantial productivity gains. 
+While there are various levels of abstraction at which a circuit can be described, a common level of abstraction will include discrete elements such as registers (Flip-Flops) that capture the state of the computation at specific events, such as clock edges, and combinatorial elements that transform the values carried by electrical wires. The composition of these elements, allows programmers to build sequential machines, such as Finite-State-Machines (FSMs) that control the processing of inputs and the data stored in internal registers often aggregated in the form or RAM blocks. The architecture of these circuits can support sequential execution of operations akin to the execution of high-level programs.
+
+While, initially, developers were forced to design hardware circuits exclusively using schematic-capture tools, high-level behavioral synthesis allowed them over the years to leverage the wealth of hardware-mapping and design exploration techniques to realize substantial productivity gains. 
+
 As an example Figure~\ref{fig:Fig.4.1} illustrates these concepts of hardware mapping for the computation expressed as $x \gets (a \times b) - (c \times d) + f$. 
 In figure~\ref{fig:Fig.4.1-b} a graphical representation of a circuit that directly implements this computation is presented. 
-Here there is a direct mapping of hardware operator such as adders and multipliers to the operations in the computation. 
-Values are stored in register and the entire computation lasts a single (albeit long) clock cycle. 
-The input data values are stored in the input registers on the left and a clock cycle later the corresponding results of the computation are ready and saved in the output registers on the right-hand-side of the figure. 
-Overall this direct implementation uses two multipliers, two adders/subtractors and six registers. 
-The execution using this design implementation can use a very simple control scheme, as it simply uses the data in the input registers, waits for a single clock cycle and stores the outputs of the operations in the output registers. 
-In figure~\ref{fig:Fig.4.1-c} we depict a different implementation variant of the same computation, this time using nine registers and the same amount of adders and subtractors. 
+Here there is a direct mapping between hardware operators such as adders and multipliers and the operations in the computation. 
+Input values are stored in the registers at the top of the circuit diagram and the entire computation is carried out during a single (albeit long) clock cycle, at the end of which the results propagated through the various hardware operators are captured (or latched) in the registers at the bottom of the circuit diagram. 
+Overall this direct implementation uses two multipliers, two adders/subtractors and six registers, five registers to hold the computation's input values and one register to capture the computation's output result.
+The execution using this hardware implementation  requires a simple control scheme, as it just needs to record the input values, wait for a single clock cycle at the end of which it stores the outputs of the operations in the output register. 
+In figure~\ref{fig:Fig.4.1-c} we depict a different implementation variant of the same computation, this time using nine registers and the same amount of adders and subtractors.\footnote{It may be apparent that the original computation lacks any temporal specification in terms of the relative order in which data-independent operation can be carried out. Implementation variants exploit this property.} 
 The increased number of registers allows for the circuit to be clocked at higher frequency as well as to be executed in a pipelined fashion. 
 Finally, in figure~\ref{fig:Fig.4.1-d} we depict yet another possible implementation of the same computation but using a single multiplier operator. 
 This last version allows for the reuse in time of the multiplier operator and required thirteen register as well as multiplexers to route the inputs to the multiplier in two distinct control steps. 
-As it is apparent, the reduction of number of operators, in this particular case the multipliers carries a penalty on increased number of registers, multiplexers~\footnote{A $2\times1$ multiplexor is a combinatorial circuit with two data inputs, a single output and a control input, where the control input selects which of the two data inputs is transmitted to the output. 
+As it is apparent, the reduction of number of operators, in this particular case the multipliers carries a penalty in an increased number of registers, multiplexers~\footnote{A $2\times1$ multiplexor is a combinatorial circuit with two data inputs, a single output and a control input, where the control input selects which of the two data inputs is transmitted to the output. 
   It can be viewed as a hardware implementation of the C programming language selection operator : 
   $\textit{out} = (q ? 
     \textit{in}_1 : 
@@ -76,29 +80,34 @@ and increased complexity of the control scheme.\\
 
 This example illustrates the many degrees of freedom in high-level behavioral hardware synthesis. 
 Synthesis techniques perform the classical tasks of allocation, binding and scheduling of the various operations in a computation given specific target hardware resources. 
-For instance, a designer can use behavioral synthesis tools (e.g., Mentor Graphics's Monet$^{\textregistered}$) to automatically derive an implementation for a computation as expressed in the example in Figure~\ref{fig:Fig.4.1-a} by declaring that it pretends to use a single adder and a single multiplier automatically deriving an implementation that resembles the one depicts in figure~\ref{fig:Fig.4.1-d}. 
+For instance, a designer can use behavioral synthesis tools (e.g., Xilinx's Vivado$^{\textregistered}$\index{Vivado}) to automatically derive an implementation for a computation as expressed in the example in Figure~\ref{fig:Fig.4.1-a} by declaring that it pretends to use a single adder and a single multiplier automatically deriving an implementation that resembles the one depicts in figure~\ref{fig:Fig.4.1-d}. 
 The tool then derives the control scheme required to route the data from registers to the selected units so as to meet the designers' goals. 
 
 Despite the introduction of high-level behavioral synthesis techniques in commercially available tools, hardware synthesis and thus hardware compilation has never enjoyed the same level of success as traditional, software compilation. 
 Sequential programming paradigms popularized by programming languages such as C/C++ and more recently by Java, allow programmers to easily reason about program behavior as a sequence of program memory state transitions. 
 The underlying processors and the corresponding system-level implementations present a number of simple unified abstractions -- such as a unified memory model, a stack, and a heap that do not exist (and often do not make sense) in customized hardware designs.
 
-Hardware compilation, in contrast, has faced numerous obstacles that have impeded its progress and generality. 
-When developing hardware solutions, designers must understand the concept of spatial concurrency that circuits do offer. 
+Hardware compilation, in contrast, has faced numerous obstacles that have hampered its wide adoption. When developing hardware solutions, designers must understand the concept of spatial concurrency that hardware circuits offer. 
 Precise timing and synchronization between distinct hardware components are key abstractions in hardware. 
-Solid and robust hardware design implies a detailed understanding of the precise timing of specific operations, including I/O, that simply cannot be expressed in language such as C, C++, or Java; 
-for this reason, alternatives, such as SystemC\index{SystemC} have emerged in recent years, which give the programmer considerably more control over these issues. 
+Solid and robust hardware design implies a detailed understanding of the precise timing of specific operations, including I/O, that simply cannot be expressed in languages such as C, C++, or Java. Alternatives, such as SystemC\index{SystemC} have emerged in recent years, which give the programmer considerably more control over these issues. 
 The inherent complexity of hardware designs has hampered the development of robust synthesis tools that can offer high-level programming abstractions enjoyed by tools that target traditional architecture and software systems, thus substantially raising the barrier of entry for hardware designers in terms of productivity and robustness of the generated hardware solutions. 
 At best, today hardware compilers can only handle certain subsets of mainstream high-level languages, and at worst, are limited to purely arithmetic sequences of operations with strong restrictions on control flow.
 
-Nevertheless, the emergence of multi-core processing has led to the introduction of new parallel programming languages and parallel programming constructs that may be more amenable to hardware compilation than traditional languages and, similarly, abstractions such as a heap (e.g., pointer-based data structures) and a unified memory address space are proving to be bottlenecks with respect to effective parallel programming. 
-For example, MapReduce, originally introduced by Google to spread parallel jobs across clusters of servers, has been an effective programming model for FPGAs\index{FPGA}; 
-similarly, high-level languages based on parallel models of computation such as synchronous data flow\index{synchronous data flow}, or functional single-assignment languages\index{functional language} have also been shown to be good choices for hardware compilation.
+Nevertheless, the emergence of multi-core processing has led to the introduction of new parallel programming languages and parallel programming constructs that may be more amenable to hardware compilation than traditional languages 
+%and, similarly, abstractions such as a heap (e.g., pointer-based data structures) and a unified memory address space are proving to be bottlenecks with respect to effective parallel programming. 
+% * <peddiniz@gmail.com> 2018-05-25T01:38:24.534Z:
+% 
+% This sentence is really out of place here. One this is the contained control flow athat helps hardware synthesis the other is the inability to uncover data dependences that hinder the discovery of concurrency. This sentence is misleading at best, so I would just remove it.
+% 
+% ^ <peddiniz@gmail.com> 2018-05-25T01:40:05.458Z.
+For example, MapReduce, originally introduced by Google to spread parallel jobs across clusters of servers, has been an effective programming model for FPGAs\index{FPGA} as it naturally exposes task-level concurrency with data independence; 
+similarly, high-level languages based on parallel models of computation such as synchronous data flow\index{synchronous data flow}, or functional single-assignment languages\index{functional language} have also been shown to be good choices for hardware compilation as not only they made data independence obvious, but in many cases the natural data partitioning is a natural match for the spatial concurrency that FPGAs exhibit.
 
-Although the remainder of this chapter will be limited primarily to hardware compilation for imperative high-level programming languages with an obvious focus on SSA Form, many of the emerging parallel languages will retain sequential constructs, such as control-flow graphs, within a larger parallel framework. 
-The extension of SSA Form, and SSA-like constructs, to these emerging languages, is an open area for future research; 
-however, the fundamental uses of SSA Form for hardware compilation, as discussed in this chapter, are likely to remain generally useful.
-
+Although the remainder of this chapter will be limited primarily to hardware compilation for imperative high-level programming languages with an obvious focus on SSA Form, many of the emerging parallel languages while including sequential constructs, such as control-flow graphs, they also support truly concurrent constructs. These could be a natural fit to exploit the spatial and customization opportunities of FPGA-based computing architectures.
+% * <peddiniz@gmail.com> 2018-05-25T01:43:04.542Z:
+%
+% ^.
+The extension of SSA Form, and SSA-like constructs, to these emerging languages, is an open area for future research; however, the fundamental uses of SSA Form for hardware compilation, as discussed in this chapter, are likely to remain generally useful.
 
 \section{Why use SSA for hardware compilation?}
 Hardware compilation, unlike its software counterpart, offers a spatially oriented computational infrastructure that presents opportunities that can leverage information exposed by the SSA representation. 
@@ -151,39 +160,30 @@ Lastly, we illustrate in Figure~\ref{fig:Fig.4.2-c} the corresponding mapping to
 \label{fig:Fig.4.2}
 \end{figure}
 
-The basic observation is that the confluence of values for a given
-program variable leads to the use of a \phifun.
-This \phifun abstraction thus corresponds in terms
-of hardware implementation of the insertion of a multiplexer logic circuit\index{multiplexer, logic circuit}. 
-This logic circuit uses the Boolean value of a control input to select which of its 
+The basic observation is that the confluence of values for a given program variable leads to the use of a \phifun. This \phifun abstraction thus corresponds in terms of hardware implementation of the insertion of a multiplexer logic circuit\index{multiplexer, logic circuit}. This logic circuit uses the Boolean value of a control input to select which of its 
 input's value is to be propagated to its output. The selection or control input of 
 a multiplexer thus acts as a gated transfer of value that parallels the actions of 
 an {\tt if-then-else} construct in software.
 
-Equally important in this mapping to hardware is the notion that the computation in hardware can now take a spatial dimension. 
-In the suggested hardware circuit in Figure~\ref{fig:Fig.4.2-c} the computation derived from the statement in both branches of the {\tt if-then-else} construct can be evaluated concurrently by distinct logic circuits. 
-After the evaluation of both circuits the multiplexer will define which set of values are used based on the value of its control input, in this case of the value of the computation associated with $p$.
+Equally important in this mapping is the notion that the computation in hardware can now take a spatial dimension.  In the hardware circuit in Figure~\ref{fig:Fig.4.2-c} the computation derived from the statement in both branches of the {\tt if-then-else} construct can be evaluated concurrently by distinct logic circuits.  After the evaluation of both circuits the multiplexer will define which set of values are used based on the value of its control input, in this case of the value of the computation associated with $p$.
 
-In a sequential software execution environment, the predicate $p$ would be evaluated first, and then either branches of the {\tt if-then-else} construct would be evaluated, based on the value of $p$; 
-as long as the register allocator is able to assign $t_1$, $t_2$, and $t_3$ to the same register, then the \phifun is executed implicitly; 
-if not, it is executed as a register-to-register copy.
+In a sequential software execution environment, the predicate $p$ would be evaluated first, and then either branches of the {\tt if-then-else} construct would be evaluated, based on the value of $p$;  as long as the register allocator is able to assign $t_1$, $t_2$, and $t_3$ to the same register, then the \phifun is executed implicitly;  if not, it is executed as a register-to-register copy.
 
 There have been some efforts that could automatically convert the sequential program above into a semi-spatial representation that could obtain some speedup if executed on a VLIW\index{VLIW} ((Very Long Instruction Word) type of processor. 
-For example, if-conversion (See Chapter~\ref{chapter:if_conversion}) would convert the control dependency\index{control dependency} into a data dependency\index{data dependency}: 
-statements from the {\tt if}- and {\tt else} blocks could be interleaved, as long as they do not overwrite one another's values, and the proper result (the \phifun) could be selected using a conditional-move instruction; 
-however, in the worst case, this would effectively require the computation of both sides of the branch, rather than one, so it could actually lengthen the amount of time required to resolve the computation; 
-in the spatial representation, in contrast, the correct result can be output as soon as two of the three inputs to the multiplexer are known ($p$, and one of $t_1$ or $t_2$, depending on the value of $p$).
+For example, if-conversion (See Chapter~\ref{chapter:if_conversion}) would convert the control dependency\index{control dependency} into a data dependency\index{data dependency}:  statements from the {\tt if}- and {\tt else} blocks could be interleaved, as long as they do not overwrite one another's values, and the proper result (the \phifun) could be selected using a conditional-move instruction. In the worst case, however, this approach would effectively require the computation of both branch sides, rather than one, so it could actually lengthen the amount of time required to resolve the computation. 
+In a spatial representation, in contrast, the correct result can be output as soon as two of the three inputs to the multiplexer are known ($p$, and one of $t_1$ or $t_2$, depending on the value of $p$).
 
 %%% need to fix sentences below.
-When targeting a hardware platform, one advantage of the SSA representation is that assigning a value to each scalar variable exactly once makes the sequences of definitions and uses of each variable both formal and explicit. 
-A spatially-oriented infrastructure can leverage this information to perform the computation in ways that would make no sense in a traditional processor. 
-For example, in an FPGA~\footnote{Field-Programmable Gate Arrays are layers of two dimensional topology integrated circuits designed to be configurable after manufacturing}\index{FPGA}, one can use multiple registers in space and in time to hold the same variable, and even simultaneously assign distinct values to it; 
-then, based on the outcome of specific predicates in the program, the hardware implementation can select the appropriate register to hold the outcome of the computation. 
-In fact, this is precisely what was done using a multiplexer in the example above.
+% * <peddiniz@gmail.com> 2018-05-25T02:24:33.427Z:
+%
+% ^.
+%When targeting a hardware platform, one advantage of the SSA representation is that assigning a value to each scalar variable exactly once makes the sequences of definitions and uses of each variable both formal and explicit. 
+%A spatially-oriented infrastructure can leverage this information to perform the computation in ways that would make no sense in a traditional processor. 
+%For example, in an FPGA~\footnote{Field-Programmable Gate Arrays are layers of two dimensional topology integrated circuits designed to be configurable after manufacturing}\index{FPGA}, one can use multiple registers in space and in time to hold the same variable, and even simultaneously assign distinct values to it; 
+%then, based on the outcome of specific predicates in the program, the hardware implementation can select the appropriate register to hold the outcome of the computation. 
+%In fact, this is precisely what was done using a multiplexer in the example above.
 
-This example highlights the potential benefits of a SSA-based intermediate representation, when
-targeting hardware architectures that can easily exploit spatial
-computation, namely:
+The computation mapping example depicted above highlights the potential benefits of a SSA-based intermediate representation, when targeting hardware architectures that can easily exploit spatial computation, namely:
 \begin{itemize}
 \item Exposes the data dependences\index{data dependency} in each variable computation by explicitly incorporating into the representation each variable def-use chains\index{def-use chain}. 
   This allows a compiler to isolate the specific values and thus possible registers that contribute to each of the assumed values of the variable. 
@@ -193,20 +193,17 @@ computation, namely:
   This aspect has been so far neglected but might play an important role in the context of energy minimization. 
 \end{itemize}
 
-While the Electronic Design Automation (EDA) community had for several decades now exploited similar information regarding data and control dependences for the generation of hardware circuits from increasingly higher-level representations (e.g., Behavioral HDL), SSA makes these dependences explicit in the intermediate representation itself. 
-Similarly, the more classical compiler representations, using three-address instructions augmented with the def-use chains already exposes the data-flow information as for the SSA-based representation. 
-The later however, and as we will explore in the next section, facilitates the mapping and selection of hardware resources.
+While the Electronic Design Automation (EDA) community had for several decades now exploited similar information regarding data and control dependences for the generation of hardware circuits from increasingly higher-level representations (e.g., Behavioral HDL), SSA-based representations make these dependences explicit in the intermediate representation itself.  Similarly, the more classical compiler representations, using three-address instructions augmented with the def-use chains already exposes the data-flow information as for the SSA-based representation. The later however, and as we will explore in the next section, facilitates the mapping and selection of hardware resources.
 
 
 \section{Mapping a control-flow graph to hardware}
-In this section we are interested in hardware implementations or circuit that are spatial in nature.
-Thus we do not address the mapping to architectures such as VLIW or Systolic Arrays. 
-While these architectures pose very interesting and challenging issues, namely scheduling and resource usage, we are more interested in exploring and highlighting the benefits of SSA representation which, we believe, are more naturally (although not exclusively) exposed in the context of spatial hardware computations.
+In this section we focus on hardware implementations or circuit that are spatial in nature.
+We, therefore, do not address the mapping to architectures such as VLIW or Systolic Arrays. 
+While these architectures pose interesting and challenging issues, namely scheduling and resource usage, we are more interested in exploring and highlighting the benefits of SSA representation which, we believe, are more naturally (although not exclusively) exposed in the context of spatial hardware computations.
 
 \subsection{Basic block mapping}
 As a basic block is a straight-line sequence of three-address instructions, a simple hardware mapping approach consists in composing or evaluating the operations in each instruction as a data-flow graph. 
-The inputs and outputs of the instructions are transformed into registers~\footnote{As a first approach these registers are virtual and then after synthesis some of them are materialized to physical registers in a process similar to register allocation in software-oriented compilation.} 
-connected by nodes in the graph that represent the operators. 
+The inputs and outputs of the instructions are transformed into registers~\footnote{As a first approach these registers are virtual and then after synthesis some of them are materialized to physical registers in a process similar to register allocation in software-oriented compilation.}  connected by nodes in the graph that represent the operators. 
 
 As a result of the "evaluation" of the instructions in the basic block this algorithm constructs a hardware circuit that has as input registers that will hold the values of the input variables to the various instructions and will have as outputs registers that hold only variables that are live outside the basic block. 
 
@@ -239,7 +236,7 @@ These data transfers do not need necessarily to be carried out sequentially but 
 \label{fig:Fig.4.4}
 \end{figure}
 
-The temporal approach described above is well suited for the scenario where the target architecture does not have sufficient resources to simultaneously implement the hardware circuits corresponding to all basic blocks of interest as it trades off execution time for hardware resources.
+The temporal approach described above is well suited for the scenario where the target hardware architecture does not have sufficient resources to simultaneously implement the hardware circuits corresponding to all basic blocks of interest as it trades off execution time for hardware resources.
 
 In such a scenario, where hardware resources are very limited or the hardware circuit corresponding to a set of basic blocks is exceedingly large, one could opt for partitioning a basic block or set of basic blocks into smaller blocks until the space constraints for the realization of each hardware circuit are met. 
 In reality this is the common approach in every processor today. 
@@ -288,10 +285,11 @@ The direct flow of the single definition point to all its uses, across the hardw
 
 An important aspect regarding the implementation of a multiplexer associated with a \phifun is the definition and evaluation of the predicate associated with each multiplexer's control (or selection) input signal. 
 In the basic SSA representation the selection predicates are not explicitly defined, as the execution of each \phifun is implicit when the control flow reaches it. 
-When mapping the computation a \phifun to hardware, however, one has to clearly define which predicate to use to be included part of the hardware logic circuit that defines the value of the multiplexer circuit's selection input signal. 
-The Gated-SSA\index{gated SSA} form previously described in Chapter~\ref{chapter:vsdg} of the SSA form explicitly captures the necessary information in the representation. 
-As the variable name associated with each gating predicate fulfills the referential transparency\index{referential transparency} as any SSA variable, this variant of the SSA form is particularly useful for hardware synthesis. 
-The generation of the hardware circuit simply uses the register that holds the corresponding variable's version value of the predicate, as opposed to the base name of the variable as this might have been assigned a value that does not correspond to the actual value used in the gate. 
+When mapping a computation to hardware, however, a \phifun clearly elicits the need to  to define a predicate to be included as part of the hardware logic circuit that defines the value of the multiplexer circuit's selection input signal.  
+To this effect, hardware mapping must rely on a variant of SSA, named Gated-SSA\index{gated SSA}  (see Chapter~\ref{chapter:vsdg}), which explicitly captures the symbolic predicate information in the representation.\footnote{As with any SSA representation,   variable names  fulfills the referential transparency\index{referential transparency}. }
+The generation of the hardware circuit simply uses the register that holds the corresponding variable's version value of the predicate.
+% the sentence below is repeating the notion of referential transparency...
+%, as opposed to the base name of the variable as this might have been assigned a value that does not correspond to the actual value used in the gate. 
 Figure~\ref{fig:Fig.4.6} illustrates an example of a mapping using the information provided by the Gated-SSA form.
 
 \begin{figure}[htbp]
@@ -325,14 +323,13 @@ Figure~\ref{fig:Fig.4.6} illustrates an example of a mapping using the informati
 \caption{Hardware generation example using Gated-SSA form.}
 \label{fig:Fig.4.6}
 \end{figure}
-
 When combining multiple predicates in the Gated-SSA form, it is often desirable to leverage the control-flow representation in the form of the Program Dependence Graph\index{program dependence graph} (PDG) described in Chapter~\ref{chapter:vsdg}. 
-In this representation, basic blocks that share common execution predicates (i.e., both execute under the same predicate conditions) are linked to the same {\em region} nodes\index{region node}. 
+In the PDG representation, basic blocks that share common execution predicates (i.e., both execute under the same predicate conditions) are linked to the same {\em region} nodes\index{region node}. 
 Nested execution conditions are easily recognized as the corresponding nodes are hierarchically organized in the PDG representation. 
-As such, when generating code for a given basic block, an algorithm will examine the various region nodes associated with a given basic block and compose (using AND operators) the outputs of the logic circuits that implementat the predicates associated with these nodes. 
-If an hardware circuit already exists for the same predicate, the implementation simply reuses its output signal. 
-Otherwise, creates a new hardware circuit. 
+As such, when generating code for a given basic block, an algorithm will examine the various region nodes associated with a given basic block and compose (using AND operators) the outputs of the logic circuits that implement the predicates associated with these nodes. 
+If an hardware circuit already exists that evaluates a given predicate that corresponds to a given region, the implementation can simply reuses its output signal.  
 This lazy code generation and predicate composition achieves the goal of hardware circuit sharing as illustrated by the example in Figure~\ref{fig:Fig.4.7} where some of the details were omitted for simplicity.
+When using the PDG representation, however, care must be taken regarding the potential lack of referential transparency. To this effect, it is often desirable to combine the SSA information with the PDG's regions to ensure correct reuse of the hardware that evaluates the predicates associated with each control-dependence region.
 
 \begin{figure}[htb]
   \centering
@@ -366,7 +363,7 @@ This lazy code generation and predicate composition achieves the goal of hardwar
 
 
 \subsection{$\phi$-function and multiplexer optimizations}
-We now describe a set of hardware-oriented transformations that can be applied to improve the amount of hardware resources devoted to multiplexer implementation. 
+We now describe a set of hardware-oriented transformations that can be applied to possibly reduce the amount of hardware resources devoted to multiplexer implementation or to use multiplexers change the temporal features of the execution and thus enable other aspects of hardware execution to be more effective (e.g., scheduling).
 Although these transformations are not specific to the mapping of computations to hardware, the explicit representation of the selection constructs in SSA makes it very natural to map and therefore manipulate/transform the resulting hardware circuit using multiplexer. 
 Other operations in the intermediate representation (e.g., predicated instructions) can also yield multiplexers in hardware without the explicit use of SSA Form.
 
@@ -378,16 +375,16 @@ a partial product generator (a layer of AND gates) is followed by a multi-operan
 For these reasons, there have been several efforts in recent years to apply high-level algebraic transformations to source code with the goal of merging multiple addition operations with partial product reduction trees of multiplication operations. 
 The basic flavor of these transformations is to push the addition operators toward the outputs of a data-flow graph, so that they can be merged at the bottom. 
 Example of these transformations that use multiplexers are depicted in Figure~\ref{fig:Fig.4.8}(a,b). 
-In the case of Figure~\ref{fig:Fig.4.8}(a) the transformation leads to the fact that an addition is always executed unlike in the original hardware design. 
+In the case of Figure~\ref{fig:Fig.4.8}(a) the transformation leads to the fact that an addition is always executed unlike in the original hardware design. This can lead to more predictable timing or more uniform power draw signatures\footnote{An important issue in security-related aspects of the execution.}.
 Figure~\ref{fig:Fig.4.8}(c) depicts a similar transformation that merges two multiplexers sharing a common input, while exploiting the commutative property of the addition operator. 
-The SSA-based representation facilitates these transformations as it explicitly indicates which values, and thus by tracing backwards in the representation, are involved in the computation of the corresponding values. 
-For the example in Figure~\ref{fig:Fig.4.8}(b) the compiler would quickly detect {\tt a} as a common variables in the two expressions associated with the \phifun.
+The SSA-based representation facilitates these transformations as it explicitly indicates which values (by tracing backwards in the representation) are involved in the computation of the corresponding values. 
+For the example in Figure~\ref{fig:Fig.4.8}(b) a compiler could quickly detect the variable {\tt a} to be common  to the two expressions associated with the \phifun.
 
-A second transformation that can be applied to multiplexers is specific to FPGA whose basic building block consists of a k-input lookup table (LUT)\index{lookup table} logic element which can be programmed to implement any k-input logic function. 
-For example, a 3-input LUT (3-LUT) can be programmed to implement a multiplexer with two data inputs and one selection bit; 
-similarly, a 6-LUT can be programmed to implement a multiplexer with four data inputs and two selection bits. 
-In particular, many FPGAs devices are organized using 4-LUTs, which are too small to implement a multiplexer with four data inputs, but leave one input unused when implementing multiplexers with two data inputs. 
-These features can be explored to reduce the number of 4-LUTs required to implement a tree of multiplexers.\\
+A second transformation that can be applied to multiplexers is specific to FPGA whose basic building block consists of a k-input lookup table (LUT)\index{lookup table} logic element which can be programmed to implement any k-input logic function \footnote{A typical k-input LUT will include an arbitrary combinatorial functional block of those k inputs followed by an optional register element (e.g., \index{XilinxLUT} )}.
+For example, a 3-input LUT (3-LUT) can be programmed to implement a multiplexer with two data inputs and one selection bit.  Similarly, a 6-LUT can be programmed to implement a multiplexer with four data inputs and two selection bits, thus enable the implementation of a tree of 2-input multiplexers.\\
+% I understand what you are saying but it is very confusing.... I summarized it above.
+%In particular, many FPGAs devices are organized using 4-LUTs, which are too small to implement a multiplexer with four data inputs, but leave one input unused when implementing multiplexers with two data inputs. 
+%These features can be explored to reduce the number of 4-LUTs required to implement a tree of multiplexers.\\
 
 \begin{figure}[thbp]
 \centering
@@ -408,11 +405,10 @@ These features can be explored to reduce the number of 4-LUTs required to implem
     }
   }
 \caption{Multiplexer-Operator transformations: 
-  juxtapose the positions of a multiplexer and an adder (a,b); 
+  juxtaposition of a multiplexer and an adder (a,b); 
   reducing the number of multiplexers placed on the input of an adder (c).}
 \label{fig:Fig.4.8}
 \end{figure}
-
 
 \subsection{Implications of using SSA-form in floor-planing}
 For spatial oriented hardware circuits, moving a \phifun from one basic block to another can alter the length of the wires that are required to transmit data from the hardware circuits corresponding to the various basic blocks. 
@@ -443,16 +439,13 @@ Often, but not always, these efforts have been geared towards mapping computatio
 to fine-grain hardware structure such as the ones offered by FPGAs.
 
 The standard approach followed in these compilers has been to translate a high-level programming language such as Java in the case of the Sea Cucumber~\cite{Tripp:FPL02} compiler or C in the case of the ROCCC~\cite{Najjar:ROCCC08} to sequences of intermediate instructions. 
-These sequences are then organized in basic blocks that compose the control-flow graph (CFG). 
-For each basic block a data-flow graph (DFG) is typically extracted followed by conversion in to SSA representation, possibly using predicates associated with the control flow in the CFG thus explicitly using Predicated SSA representation (PSSA~\cite{Carter:PACT99,deFerriere:SCOPES07,Stoutchinin:2001:MICRO}).
+These sequences are then organized in basic blocks that compose the control-flow graph (CFG). For each basic block a data-flow graph (DFG) is typically extracted followed by conversion in to SSA representation, possibly using predicates associated with the control flow in the CFG thus explicitly using Predicated SSA representation (PSSA~\cite{Carter:PACT99,deFerriere:SCOPES07,Stoutchinin:2001:MICRO}).
 
-As an approach to increase the potential amount of exploitable instruction-level parallelism (ILP) at the instruction level, many of these efforts (as well as others such as the earlier Garp compiler~\cite{Callahan:Computer00}) restructure the CFG into hyper-blocks~\cite{Mahlke:Micro92}. 
-An hyper-block consists on a single-entry multi-exit regions derived from the aggregation of multiple basic blocks thus serializing longer sequences of instruction. 
+As an approach to increase the potential amount of exploitable instruction-level parallelism (ILP) at the instruction level, many of these efforts (as well as others such as the earlier Garp compiler~\cite{Callahan:Computer00}) restructure the CFG into hyper-blocks~\cite{Mahlke:Micro92}.  An hyper-block consists on a single-entry multi-exit regions derived from the aggregation of multiple basic blocks thus serializing longer sequences of instruction. 
 As not all instructions are executed in a hyper-block (due to early exit of a block), hardware circuit implementation must rely on predication to exploit the potential for additional ILP. 
 
 
-The CASH compiler~\cite{Budiu:FPL02} uses an augmented predicated SSA representation with tokens to explicitly express synchronization and handle {\em may-dependences} thus supporting speculative execution. 
-This fine-grain synchronization mechanism is also used to serialize the execution of consecutive hyper-blocks, thus greatly simplifying the code generation.\\
+The CASH compiler~\cite{Budiu:FPL02} uses an augmented predicated SSA representation with tokens to explicitly express synchronization and handle {\em may-dependences} thus supporting speculative execution.  This fine-grain synchronization mechanism is also used to serialize the execution of consecutive hyper-blocks, thus greatly simplifying the code generation.\\
 
 \paragraph{Further Readings}
 {\bf I moved all the references found in the main body here. Please reorganize it.}
