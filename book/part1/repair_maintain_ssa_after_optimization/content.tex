@@ -12,11 +12,10 @@
 %\section{Introduction}
 
 Some optimizations break the single-assignment property of the SSA form by inserting additional definitions for a single SSA value.
-A common example is live-range splitting by inserting copy operations or inserting spill and reload code during register allocation.
+A common example is live-range splitting\index{live-range splitting} by inserting copy operations or inserting spill and reload code during register allocation.
 Other optimizations, such as loop unrolling or jump threading, might duplicate code, thus adding additional variable definitions, \emph{and} modify the control flow of the program.
 We will first mention two examples before we present algorithms to properly repair SSA.
 
-\index{live-range splitting}
 The first example is depicted in Figure~\ref{fig:ex1}.
 Our spilling pass decided to spill a part of the live range of variable $x_0$
 in the right block in~\subref{sfig:harmless}, resulting in the code shown
@@ -60,7 +59,7 @@ Several popular compilers such as GCC and LLVM perform one or another variant of
 \index{path duplication}
 \index{jump threading}
 
-\section{General Considerations}
+\section{General considerations}
 In this chapter, we will discuss two algorithms.
 The first is an adoption of the classical dominance-frontier based algorithm.
 The second performs a search from the uses of the variables to the definition and places \phifuns on demand at appropriate places.
@@ -148,7 +147,7 @@ The differences are described in the next two sections.
 \end{procedure}
 
 %proposed by Sastry and Ju~\cite{sastry98},
-\section{Reconstruction based on the Dominance Frontier}
+\section{Reconstruction based on the dominance frontier}
 This algorithm follows the same principles as the classical SSA construction algorithm by Cytron at al.~as described in Chapter~\ref{chapter:classical_construction_algorithm}.
 We first compute the iterated dominance frontier (\iDF) of~$v$.
 This set is a sound approximation of the set where \phifuns must be placed---it might contain blocks where a \phifun would be dead.
@@ -187,7 +186,7 @@ Therefore, the reaching definition is the same for all predecessors of the block
   \Return{d}
 \end{procedure}
 
-\section{Search-based Reconstruction}
+\section{Search-based reconstruction}
 
 
 The second algorithm presented here is adapted from an algorithm designed to construct SSA from the abstract syntax tree, but it also works well on control-flow graphs.
@@ -203,11 +202,8 @@ The algorithm performs a backward depth-first search in the CFG to collect the r
 recording the SSA variable that is alive at the beginning of a block in the ``beg'' field of this block.
 If the CFG is an acyclic graph (DAG), all predecessors of a block can be visited before the block itself is processed, as we are using a post-order traversal following edges backward.
 Hence, we know all the definitions that reach a block $b$: if there is more than one definition, we need to place a \phifun in $b$, otherwise it is not necessary.
-%FAB: broken ref => commented
-%This is similar to the rules discussed in Section~\ref{sec:pessimistic_phi}.
-%\index{insertion of \phifun, pessimistic}
 
-\paragraph{Search on a general CFG.}
+\paragraph{Search on a general CFG}
 If the CFG has loops, there are blocks for which not all reaching definitions can be computed before we can decide whether a \phifun has to be placed or not.
 In a loop, recursively computing the reaching definitions for a block $b$ will end up at $b$ itself.
 To avoid infinite recursion when we enter a block during the traversal, we first create a \phifun without arguments, ``\pendphi.''
@@ -259,9 +255,7 @@ $\{v_\phi, \textrm{other}\}$}
 \KwOut{$v_\phi$ if \pendphi is necessary, the variable to use instead otherwise}
   $\textrm{other} \gets \bot$\;
   \ForEach{$v' \in \textrm{reaching\_defs}$}{
-    \lIf{$v' = v_\phi$}{
-      continue\;
-    }
+    \lIf{$v' = v_\phi$}{continue}
     \If{other = $\bot$}{
       other $\gets v'$
     }
@@ -276,7 +270,7 @@ $\{v_\phi, \textrm{other}\}$}
   \Return{other}
 \end{procedure}
 
-\paragraph{Removing more unnecessary \phifuns.}
+\paragraph{Removing more unnecessary \phifuns}
 
 In programs with loops, it can be the case that the local optimization performed when function \ref{alg:ssaconstr_click} calls \ref{proc:phi-necessary} does not remove all unnecessary \phifuns.
 This can happen in loops where \phifuns can become unnecessary because other \phifuns are optimized away.
@@ -302,6 +296,9 @@ This is because the depth-first search carried out by \ref{proc:find-def-from-be
 To remove the remaining \phifuns, the local criterion can be iteratively applied to all placed \phifuns until a fixpoint is reached.
 For reducible control flow, this then produces the minimal number of placed \phifuns.
 The classical $(\ast)$-graph in Figure~\ref{fig:astgraph} illustrates that this does not hold for the irreducible case.
+%FAB: there was a broken ref. This sentence was at the end of section ``Search on an acyclic CFG''. I believe it should be here...
+This is similar to the rules discussed in Section~\ref{sec:pessimistic-phifun-insertion}\index{insertion of \phifun, pessimistic}.
+
 
 \begin{figure}
     \hfil\tikzfigure{ast-graph}\hfil\strut
@@ -311,14 +308,14 @@ The classical $(\ast)$-graph in Figure~\ref{fig:astgraph} illustrates that this 
 
 
 
-\section{Further Readings}
+\section{Further readings}
 
 The algorithms presented in this chapter are independent of the transformation that violated SSA and can be used as a black box:
 For every variable for which SSA was violated, a routine is called that restores SSA.
 Both algorithms rely on computed def-use chains because they traverse all uses from a SSA variable to find suitable definitions;
 However, they differ in their prerequisites and their runtime behavior:
 
-The first algorithm (Choi et al.~\cite{Choi:1996ji}) is based on the iterated dominance frontiers like the classical SSA construction algorithm by Cytron et al.~\cite{cytron:1991:ssa}.
+The first algorithm (Choi et al.~\cite{Choi:1996ji}) is based on the iterated dominance frontiers like the classical SSA construction algorithm by Cytron et al.~\cite{Cytron:1991:TOPLAS}.
 Hence, it is less suited for optimizations that also change the flow of control since that would require recomputing the iterated dominance frontiers.
 On the other hand, by using the iterated dominance frontiers, the algorithm can find the reaching definitions quickly by scanning the dominance tree upwards.
 Furthermore, one could also envision applying incremental algorithms to construct the dominance tree~\cite{Ramalingam:1994iq,Sreedhar:1995:ICD:202529.202531} and the dominance frontier~\cite{Sreedhar:1996:PLDI} to account for changes in the control flow.
@@ -329,11 +326,11 @@ It does not depend on additional analysis information such as iterated dominance
 Thus, it is well suited for transformations that change the CFG because no information needs to be recomputed.
 On the other hand, it might be slower to find the reaching definitions because they are searched by a depth-first search in the CFG.
 
-\index{reducible CFG}\index{minimal, making SSA}
-Both approaches construct \emph{pruned}\index{pruned SSA form} SSA, i.e., they do not add dead \phifuns.
-The first approach produces minimal SSA by the very same arguments Cytron et al.~\cite{cytron:1991:ssa} give.
+
+Both approaches construct \emph{pruned}\index{pruned SSA form} SSA, i.e., they do not add dead \phifuns.\index{reducible CFG}\index{minimal, making SSA}
+The first approach produces minimal SSA by the very same arguments Cytron et al.~\cite{Cytron:1991:TOPLAS} give.
 The second only guarantees minimal SSA for reducible CFGs.
-This follows from the iterative application of the function \ref{proc:phi-necessary} which implements the two simplification rules presented by Aycock and Horspool~\cite{Aycock_Horspool_2000},
+This follows from the iterative application of the function \ref{proc:phi-necessary} which implements the two simplification rules presented by Aycock and Horspool~\cite{aycock00simple},
 who showed that their iterative application yields minimal SSA on reducible graphs.
 These two local rules can be extended to a non-local one which has to find strongly connected $\phi$-components that all refer to the same exterior variable.
 Such a non-local check also eliminates unnecessary \phifuns in the irreducible case~\cite{braun2013construction}.
