@@ -611,10 +611,7 @@ This dictates the following remarks:
 \end{enumerate}
 
 \begin{figure}
-  \todo{ add variable 'a' defined after 'y' and used everywhere, and set R = 2)
-  => or better : explain there are other code not shown, but for pedagogical purposes we know the pressure and want only to spill x or y.
-  There should be a use of $y$ in the loop, no ?! Remove also $z$.
-}
+  \todo{There should be a use of $y$ in the loop, no ?! Remove also $z$.}
   \includegraphics[width=0.45\textwidth]{figures/priority-spill-CFG.pdf}
 
   \caption{Generalization of \texttt{distance\_to\_next\_use\_after} for a CFG. Illustrating example.}
@@ -677,7 +674,8 @@ Live-in variables fall into three sets:
 \end{enumerate}
 
 As detailed in Algorithm~\ref{ra:code:initnormal}, $B.\vir$ is initialized with $B.\texttt{allpreds\_in\_regs}$ plus, as space allows, elements of $B.\texttt{somepreds\_in\_regs}$ sorted in decreasing order of their \texttt{spill\_profitability} metric.
-\todo{need to mention that we load them somewhere also : at beginning of block or on edges or end of previous blocks ? : put a comment in algo ?}
+Note that this will add shuffle code (here, loads) on the previous basic blocks, or on the corresponding incoming edges that are critical.
+In practice, this can be handled in a post-pass, in a similar fashion as during the SSA destruction presented in Chapter~\ref{chap:destruction}: indeed, lowering the \phifuns will create shuffle code that must be executed prior to entering the basic block.
 
 
 \begin{algorithm}[h]
@@ -742,8 +740,7 @@ The overall algorithm for spilling comprises several phases:
 First, we pre-compute both liveness and profitability metrics;
 Then we traverse the CCFG in topological order, and each basic block is scanned using initial value of $B.\vir$ as explained above.
 During this phase, we maintain the sets of live-variables available in register and in memory at basic block boundaries.
-The last phase of the algorithms handles the insertion of shuffle code (loads and store) where need.
-\todo{ref to other chapter, note somewhere ? (see previous todo also)}
+The last phase of the algorithms handles the insertion of shuffle code (loads and store) where need.\footnote{Again, how to do this is already discussed in Chapter~\ref{chap:destruction}, which deals with SSA destruction.}
 
 
 \section{Coloring and coalescing}
@@ -1060,53 +1057,57 @@ Second, it makes coalescing much harder.
 This motivated Colombet et al.~\cite{ColombetOct11} to introduce the notion of antipathies (affinities with negative weight) and extend the coalescing rules accordingly.
 The general idea is, instead of enforcing architectural constraints, to simply express the cost (through affinities and antipathies) of shuffle code inserted by a post-pass repairing.
 In a scan-based context, handling of register constraints is usually done locally~\cite{linear-pfeifer,sarkar2007extended}.
-The biased coloring strategy used in this chapter is proposed by Braun and Colombet~\cite{braun2010preference,ColombetOct11} and allows to reduce the requirement to insert shuffle code.
+The biased coloring strategy used in this chapter is proposed by Braun et al. and Colombet et al.~\cite{braun2010preference,ColombetOct11} and allows to reduce need for shuffle code.
 
 %Register pairing
 In the context of graph-based heuristics, \emph{vector registers} are usually handled through a generalized graph coloring approach~\cite{Smith04,Tavares}.
 In the context of scan-based heuristics, the puzzle solver~\cite{Pereira:2008:PLDI} is an elegant formulation that allows to express the local constraints as a puzzle. 
 
 %Spilling with chads
-One of the main problem of graph-based approach is its underlying assumption that the live-range of a variable is atomic.
+One of the main problems of the graph-based approach is its underlying assumption that the live-range of a variable is atomic.
 But when spilled, not all instructions can access it through a \emph{memory operand}.
-In other words, spilling has the effect of removing the live-range with holes i.e. leaving chads (due to shuffle code around instructions that use the spilled variable) that must replace the removed node in the interference graph (usually handled through re-build stage of the interference graph).
-Those subtleties and associated complexity issues are exhaustively studied in~\cite{Bouchez07b}. 
+In other words, spilling has the effect of removing the majority of the live-range, but leaving ``chads'' which correspond to shuffle code around instructions that use the spilled variable.
+These replace the removed node in the interference graph, which is usually re-build at some point.
+Those subtleties and associated complexity issues are exhaustively studied by Bouchez et al. \cite{Bouchez07b}.
 
 %Lowering of phi functions
 As already mentioned, the semantic of \phifuns correspond to parallel copies on the incoming edges of the basic block where they textually appear.
-Done naively, the lowering of \phifuns for which the register that appear at the def operand does not match the register that appears at the use operand, imposes:
-1.~the \emph{spitting of the corresponding control-flow edge};
-2.~the insertion of copies on this freshly created basic block;
-3.~the use of spill code in case the required temporary to perform the parallel copy (permutation) is not available.
+When lowering \phifuns, the register for the def operand may not match the register of the use operand. If done naively, this imposes the following:
+\begin{enumerate}
+  \item \emph{splitting}\index{splitting,edge!splitting} of the corresponding control-flow edge;
+  \item inserting of copies on this freshly created basic block;
+  \item using use of spill code in case parallel copy requires a temporary register but none is available.
+\end{enumerate}
 This issue shares similarities with the SSA destruction that was described in Chapter~\ref{chapter:alternative_ssa_destruction_algorithm}.
 The advocated approach is, just as for the register constraints, to express the cost of an afterward repairing in the objective function of the register allocation scheme.
-Then, locality, the repairing can be expressed as a standard graph coloring problem on a very small graph made-up of the variables created by $\phi$-nodes isolation (see Figure~\ref{fig:phi_isolation}).
+Then, locality, the repairing can be expressed as a standard graph coloring problem on a very small graph containing the variables created by $\phi$-nodes isolation (see Figure~\ref{fig:phi_isolation}).
 However, it turns out that most of the associated shuffle code can usually be moved (and even annihilated) to and within the surrounding basic blocks.
 Such post-pass optimizations correspond to the optimistic move insertion of Braun et al.~\cite{braun2010preference} or the parallel copy motion of Bouchez et al.~\cite{Bouchez:2010:PCM}.
 
 \paragraph{Decoupled Load/Store and Coalescing Optimization Problems}
 %Load/store
-The scan-based spilling heuristic described in this chapter is inspired from the heuristic developed by Braun and Hack in~\cite{Braun:2009:CC}.
-It is an extension of Belady's algorithm~\cite{belady:1966:storage} originally designed for page eviction, which can easily be shown to be optimal for interval graphs (straight-line code and single use variables).
-For straight-line code but multiple-uses per variable Farrach and Liberatore~\cite{farach:98:local} showed that if this further-first strategy works reasonably well, it can also be formalized as a flow problem.
-For a deeper discussion about the complexity of the spilling problem under different configurations, we refer to~\cite{Bouchez07b}.
-To conclude on the spilling part of the register allocation problem, remains to mention the important problem of load/store placement.
+The scan-based spilling heuristic described in this chapter is inspired from the heuristic developed by Braun and Hack \cite{Braun:2009:CC}.
+It is an extension of Belady's algorithm~\cite{belady:1966:storage}, which was originally designed for page eviction, but can easily be shown to be optimal for interval graphs (straight-line code and single use variables).
+For straight-line code but multiple-uses per variable, Farrach and Liberatore~\cite{farach:98:local} showed that if this further-first strategy works reasonably well, it can also be formalized as a flow problem.
+For a deeper discussion about the complexity of the spilling problem under different configurations, we refer to the work of Bouchez et al. \cite{Bouchez07b}.
+To conclude on the spilling part of the register allocation problem, we need to mention the important problem of load/store placement.
 As implicitly done by our heuristic given in Algorithm~\ref{ra:code:initloop}, one should, whenever possible, hoist shuffle code outside of loops.
 This problem corresponds to the global code-motion addressed in Chapter~\ref{chapter:pre_not_helped} that should idealistically be coupled to the register allocation problem.
 Another related problem, not mentioned in this chapter, is rematerialization~\cite{rematerialization}.
 Experience shows that:
-1.~rematerialization is one of the main source of performance improvement for register allocation;
-2.~in the vast majority of cases, rematerialization simply amounts in rescheduling some of the instructions.
+1.~Rematerialization is one of the main source of performance improvement for register allocation;
+2.~In the vast majority of cases, rematerialization simply amounts in rescheduling some of the instructions.
 This remark allows to highlight one of the major limitation of the presented approach common to almost all papers in the area of register allocation:
-while scheduling and register allocation are clearly highly coupled problems, all those approaches only consider a fixed schedule and only few papers such as~\cite{norris1993scheduler,Pinter:1993:RAI,Wang:1994:SPR,Motwani:1995:CRA,Berson:1998:IIS,Codina:2001:UMS,touati,Rawat:2018:ROS} do try to address the coupled problem.
+while scheduling and register allocation are clearly highly coupled problems, all those approaches only consider a fixed schedule and only few papers try to address the coupled problem \cite{norris1993scheduler,Pinter:1993:RAI,Wang:1994:SPR,Motwani:1995:CRA,Berson:1998:IIS,Codina:2001:UMS,touati,Rawat:2018:ROS}.
 
 %Coalescing
-One of the folk reasons why static single assignment has not been adopted by compiler designers for a long time is because of the numerous copy instructions inserted by SSA destruction the compiler could not get rid of afterward.
-The coalescing heuristics being not effective enough in removing all such copies, even if it was clear that live-range splitting was useful for improving colorability, i.e. avoiding spill code, people were reluctant in splitting live-range, preferring to do it on-demand~\cite{cooper1998live}.
+Static single assignment has not been adopted by compiler designers for a long time.
+A reason is the numerous copy instructions inserted by SSA destruction, that the compiler could not get rid of afterward.
+The coalescing heuristics were not effective enough in removing all such copies, so even if it was clear that live-range splitting was useful for improving colorability, i.e., avoiding spill code, people were reluctant to split live-ranges, preferring to do it on-demand~\cite{cooper1998live}.
 The notion of value-based interference described in Paragraph~\ref{par:alternative_ssa_destruction:value} of Chapter~\ref{chapter:alternative_ssa_destruction_algorithm} is an important step for improving the quality of existing schemes.
-Details on the brute-force approach that extends the conservative coalescing scheme depicted in this chapter can be found in~\cite{}.
-However, there exists several other schemes which complexity are studied in~\cite{BouchezDR07:coalescing-cplx}.
-Among others, the optimistic approach of Park and Moon~\cite{park2004optimistic} has been shown to be extremely competitive~\cite{Grund07,Bouchez:case08} in the context of the, somehow restricted, coalescing challenge initiated by~\cite{{appel97modern}}.
+Details on the brute-force approach that extends the conservative coalescing scheme depicted in this chapter can be found in~\cite{todo}.\todo{ask Fabrice which reference he was talking about}
+However, there exists several other schemes whose complexity are studied by Bouchez et al.~\cite{BouchezDR07:coalescing-cplx}.
+Among others, the optimistic approach of Park and Moon~\cite{park2004optimistic} has been shown to be extremely competitive~\cite{Grund07,Bouchez:case08} in the context of the, somehow restricted, ``Optimal Coalescing Challenge'' initiated by Appel and George, designers of the \irc~\cite{george:96:iterated}.
 % \endofchapter
 }
 
