@@ -583,23 +583,23 @@ There are two main issues:
 To illustrate the generalization of the further-first priority strategy to a CFG, let us consider the example of Figure~\ref{fig:ra:priority-spill-CFG}.
 In this figure, the $\lightning +n$ sign denotes regions with (high) register pressure of $\regs+n$.
 At program point $p_0$, register pressure is too high by one variable (suppose there are other hidden variables that we do not want to spill).
-We have two candidates for spilling: $x$ and $y$, and the classical furthest first criteria would depend on which branch is chosen:
+We have two candidates for spilling: $x$ and $y$, and the classical furthest first criteria would be different depending on the chosen branch.
 
 \begin{itemize}
-  \item If the left branch is taken, and consider the execution trace ($AB^{100}C$).
+  \item If the left branch is taken, considering an execution trace ($AB^{100}C$):
   In this branch, the next use of $y$ appears in a loop, while the next use of $x$ appears way further, after the loop has fully executed. 
-  It is clearly considered to be more profitable to evict variable $x$ (at distance 101).
+  It is more profitable to evict variable $x$ (at distance 101).
 
   % Looking at this execution trace in isolation, and using the further first strategy described above for straight-line code
 
-\item If the right branch is taken, and consider the execution trace ($AD$).
+\item If the right branch is taken, the execution trace is ($AD$).
   In that case, this is variable $y$ has the further use (at distance 2) so we would evict variable $y$.
 
 \end{itemize}
 
-Looking at the example as a whole, we see that the left branch is not under pressure, so spilling $x$ would only help for program point $p_0$, and one would need to spill another variable in block $D$ ($x$ is used at the beginning of $D$), hence it would be preferable to evict variable $y$.
+So we have two opposing viewpoints, but looking at the example as a whole, we see that the left branch is not under pressure, so spilling $x$ would only help for program point $p_0$, and one would need to spill another variable in block $D$ ($x$ is used at the beginning of $D$), hence it would be preferable to evict variable $y$.
 
-On the other hand, modifying a little bit the example by assuming a high register pressure within the loop at program point $p_1$ (by introducing other variables), then evicting variable $x$ would be preferred in order to avoid a load and store in a loop!
+Still, on the other hand, if we modify a little bit the example by assuming a high register pressure within the loop at program point $p_1$ (by introducing other variables), then evicting variable $x$ would be preferred in order to avoid a load and store in a loop!
 
 % \bigskip
 
@@ -611,14 +611,14 @@ This dictates the following remarks:
 \end{enumerate}
 
 \begin{figure}
-  {TODO: There should be a use of $y$ in the loop, no ?! Remove also $z$.}
-  \includegraphics[width=0.45\textwidth]{figures/priority-spill-CFG.pdf}
+  % \includegraphics[width=0.45\textwidth]{figures/priority-spill-CFG.pdf}
+  \tikzfigure{priority-spill-CFG}
 
   \caption{Generalization of \texttt{distance\_to\_next\_use\_after} for a CFG. Illustrating example.}
   \label{fig:ra:priority-spill-CFG}
 \end{figure}
 
-So we will replace the notion of ``distance'' in the furthest first algorithm with a notion of ``profitability,'' i.e., a measure of the number of program points (weighted by frequency) that would benefit from the spilling of a variable $v$.
+We will then replace the notion of ``distance'' in the furthest first algorithm with a notion of ``profitability,'' i.e., a measure of the number of program points (weighted by frequency) that would benefit from the spilling of a variable $v$.
 
 %
 % This leads, for a variable $v$ live at program point $p$ to the following definition of function \verb+v.spill_profitability(p)+ where $q.\texttt{frequency}$ represents the estimated execution frequency for a program point $q$:
@@ -696,20 +696,27 @@ In practice, this can be handled in a post-pass, in a similar fashion as during 
 
 \begin{figure}
   \begin{center}
-    \subfloat[\label{sub:ra:loopentry_example_a}\vir\ at $B$'s entry]{\qquad\includegraphics[width=0.15\textwidth]{figures/loopentry_example_a.pdf}\qquad}
+    \subfloat[\label{sub:ra:loopentry_example_a}$x \in \vir$ at $B$'s entry]{
+    % \qquad\includegraphics[width=0.15\textwidth]{figures/loopentry_example_a.pdf}\qquad
+      \tikzfigure{loop-entry-example-a}
+    }
     \hfil
-    \subfloat[\label{sub:ra:loopentry_example_b}not \vir\ at $B$'s entry]{\qquad\quad\includegraphics[width=0.15\textwidth]{figures/loopentry_example_b.pdf}\qquad\quad}
+    \subfloat[\label{sub:ra:loopentry_example_b}$x \notin \vir$ at $B$'s entry]{
+    % \qquad\quad\includegraphics[width=0.15\textwidth]{figures/loopentry_example_b.pdf}
+      \tikzfigure{loop-entry-example-b}
+  \qquad\quad}
   \end{center}
   \caption{\label{fig:ra:loopentry_example}Initial values of $B.\vir$ at loop entry. Illustrating examples.}
 \end{figure}
-For a basic block at the entry of a loop, as illustrated by the example of Figure~\ref{fig:ra:loopentry_example}, one do not want to account for allocation on predecessor basic block, but start from scratch instead.
+
+For a basic block at the entry of a loop, as illustrated by the example of Figure~\ref{fig:ra:loopentry_example}, one do not want to account for allocation on the predecessor basic block, but start from scratch instead.
 Assume the first basic block has already been processed and one wants to compute $B.\vir$:
 \begin{enumerate}
   \item Example~\subref{sub:ra:loopentry_example_a}: 
-  even if at the end of the predecessor basic block, $x$ is not available in a register, one wants to insert a reload of $x$ at $p_1$, i.e., include $x$ in $B.\vir$.
+    even if at the end of the predecessor basic block, at $p_0$, $x$ is not available in a register, one wants to insert a reload of $x$ at $p_1$, i.e., include $x$ in $B.\vir$.
   Not doing so would involve a reload at every iteration of the loop at $p_2$. 
 \item Example~\subref{sub:ra:loopentry_example_b}: 
-  Even if at the entry of the loop, $x$ is available in a register, one wants to spill it and restore at $p_2$ so as to lower the register pressure that is too high within the loop.
+  Even if at the entry of the loop, $x$ is available in a register, one wants to spill it at $p_1$ and restore at $p_4$ so as to lower the register pressure that is too high within the loop. Not doing so would involve a store in the loop at $p_2$ and a reload on the back edge of the loop at $p_3$.
   This means excluding $x$ from $B.\vir$.
 \end{enumerate}
 This leads to Algorithm~\ref{ra:code:initloop} where $B.\texttt{livein}$ represents the set of live-in variables of $B$ and $L.\maxlive$ is the maximal register pressure in the whole loop $L$.
@@ -983,7 +990,7 @@ Thus, affinities are in general tested several times, and move-related nodes---n
 The advocated scheme, which corresponds to the pseudo-code of Figure~\ref{fig:ra:code:IRC} and is depicted in Figure~\ref{fig:ra:brute}, tries the coalescing of a given affinity only once, and thus does not require any complex freezing mechanism as done in the original IRC.
 This is made possible thanks to the following enhancement of the conservative coalescing rule:
 Recall that the objective of Briggs and George rules is to test whether the coalescing $v$ and $u$ breaks the \gr{\regs} property of $G$ or not.
-Testing this property can be done by running function \emph{Simplify(G)} itself!
+If the Briggs and George tests fail, Testing this property can be done by running function \emph{Simplify(G)} itself!
 Theoretically, this greatly increases the complexity, as for each affinity, a full simplification process could be potentially performed.
 However, experience shows that the overhead is somewhat balanced by the magnitude lowering of calls to ``can\_be\_coalesced.''
 This approach still looks quite rough, hence we named it the \emph{Brute} coalescing heuristic.

@@ -1,6 +1,9 @@
 FIGS= \
       linear-scan \
       running-ig \
+      priority-spill-CFG \
+      loop-entry-example-a \
+      loop-entry-example-b \
       scheme-bruteimproved
 
 SUBFIGS= \
