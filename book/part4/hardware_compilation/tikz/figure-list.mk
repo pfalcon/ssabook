@@ -17,4 +17,6 @@ FIGS= \
       Fig-4-8-c \
 
 SUBFIGS= \
+      Fig-4-9-1 \
+      Fig-4-9-2
 
