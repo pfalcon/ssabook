@@ -7,7 +7,7 @@
 # from it are licenced under the GPLv2
 # (http://www.gnu.org/copyleft/gpl.html) under the following terms,
 # copied verbatim from the original Makefile
-# 
+#
 # Parts I added are licenced GPLv2 as well
 
 VERSION=0.7.1
@@ -200,21 +200,21 @@ endif
 # files when cleaning
 LATEXCLEAN = $(FILE).log $(FILE).out $(FILE).aux $(FILE).fls
 LATEXCLEAN+= $(FILE).blg
-LATEXCLEAN+= $(FILE).idx $(FILE).ilg $(FILE).ist 
+LATEXCLEAN+= $(FILE).idx $(FILE).ilg $(FILE).ist
 LATEXCLEAN+= $(FILE).glo $(FILE).glg
 LATEXCLEAN+= $(FILE).toc $(FILE).lof $(FILE).lot
 LATEXCLEAN+= $(FILE).maf
 LATEXCLEAN+= $(FILE).ptc* $(FILE).plf* $(FILE).plt*
 LATEXCLEAN+= $(FILE).mtc* $(FILE).mlf* $(FILE).mlt*
 LATEXCLEAN+= $(FILE).stc* $(FILE).slf* $(FILE).slt*
-LATEXCLEAN+= $(FILE).nav $(FILE).snm  $(FILE).vrb 
+LATEXCLEAN+= $(FILE).nav $(FILE).snm  $(FILE).vrb
 LATEXCLEAN+= *.aux *.blg
 LATEXCLEAN+= $(FILE).haux $(FILE).htoc
 
 LATEXCLEAN+= $(MORECLEAN)
 
 # MOREPURGE: see MORECLEAN, but for the purge target
-LATEXPURGE = $(FILE).ps $(FILE).dvi $(FILE).pdf 
+LATEXPURGE = $(FILE).ps $(FILE).dvi $(FILE).pdf
 LATEXPURGE+= $(FILE).bbl $(FILE).ind $(FILE).gls
 LATEXPURGE+= bu*.bbl
 LATEXPURGE+= $(FILE).html
@@ -309,25 +309,25 @@ endef
 #            glo,gls,idx,ind,ist,aux
 
 # This function will get the generated files and add them to the
-# cleaning lists 
+# cleaning lists
 # $(call update_clean_file,<stem>)
-# 
+#
 define update_clean_file
-egrep '^OUTPUT' $(TMPDIR)/$1.fls | \
+grep -E '^OUTPUT' $(TMPDIR)/$1.fls | \
 $(SED) -e 's/^OUTPUT //' | \
-egrep '\.maf$$|\.ilg$$|\.glg$$|\.blg$$|\.out$$|\.log$$|\.lot$$|\.lof$$|\.toc$$|\.plt[0-9]*$$|\.plf[0-9]*$$|\.ptc[0-9]*$$|\.mlt[0-9]*$$|\.mlf[0-9]*$$|\.mtc[0-9]*$$|\.slt[0-9]*$$|\.slf[0-9]*$$|\.stc[0-9]*$$|\.nav$$|\.snm$$|\.glo$$|\.gls$$|\.idx$$|\.ind$$|\.ist$$|\.aux$$' \
+grep -E '\.maf$$|\.ilg$$|\.glg$$|\.blg$$|\.out$$|\.log$$|\.lot$$|\.lof$$|\.toc$$|\.plt[0-9]*$$|\.plf[0-9]*$$|\.ptc[0-9]*$$|\.mlt[0-9]*$$|\.mlf[0-9]*$$|\.mtc[0-9]*$$|\.slt[0-9]*$$|\.slf[0-9]*$$|\.stc[0-9]*$$|\.nav$$|\.snm$$|\.glo$$|\.gls$$|\.idx$$|\.ind$$|\.ist$$|\.aux$$' \
  >$(TMPDIR)/$1.clean.cookie; \
 $(call update_file,$(TMPDIR)/$1.clean)
 endef
 
 # This function will get the generated files and add them to the
-# cleaning lists 
+# cleaning lists
 # $(call update_clean_file,<stem>)
-# 
+#
 define update_purge_file
-egrep '^OUTPUT' $(TMPDIR)/$1.fls | \
+grep -E '^OUTPUT' $(TMPDIR)/$1.fls | \
 $(SED) -e 's/^OUTPUT //' | \
-egrep '\.pdf$$|\.ps$$|\.dvi$$' \
+grep -E '\.pdf$$|\.ps$$|\.dvi$$' \
  >$(TMPDIR)/$1.purge.cookie; \
 $(ECHO) $(TMPDIR)/$1.clean >>$(TMPDIR)/$1.purge ; \
 $(ECHO) $(TMPDIR)/$1.purge >>$(TMPDIR)/$1.purge ; \
@@ -351,7 +351,7 @@ endef
 # Note: nested "call" works here because the parameters are known
 # statically
 
-# $(call get-bbl-deps,<stem>,,<targets>) 
+# $(call get-bbl-deps,<stem>,,<targets>)
 # We exploit the fact that a bbl appearing in the .fls is not "No
 # file" in the .log, and vice-versa
 #
@@ -638,19 +638,19 @@ endef
 # BibTeX invocations
 #
 # $(call run-bibtex,<tex stem>)
-define run-bibtex 
+define run-bibtex
 $(ECHO) Running BibTeX on $1; \
 $(BIBTEX) $1 $(TODEVNULL)
 endef
 
 # $(call test-run-again,<source stem>)
 define test-run-again
-egrep -q '^(.*Rerun .*|No file $1\.[^.]+\.|No file [^ ]+\.bbl\.|LaTeX Warning: There were undefined references\.)$$' $(TMPDIR)/$1.log
+grep -Eq '^(.*Rerun .*|No file $1\.[^.]+\.|No file [^ ]+\.bbl\.|LaTeX Warning: There were undefined references\.)$$' $(TMPDIR)/$1.log
 endef
 
 # $(call test-rerun,<source stem>)
 define test-rerun
-egrep -q '^(.*Rerun .*|LaTeX Warning: There were undefined references\.)$$' $(TMPDIR)/$1.log
+grep -Eq '^(.*Rerun .*|LaTeX Warning: There were undefined references\.)$$' $(TMPDIR)/$1.log
 endef
 
 # Will create the stem.deps dependencies file
@@ -728,7 +728,7 @@ help:
 
 ifndef FILE
 
-FILES=$(shell egrep -l '[^%]*\\documentclass' *.tex)
+FILES=$(shell grep -El '[^%]*\\documentclass' *.tex)
 FILES_PDF=$(FILES:.tex=.pdf)
 FILES_PS=$(FILES:.tex=.ps)
 FILES_DVI=$(FILES:.tex=.dvi)
@@ -855,7 +855,7 @@ ifndef LATEXSTEP
 	  $(ECHO) $(announce) Now compiling $*.pdf; \
 	  $(MAKE) -s LATEXSTEP=latex_pdf $@; \
 	;; \
-	esac 
+	esac
 
 %.dvi: FORCE
 	$(QUIET)$(ECHO) $(separator); \
@@ -878,7 +878,7 @@ ifndef LATEXSTEP
 	  $(ECHO) $(announce) Now compiling $*.dvi; \
 	  $(MAKE) -s LATEXSTEP=latex_dvi $@; \
 	;; \
-	esac 
+	esac
 
 %.ps: FORCE
 	$(QUIET)$(ECHO) $(separator); \
@@ -901,12 +901,12 @@ ifndef LATEXSTEP
 	  $(ECHO) $(announce) Now compiling $*.pdf; \
 	  $(MAKE) -s LATEXSTEP=latex_pdf $@; \
 	;; \
-	esac 
+	esac
 
 endif
 
 
-.SUFFIXES: 
+.SUFFIXES:
 .SUFFIXES: .tex .dvi .ps .pdf .html .aux .deps .vars \
 .idx .ind .gls .glo .ist .bbl \
 .auxbbl .auxbbl.cookie \
@@ -1042,14 +1042,14 @@ ifeq ($(LATEXSTEP),latex_index)
 $(FILE).dvi $(FILE).pdf: FORCE
 	$(QUIET)if [ -f $(TMPDIR)/$(FILE).index-done ]; \
 	then \
-	  egrep '\\cite\>' `cat $(TMPDIR)/$(FILE).index-done` $(TODEVNULL); \
+	  grep -E '\\cite\>' `cat $(TMPDIR)/$(FILE).index-done` $(TODEVNULL); \
 	  if [ $$? -eq 0 ]; then $(call run-latex,$*,$@); fi; \
 	  rm $(TMPDIR)/$(FILE).index-done; \
 	  $(ECHO) $(announce) Was step: index, glossaries; \
 	  $(MAKE) -s LATEXSTEP=latex_index $@; \
 	else \
 	  $(MAKE) -s LATEXSTEP=latex_bib $@; \
-	fi; 
+	fi;
 
 endif
 
@@ -1111,7 +1111,7 @@ endif
 ifeq ($(LATEXSTEP),latex_postproc)
 
 define pdfifdvi
-$(shell [ "$(MAKECMDGOALS)" = "$(FILE).dvi" ] && $(ECHO) $(FILE).pdf || $(ECHO) FORCE ) 
+$(shell [ "$(MAKECMDGOALS)" = "$(FILE).dvi" ] && $(ECHO) $(FILE).pdf || $(ECHO) FORCE )
 endef
 
 %.tpt: FORCE
@@ -1127,7 +1127,7 @@ endef
 	touch $(TMPDIR)/$(FILE).thumb-done
 
 define onetarget
-$(shell [ "$(MAKECMDGOALS)" = "$(FILE).dvi" ] && $(ECHO) $(FILE).dvi || $(ECHO) $(FILE).pdf ) 
+$(shell [ "$(MAKECMDGOALS)" = "$(FILE).dvi" ] && $(ECHO) $(FILE).dvi || $(ECHO) $(FILE).pdf )
 endef
 
 $(onetarget): FORCE
